@@ -13,6 +13,7 @@ import { FiltersModal } from './components/FiltersModal';
 import { HueSaturationModal } from './components/modals/HueSaturationModal';
 import { LevelsModal } from './components/modals/LevelsModal';
 import { UpdateModal } from './components/modals/UpdateModal';
+import { ToastContainer } from './components/ui/ToastContainer';
 import { useEditorStore } from './stores/editorStore';
 import { useDocumentStore } from './stores/documentStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -145,6 +146,7 @@ export const App: React.FC = () => {
         filterType={filterModal.type}
         onClose={() => setFilterModal({ isOpen: false, type: 'brightness_contrast' })}
       />
+      <ToastContainer />
     </div>
   );
 };

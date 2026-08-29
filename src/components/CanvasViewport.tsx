@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { useDocumentStore } from '../stores/documentStore';
+import { toast } from '../stores/toastStore';
 import { BrushPoint } from '../types';
 import { LayerStack } from './canvas/LayerStack';
 import { PixelGrid } from './canvas/PixelGrid';
@@ -108,6 +109,29 @@ export const CanvasViewport: React.FC = () => {
     }
 
     const pos = screenToCanvas(e.clientX, e.clientY);
+
+    const activeLayer = doc.layers.find((l) => l.id === doc.active_layer_id);
+    const isModifying = [
+      'brush',
+      'eraser',
+      'dodge',
+      'burn',
+      'smudge',
+      'blur',
+      'paint_bucket',
+      'gradient',
+      'move',
+    ].includes(activeTool);
+    if (isModifying && activeLayer) {
+      if (activeLayer.locked) {
+        toast.warning('Layer Locked', 'Unlock the layer to edit.');
+        return;
+      }
+      if (!activeLayer.visible) {
+        toast.warning('Layer Hidden', 'Make the layer visible to edit.');
+        return;
+      }
+    }
 
     if (activeTool === 'move') {
       startMove(pos);

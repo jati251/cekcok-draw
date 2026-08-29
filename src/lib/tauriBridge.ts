@@ -123,6 +123,24 @@ export async function setLayerVisibility(layerId: string, visible: boolean): Pro
   return { ...mockDoc };
 }
 
+export async function setLayerLock(layerId: string, locked: boolean): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('set_layer_lock', { layerId, locked });
+  }
+  const l = mockDoc.layers.find((layer) => layer.id === layerId);
+  if (l) l.locked = locked;
+  return { ...mockDoc };
+}
+
+export async function renameLayer(layerId: string, name: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('rename_layer', { layerId, name });
+  }
+  const l = mockDoc.layers.find((layer) => layer.id === layerId);
+  if (l) l.name = name;
+  return { ...mockDoc };
+}
+
 export async function setLayerBlendMode(
   layerId: string,
   blendMode: BlendMode

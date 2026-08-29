@@ -112,6 +112,37 @@ pub fn set_layer_blend_mode(
 }
 
 #[tauri::command]
+pub fn set_layer_lock(
+    layer_id: String,
+    locked: bool,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
+        layer.locked = locked;
+        Ok(guard.document.get_info())
+    } else {
+        Err("Layer not found".into())
+    }
+}
+
+#[tauri::command]
+pub fn rename_layer(
+    layer_id: String,
+    name: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Rename Layer to '{}'", name));
+    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
+        layer.name = name;
+        Ok(guard.document.get_info())
+    } else {
+        Err("Layer not found".into())
+    }
+}
+
+#[tauri::command]
 pub fn apply_brush_stroke(
     payload: StrokePayload,
     state: State<'_, SharedEngineState>,

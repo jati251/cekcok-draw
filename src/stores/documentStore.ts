@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BlendMode, DocumentInfo, HistoryAction } from '../types';
 import * as bridge from '../lib/tauriBridge';
+import { toast } from './toastStore';
 
 interface DocumentState {
   doc: DocumentInfo | null;
@@ -15,7 +16,12 @@ interface DocumentState {
   selectLayer: (id: string) => Promise<void>;
   changeLayerOpacity: (id: string, opacity: number) => Promise<void>;
   toggleLayerVisibility: (id: string) => Promise<void>;
+  toggleLayerLock: (id: string) => Promise<void>;
+  renameLayer: (id: string, name: string) => Promise<void>;
   changeLayerBlendMode: (id: string, blendMode: BlendMode) => Promise<void>;
+  mergeDown: (id: string) => Promise<void>;
+  reorderLayer: (id: string, newIndex: number) => Promise<void>;
+  clearLayer: (id: string) => Promise<void>;
   triggerUndo: () => Promise<void>;
   triggerRedo: () => Promise<void>;
   refreshHistory: () => Promise<void>;
@@ -39,8 +45,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const doc = await bridge.createDocument(title, width, height);
       const history = await bridge.getHistory();
       set({ doc, history, isLoading: false, canvasRevision: get().canvasRevision + 1 });
+      toast.success('Document Created', `${title} (${width}×${height}px)`);
     } catch (err) {
       set({ error: String(err), isLoading: false });
+      toast.error('Failed to create document', String(err));
     }
   },
 
@@ -52,18 +60,29 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const doc = await bridge.addLayer(layerName);
       const history = await bridge.getHistory();
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      toast.info('Layer Added', `Created '${layerName}'`);
     } catch (err) {
       set({ error: String(err) });
+      toast.error('Could not create layer', String(err));
     }
   },
 
   deleteLayer: async (id: string) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    if (currentDoc.layers.length <= 1) {
+      toast.warning('Cannot Delete Layer', 'Document must have at least one layer.');
+      return;
+    }
+    const target = currentDoc.layers.find((l) => l.id === id);
     try {
       const doc = await bridge.removeLayer(id);
       const history = await bridge.getHistory();
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      toast.info('Layer Deleted', `Removed '${target?.name || 'Layer'}'`);
     } catch (err) {
       set({ error: String(err) });
+      toast.error('Failed to delete layer', String(err));
     }
   },
 
@@ -98,6 +117,34 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
+  toggleLayerLock: async (id: string) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    const target = currentDoc.layers.find((l) => l.id === id);
+    if (!target) return;
+    try {
+      const doc = await bridge.setLayerLock(id, !target.locked);
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      if (!target.locked) {
+        toast.info('Layer Locked', `'${target.name}' is now protected from editing`);
+      } else {
+        toast.info('Layer Unlocked', `'${target.name}' is now editable`);
+      }
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  renameLayer: async (id: string, name: string) => {
+    if (!name.trim()) return;
+    try {
+      const doc = await bridge.renameLayer(id, name.trim());
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
   changeLayerBlendMode: async (id: string, blendMode: BlendMode) => {
     try {
       const doc = await bridge.setLayerBlendMode(id, blendMode);
@@ -105,6 +152,76 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
+    }
+  },
+
+  mergeDown: async (id: string) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    const idx = currentDoc.layers.findIndex((l) => l.id === id);
+    if (idx <= 0) {
+      toast.warning('Merge Down', 'Cannot merge the bottommost layer down.');
+      return;
+    }
+    const upperLayer = currentDoc.layers[idx];
+    const lowerLayer = currentDoc.layers[idx - 1];
+
+    const upperCanvas = document.getElementById(
+      `layer-canvas-${upperLayer.id}`
+    ) as HTMLCanvasElement | null;
+    const lowerCanvas = document.getElementById(
+      `layer-canvas-${lowerLayer.id}`
+    ) as HTMLCanvasElement | null;
+
+    if (upperCanvas && lowerCanvas) {
+      const ctx = lowerCanvas.getContext('2d');
+      if (ctx) {
+        ctx.save();
+        ctx.globalAlpha = upperLayer.opacity;
+        ctx.drawImage(upperCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    try {
+      const doc = await bridge.removeLayer(upperLayer.id);
+      const history = await bridge.getHistory();
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      toast.success('Merged Down', `Merged '${upperLayer.name}' into '${lowerLayer.name}'`);
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  reorderLayer: async (id: string, newIndex: number) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    const currentIndex = currentDoc.layers.findIndex((l) => l.id === id);
+    if (currentIndex === -1 || newIndex < 0 || newIndex >= currentDoc.layers.length) return;
+
+    const layers = [...currentDoc.layers];
+    const [moved] = layers.splice(currentIndex, 1);
+    layers.splice(newIndex, 0, moved);
+
+    set({ doc: { ...currentDoc, layers }, canvasRevision: get().canvasRevision + 1 });
+  },
+
+  clearLayer: async (id: string) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    const target = currentDoc.layers.find((l) => l.id === id);
+    if (target?.locked) {
+      toast.warning('Cannot Clear', `'${target.name}' is locked.`);
+      return;
+    }
+    const canvas = document.getElementById(`layer-canvas-${id}`) as HTMLCanvasElement | null;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+        get().bumpCanvasRevision();
+        toast.info('Layer Cleared', `Cleared all pixels on '${target?.name || 'Layer'}'`);
+      }
     }
   },
 

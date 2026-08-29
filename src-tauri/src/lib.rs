@@ -39,6 +39,8 @@ pub fn run() {
             set_layer_opacity,
             set_layer_visibility,
             set_layer_blend_mode,
+            set_layer_lock,
+            rename_layer,
             apply_brush_stroke,
             apply_flood_fill,
             apply_shape,

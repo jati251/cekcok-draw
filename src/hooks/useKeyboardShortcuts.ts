@@ -60,7 +60,14 @@ export const useKeyboardShortcuts = ({
           else onOpenNewDoc();
         } else if (e.key.toLowerCase() === 'e') {
           e.preventDefault();
-          onOpenExport();
+          if (e.shiftKey) {
+            onOpenExport();
+          } else {
+            const currentDoc = useDocumentStore.getState().doc;
+            if (currentDoc?.active_layer_id) {
+              useDocumentStore.getState().mergeDown(currentDoc.active_layer_id);
+            }
+          }
         } else if (e.key.toLowerCase() === 'u' && !e.shiftKey) {
           e.preventDefault();
           onOpenHueSaturation();
