@@ -52,7 +52,8 @@ pub fn run() {
             undo,
             redo,
             get_history,
-            render_viewport
+            render_viewport,
+            read_file_binary
         ])
         .run(tauri::generate_context!())
         .expect("error while running CekcokDraw application");

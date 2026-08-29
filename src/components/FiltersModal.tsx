@@ -19,7 +19,11 @@ export const FiltersModal: React.FC<Props> = ({ isOpen, filterType, onClose }) =
   if (!isOpen || !doc) return null;
 
   const handleApply = async () => {
-    const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
@@ -32,13 +36,18 @@ export const FiltersModal: React.FC<Props> = ({ isOpen, filterType, onClose }) =
           );
         if (filterType === 'brightness_contrast') {
           filters.applyBrightnessContrast(ctx, doc.width, doc.height, brightness, contrast);
-          await bridge.applyLayerFilter({
-            type: 'brightness_contrast',
-            brightness,
-            contrast,
-          });
+          useDocumentStore.getState().bumpCanvasRevision();
+          await bridge
+            .applyLayerFilter({
+              type: 'brightness_contrast',
+              brightness,
+              contrast,
+              layer_id: doc.active_layer_id,
+            })
+            .catch(() => {});
         } else if (filterType === 'gaussian_blur') {
           filters.applyGaussianBlur(ctx, doc.width, doc.height, blurRadius);
+          useDocumentStore.getState().bumpCanvasRevision();
           await bridge.commitStrokeHistory(`Gaussian Blur (${blurRadius}px)`);
         }
       }

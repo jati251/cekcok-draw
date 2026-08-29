@@ -29,6 +29,8 @@ interface EditorState {
   selection: SelectionArea | null;
   activeTextNode: { x: number; y: number; text: string } | null;
   tabletTelemetry: TabletTelemetry;
+  transformState: import('../types').TransformState | null;
+  cropBounds: { x: number; y: number; width: number; height: number } | null;
 
   setActiveTool: (tool: ToolType) => void;
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
@@ -54,6 +56,8 @@ interface EditorState {
   setSelection: (selection: SelectionArea | null) => void;
   setActiveTextNode: (node: { x: number; y: number; text: string } | null) => void;
   setTabletTelemetry: (telemetry: Partial<TabletTelemetry>) => void;
+  setTransformState: (transform: import('../types').TransformState | null) => void;
+  setCropBounds: (bounds: { x: number; y: number; width: number; height: number } | null) => void;
   resetView: () => void;
 }
 
@@ -112,6 +116,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     tiltY: 0,
     isEraser: false,
   },
+  transformState: null,
+  cropBounds: null,
 
   setActiveTool: (activeTool) =>
     set({
@@ -192,5 +198,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       tabletTelemetry: { ...state.tabletTelemetry, ...telemetry },
     })),
+  setTransformState: (transformState) => set({ transformState }),
+  setCropBounds: (cropBounds) => set({ cropBounds }),
   resetView: () => set({ zoom: 1.0, pan: { x: 0, y: 0 } }),
 }));

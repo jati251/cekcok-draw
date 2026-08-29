@@ -31,6 +31,11 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
                 .build(app)?,
         )
         .item(
+            &MenuItemBuilder::with_id("open_file", "Open Image...")
+                .accelerator("CmdOrCtrl+O")
+                .build(app)?,
+        )
+        .item(
             &MenuItemBuilder::with_id("export_image", "Export Image...")
                 .accelerator("CmdOrCtrl+E")
                 .build(app)?,
@@ -41,14 +46,44 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
 
     // 3. Edit Submenu
     let edit_menu = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
+        .item(
+            &MenuItemBuilder::with_id("undo", "Undo")
+                .accelerator("CmdOrCtrl+Z")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("redo", "Redo")
+                .accelerator("Shift+CmdOrCtrl+Z")
+                .build(app)?,
+        )
         .separator()
-        .cut()
-        .copy()
-        .paste()
+        .item(
+            &MenuItemBuilder::with_id("cut", "Cut")
+                .accelerator("CmdOrCtrl+X")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("copy", "Copy")
+                .accelerator("CmdOrCtrl+C")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("paste", "Paste")
+                .accelerator("CmdOrCtrl+V")
+                .build(app)?,
+        )
         .separator()
-        .select_all()
+        .item(
+            &MenuItemBuilder::with_id("free_transform", "Free Transform")
+                .accelerator("CmdOrCtrl+T")
+                .build(app)?,
+        )
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("select_all", "Select All")
+                .accelerator("CmdOrCtrl+A")
+                .build(app)?,
+        )
         .item(
             &MenuItemBuilder::with_id("deselect", "Deselect")
                 .accelerator("CmdOrCtrl+D")
@@ -58,6 +93,22 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
 
     // 4. Image Submenu
     let image_menu = SubmenuBuilder::new(app, "Image")
+        .item(
+            &MenuItemBuilder::with_id("canvas_size", "Canvas Size...")
+                .accelerator("Alt+CmdOrCtrl+C")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("crop_selection", "Crop to Selection").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("rotate_90_cw", "Rotate 90° Clockwise").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("rotate_90_ccw", "Rotate 90° Counter-Clockwise")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("rotate_180", "Rotate 180°").build(app)?)
+        .item(&MenuItemBuilder::with_id("flip_h", "Flip Canvas Horizontal").build(app)?)
+        .item(&MenuItemBuilder::with_id("flip_v", "Flip Canvas Vertical").build(app)?)
+        .separator()
         .item(
             &MenuItemBuilder::with_id("levels", "Levels (Histogram)...")
                 .accelerator("CmdOrCtrl+L")
@@ -72,9 +123,6 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
             &MenuItemBuilder::with_id("brightness_contrast", "Brightness / Contrast...")
                 .build(app)?,
         )
-        .separator()
-        .item(&MenuItemBuilder::with_id("flip_h", "Flip Canvas Horizontal").build(app)?)
-        .item(&MenuItemBuilder::with_id("flip_v", "Flip Canvas Vertical").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("invert", "Invert Colors")
@@ -100,13 +148,28 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
                 .accelerator("CmdOrCtrl+J")
                 .build(app)?,
         )
+        .item(
+            &MenuItemBuilder::with_id("free_transform_layer", "Free Transform Layer")
+                .accelerator("CmdOrCtrl+T")
+                .build(app)?,
+        )
         .separator()
+        .item(
+            &MenuItemBuilder::with_id("merge_down", "Merge Down")
+                .accelerator("CmdOrCtrl+E")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("clear_layer", "Clear Layer").build(app)?)
         .item(&MenuItemBuilder::with_id("del_layer", "Delete Layer").build(app)?)
         .build()?;
 
     // 6. Filter Submenu
     let filter_menu = SubmenuBuilder::new(app, "Filter")
         .item(&MenuItemBuilder::with_id("gaussian_blur", "Gaussian Blur...").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("brightness_contrast", "Brightness / Contrast...")
+                .build(app)?,
+        )
         .item(&MenuItemBuilder::with_id("auto_tone", "Auto Tone (Levels)").build(app)?)
         .build()?;
 

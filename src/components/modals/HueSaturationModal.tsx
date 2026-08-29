@@ -18,21 +18,26 @@ export const HueSaturationModal: React.FC<Props> = ({ isOpen, onClose }) => {
   if (!isOpen || !doc) return null;
 
   const handleApply = async () => {
-    const canvas = doc.active_layer_id
-      ? (document.querySelector('canvas') as HTMLCanvasElement)
-      : null;
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
 
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         useDocumentStore.getState().pushCanvasSnapshot('Hue / Saturation Adjustment');
         filters.applyHueSaturation(ctx, doc.width, doc.height, hue, saturation, lightness);
-        await bridge.applyLayerFilter({
-          type: 'hue_saturation',
-          hue,
-          saturation,
-          lightness,
-        });
+        useDocumentStore.getState().bumpCanvasRevision();
+        await bridge
+          .applyLayerFilter({
+            type: 'hue_saturation',
+            hue,
+            saturation,
+            lightness,
+            layer_id: doc.active_layer_id,
+          })
+          .catch(() => {});
       }
     }
     onClose();

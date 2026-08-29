@@ -11,11 +11,15 @@ import { ShapeOverlay } from './canvas/ShapeOverlay';
 import { TextLayerOverlay } from './canvas/TextLayerOverlay';
 import { BrushCursorRing } from './canvas/BrushCursorRing';
 import { ContextMenu } from './canvas/ContextMenu';
+import { TransformOverlay } from './canvas/TransformOverlay';
+import { CropOverlay } from './canvas/CropOverlay';
+import { DragDropOverlay } from './canvas/DragDropOverlay';
 import { RulersOverlay } from './RulersOverlay';
 import { useCanvasDrawing } from '../hooks/useCanvasDrawing';
 import { useCanvasViewport } from '../hooks/useCanvasViewport';
 import { useVectorInteractions } from '../hooks/useVectorInteractions';
 import { extractPointerDetails } from '../utils/tablet';
+import { isTauriEnvironment } from '../lib/tauriBridge';
 
 export const CanvasViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -23,9 +27,10 @@ export const CanvasViewport: React.FC = () => {
   const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const previousToolBeforeEraserRef = useRef<ToolType | null>(null);
 
-  const { doc } = useDocumentStore();
+  const { doc, importImageAsLayer, openImageAsDocument } = useDocumentStore();
   const {
     activeTool,
     setActiveTool,
@@ -91,6 +96,100 @@ export const CanvasViewport: React.FC = () => {
     liveStrokeCanvasRef,
     layerCanvasesRef,
   });
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingFile) setIsDraggingFile(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+
+    // In native Tauri desktop app mode, Tauri's onDragDropEvent already handles the file drop natively!
+    // Returning early here prevents duplicate 2x imports.
+    if (isTauriEnvironment()) return;
+
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      if (doc) {
+        await importImageAsLayer(file);
+      } else {
+        await openImageAsDocument(file);
+      }
+    }
+  };
+
+  // Clipboard paste listener
+  React.useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            if (doc) {
+              await importImageAsLayer(blob, 'Pasted Layer');
+            } else {
+              await openImageAsDocument(blob, 'Pasted Document');
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [doc, importImageAsLayer, openImageAsDocument]);
+
+  // Listen to native OS drag & drop events (Finder on macOS, Explorer on Windows)
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => {
+        getCurrentWebview()
+          .onDragDropEvent((event) => {
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+              setIsDraggingFile(true);
+            } else if (payload.type === 'leave') {
+              setIsDraggingFile(false);
+            } else if (payload.type === 'drop') {
+              setIsDraggingFile(false);
+              const paths = payload.paths;
+              if (paths && paths.length > 0) {
+                for (const filePath of paths) {
+                  const currentDoc = useDocumentStore.getState().doc;
+                  if (currentDoc) {
+                    useDocumentStore.getState().importImagePathAsLayer(filePath);
+                  } else {
+                    useDocumentStore.getState().openImagePathAsDocument(filePath);
+                  }
+                }
+              }
+            }
+          })
+          .then((fn) => {
+            unlisten = fn;
+          });
+      });
+    }
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
@@ -363,8 +462,14 @@ export const CanvasViewport: React.FC = () => {
 
   if (!doc) {
     return (
-      <main className="flex-1 flex items-center justify-center bg-ps-bg text-zinc-500 font-sans">
-        <p className="text-sm">No Document Active</p>
+      <main
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className="flex-1 relative flex items-center justify-center bg-ps-bg text-zinc-500 font-sans select-none"
+      >
+        <p className="text-sm">No Document Active — Drag & drop image here or open a file</p>
+        <DragDropOverlay isDraggingOver={isDraggingFile} hasDocument={false} />
       </main>
     );
   }
@@ -379,6 +484,9 @@ export const CanvasViewport: React.FC = () => {
       onPointerCancel={handlePointerUp}
       onPointerEnter={() => setIsHoveringCanvas(true)}
       onPointerLeave={() => setIsHoveringCanvas(false)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       onContextMenu={(e) => {
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
@@ -430,7 +538,11 @@ export const CanvasViewport: React.FC = () => {
           secondaryColor={secondaryColor}
         />
         <TextLayerOverlay />
+        <TransformOverlay zoom={zoom} />
+        <CropOverlay zoom={zoom} />
       </div>
+
+      <DragDropOverlay isDraggingOver={isDraggingFile} hasDocument={true} />
 
       <BrushCursorRing
         isHovering={isHoveringCanvas}

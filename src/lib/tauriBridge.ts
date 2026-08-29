@@ -334,3 +334,11 @@ export async function getEngineStats(): Promise<{
     gpu_available: false,
   };
 }
+
+export async function readFileBinary(path: string): Promise<Uint8Array> {
+  if (isTauriEnvironment()) {
+    const raw = await invoke<number[]>('read_file_binary', { path });
+    return new Uint8Array(raw);
+  }
+  throw new Error('readFileBinary is only available in Tauri native mode');
+}

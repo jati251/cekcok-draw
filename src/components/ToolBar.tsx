@@ -17,6 +17,7 @@ import {
   Hand,
   ZoomIn,
   ArrowLeftRight,
+  Crop,
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { TOOLS } from '../constants/tools';
@@ -30,6 +31,8 @@ const getToolIcon = (iconName: string) => {
       return <Scan size={16} />;
     case 'Lasso':
       return <Lasso size={16} />;
+    case 'Crop':
+      return <Crop size={16} />;
     case 'Paintbrush':
       return <Paintbrush size={16} />;
     case 'Eraser':

@@ -6,9 +6,12 @@ import * as filters from '../utils/filters';
 import { expandSelection, contractSelection } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
 import { isTauriEnvironment } from '../lib/tauriBridge';
+import { copyActiveLayerSelection } from '../utils/clipboard';
 
 interface Props {
   onOpenNewDoc: () => void;
+  onOpenOpenFile: () => void;
+  onOpenCanvasSize: () => void;
   onOpenExport: () => void;
   onOpenFilter: (type: 'brightness_contrast' | 'gaussian_blur') => void;
   onOpenHueSaturation: () => void;
@@ -18,6 +21,8 @@ interface Props {
 
 export const TopMenuBar: React.FC<Props> = ({
   onOpenNewDoc,
+  onOpenOpenFile,
+  onOpenCanvasSize,
   onOpenExport,
   onOpenFilter,
   onOpenHueSaturation,
@@ -54,35 +59,55 @@ export const TopMenuBar: React.FC<Props> = ({
     });
   }, []);
 
-  const handleFlip = async (direction: 'horizontal' | 'vertical') => {
-    if (!doc) return;
-    const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        useDocumentStore
-          .getState()
-          .pushCanvasSnapshot(
-            `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
-          );
-        filters.applyFlip(ctx, doc.width, doc.height, direction);
-        if (direction === 'horizontal') {
-          await bridge.applyLayerFilter({ type: 'flip_horizontal', width: doc.width });
-        } else {
-          await bridge.applyLayerFilter({ type: 'flip_vertical', height: doc.height });
-        }
-      }
+  const handleStartTransform = () => {
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (!canvas) return;
+
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = canvas.width;
+    sourceCanvas.height = canvas.height;
+    const sCtx = sourceCanvas.getContext('2d');
+    if (sCtx) {
+      sCtx.drawImage(canvas, 0, 0);
     }
+
+    useEditorStore.getState().setTransformState({
+      x: 0,
+      y: 0,
+      width: doc.width,
+      height: doc.height,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      sourceCanvas,
+      layerId: doc.active_layer_id,
+    });
+  };
+
+  const handleCropToSelection = () => {
+    if (!doc || !selection || !selection.active || selection.width <= 0 || selection.height <= 0)
+      return;
+    useDocumentStore
+      .getState()
+      .cropCanvas(selection.x, selection.y, selection.width, selection.height);
+    useEditorStore.getState().setSelection(null);
   };
 
   const menus: Record<string, { label: string; action: () => void; shortcut?: string }[]> = {
     File: [
       { label: 'New Document...', action: onOpenNewDoc, shortcut: `${modKey}N` },
+      { label: 'Open Image...', action: onOpenOpenFile, shortcut: `${modKey}O` },
       { label: 'Export Image...', action: onOpenExport, shortcut: `${modKey}E` },
     ],
     Edit: [
       { label: 'Undo', action: () => triggerUndo(), shortcut: `${modKey}Z` },
       { label: 'Redo', action: () => triggerRedo(), shortcut: `${modKey}⇧Z` },
+      { label: 'Cut', action: () => copyActiveLayerSelection(true), shortcut: `${modKey}X` },
+      { label: 'Copy', action: () => copyActiveLayerSelection(false), shortcut: `${modKey}C` },
+      { label: 'Free Transform', action: handleStartTransform, shortcut: `${modKey}T` },
       {
         label: 'Select All',
         action: () => {
@@ -109,21 +134,45 @@ export const TopMenuBar: React.FC<Props> = ({
       },
     ],
     Image: [
+      {
+        label: 'Canvas Size...',
+        action: onOpenCanvasSize,
+        shortcut: `${isMac ? '⌥⌘C' : 'Alt+Ctrl+C'}`,
+      },
+      { label: 'Crop to Selection', action: handleCropToSelection },
+      { label: 'Rotate Canvas 90° CW', action: () => useDocumentStore.getState().rotateCanvas(90) },
+      {
+        label: 'Rotate Canvas 90° CCW',
+        action: () => useDocumentStore.getState().rotateCanvas(270),
+      },
+      { label: 'Rotate Canvas 180°', action: () => useDocumentStore.getState().rotateCanvas(180) },
+      {
+        label: 'Flip Canvas Horizontal',
+        action: () => useDocumentStore.getState().flipCanvas('horizontal'),
+      },
+      {
+        label: 'Flip Canvas Vertical',
+        action: () => useDocumentStore.getState().flipCanvas('vertical'),
+      },
       { label: 'Levels (Histogram)...', action: onOpenLevels, shortcut: `${modKey}L` },
       { label: 'Hue / Saturation...', action: onOpenHueSaturation, shortcut: `${modKey}U` },
       { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
-      { label: 'Flip Canvas Horizontal', action: () => handleFlip('horizontal') },
-      { label: 'Flip Canvas Vertical', action: () => handleFlip('vertical') },
       {
         label: 'Invert Colors',
         action: async () => {
-          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-          if (canvas && doc) {
+          if (!doc || !doc.active_layer_id) return;
+          const canvas = document.getElementById(
+            `layer-canvas-${doc.active_layer_id}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
               filters.applyInvert(ctx, doc.width, doc.height);
-              await bridge.applyLayerFilter({ type: 'invert' });
+              useDocumentStore.getState().bumpCanvasRevision();
+              await bridge
+                .applyLayerFilter({ type: 'invert', layer_id: doc.active_layer_id })
+                .catch(() => {});
             }
           }
         },
@@ -132,13 +181,19 @@ export const TopMenuBar: React.FC<Props> = ({
       {
         label: 'Desaturate',
         action: async () => {
-          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-          if (canvas && doc) {
+          if (!doc || !doc.active_layer_id) return;
+          const canvas = document.getElementById(
+            `layer-canvas-${doc.active_layer_id}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
               filters.applyDesaturate(ctx, doc.width, doc.height);
-              await bridge.applyLayerFilter({ type: 'desaturate' });
+              useDocumentStore.getState().bumpCanvasRevision();
+              await bridge
+                .applyLayerFilter({ type: 'desaturate', layer_id: doc.active_layer_id })
+                .catch(() => {});
             }
           }
         },
@@ -149,17 +204,41 @@ export const TopMenuBar: React.FC<Props> = ({
       { label: 'New Layer', action: () => addNewLayer(), shortcut: `${modKey}⇧N` },
       {
         label: 'Duplicate Layer',
-        action: () => {
-          if (doc?.active_layer_id) {
-            const active = doc.layers.find((l) => l.id === doc.active_layer_id);
-            addNewLayer(`${active?.name || 'Layer'} Copy`);
-          }
-        },
+        action: () => useDocumentStore.getState().duplicateLayer(),
         shortcut: `${modKey}J`,
+      },
+      { label: 'Free Transform Layer', action: handleStartTransform, shortcut: `${modKey}T` },
+      {
+        label: 'Flip Layer Horizontal',
+        action: () => useDocumentStore.getState().flipActiveLayer('horizontal'),
+      },
+      {
+        label: 'Flip Layer Vertical',
+        action: () => useDocumentStore.getState().flipActiveLayer('vertical'),
+      },
+      {
+        label: 'Merge Down',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().mergeDown(doc.active_layer_id);
+        },
+        shortcut: `${modKey}E`,
+      },
+      {
+        label: 'Clear Layer',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().clearLayer(doc.active_layer_id);
+        },
+      },
+      {
+        label: 'Delete Layer',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().deleteLayer(doc.active_layer_id);
+        },
       },
     ],
     Filter: [
       { label: 'Gaussian Blur...', action: () => onOpenFilter('gaussian_blur') },
+      { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
       { label: 'Auto Tone (Levels)', action: onOpenLevels },
     ],
     View: [
@@ -231,16 +310,19 @@ export const TopMenuBar: React.FC<Props> = ({
           </span>
         </div>
 
-        {/* On Windows / Linux: Standard inline horizontal menu bar */}
+        {/* On Windows / Linux / Web: Inline horizontal menu bar */}
         {!isMac && (
           <div className="flex items-center space-x-0.5 ml-2">
             {Object.entries(menus).map(([menuName, items]) => (
               <div key={menuName} className="relative">
                 <button
                   onClick={() => setActiveMenu(activeMenu === menuName ? null : menuName)}
-                  className={`px-2 py-0.5 rounded transition-colors text-[11px] ${
+                  onMouseEnter={() => {
+                    if (activeMenu) setActiveMenu(menuName);
+                  }}
+                  className={`px-2 py-0.5 rounded transition-colors text-[11px] font-normal ${
                     activeMenu === menuName
-                      ? 'bg-ps-surface text-white'
+                      ? 'bg-ps-surface text-white shadow-sm'
                       : 'hover:bg-ps-surface/60 text-zinc-300'
                   }`}
                 >

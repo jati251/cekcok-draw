@@ -220,3 +220,47 @@ export const applyFlip = (
   ctx.drawImage(offscreen, 0, 0);
   ctx.restore();
 };
+
+export const applyRotate90 = (
+  ctx: CanvasRenderingContext2D,
+  oldWidth: number,
+  oldHeight: number,
+  clockwise = true
+) => {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = oldWidth;
+  offscreen.height = oldHeight;
+  const oCtx = offscreen.getContext('2d');
+  if (!oCtx) return;
+  oCtx.drawImage(ctx.canvas, 0, 0);
+
+  ctx.canvas.width = oldHeight;
+  ctx.canvas.height = oldWidth;
+  ctx.save();
+  ctx.clearRect(0, 0, oldHeight, oldWidth);
+  if (clockwise) {
+    ctx.translate(oldHeight, 0);
+    ctx.rotate((90 * Math.PI) / 180);
+  } else {
+    ctx.translate(0, oldWidth);
+    ctx.rotate((-90 * Math.PI) / 180);
+  }
+  ctx.drawImage(offscreen, 0, 0);
+  ctx.restore();
+};
+
+export const applyRotate180 = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = width;
+  offscreen.height = height;
+  const oCtx = offscreen.getContext('2d');
+  if (!oCtx) return;
+  oCtx.drawImage(ctx.canvas, 0, 0);
+
+  ctx.save();
+  ctx.clearRect(0, 0, width, height);
+  ctx.translate(width, height);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(offscreen, 0, 0);
+  ctx.restore();
+};

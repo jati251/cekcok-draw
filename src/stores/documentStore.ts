@@ -3,6 +3,11 @@ import { BlendMode, DocumentInfo, HistoryAction } from '../types';
 import * as bridge from '../lib/tauriBridge';
 import { canvasHistoryManager } from '../utils/history';
 import { toast } from './toastStore';
+import {
+  loadImageFromFile,
+  loadImageFromNativePath,
+  calculateFittedPlacement,
+} from '../utils/imageLoader';
 
 interface DocumentState {
   doc: DocumentInfo | null;
@@ -18,6 +23,7 @@ interface DocumentState {
     showToast?: boolean
   ) => Promise<void>;
   addNewLayer: (name?: string) => Promise<void>;
+  duplicateLayer: (id?: string) => Promise<void>;
   deleteLayer: (id: string) => Promise<void>;
   selectLayer: (id: string) => Promise<void>;
   changeLayerOpacity: (id: string, opacity: number) => Promise<void>;
@@ -33,6 +39,34 @@ interface DocumentState {
   triggerRedo: () => Promise<void>;
   refreshHistory: () => Promise<void>;
   bumpCanvasRevision: () => void;
+  resizeCanvas: (
+    newWidth: number,
+    newHeight: number,
+    anchorX: number,
+    anchorY: number,
+    backgroundFill?: string
+  ) => Promise<void>;
+  rotateCanvas: (degrees: 90 | 180 | 270) => Promise<void>;
+  flipCanvas: (direction: 'horizontal' | 'vertical') => Promise<void>;
+  flipActiveLayer: (direction: 'horizontal' | 'vertical') => Promise<void>;
+  importImageAsLayer: (fileOrBlob: File | Blob, customName?: string) => Promise<void>;
+  importImagePathAsLayer: (filePath: string) => Promise<void>;
+  openImageAsDocument: (fileOrBlob: File | Blob, customTitle?: string) => Promise<void>;
+  openImagePathAsDocument: (filePath: string) => Promise<void>;
+  cropCanvas: (x: number, y: number, width: number, height: number) => Promise<void>;
+}
+
+let lastImportTime = 0;
+let lastImportKey = '';
+
+function isDuplicateImportCall(key: string): boolean {
+  const now = Date.now();
+  if (now - lastImportTime < 1000 && lastImportKey === key) {
+    return true;
+  }
+  lastImportTime = now;
+  lastImportKey = key;
+  return false;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -85,6 +119,52 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set({ error: String(err) });
       toast.error('Could not create layer', String(err));
     }
+  },
+
+  duplicateLayer: async (id?: string) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+    const targetId = id || currentDoc.active_layer_id;
+    if (!targetId) return;
+
+    const sourceLayer = currentDoc.layers.find((l) => l.id === targetId);
+    if (!sourceLayer) return;
+
+    const sourceCanvas = document.getElementById(
+      `layer-canvas-${targetId}`
+    ) as HTMLCanvasElement | null;
+    if (!sourceCanvas) return;
+
+    const copyBuffer = document.createElement('canvas');
+    copyBuffer.width = currentDoc.width;
+    copyBuffer.height = currentDoc.height;
+    const bCtx = copyBuffer.getContext('2d');
+    if (bCtx) {
+      bCtx.drawImage(sourceCanvas, 0, 0);
+    }
+
+    await get().addNewLayer(`${sourceLayer.name} Copy`);
+    const updatedDoc = get().doc;
+    if (!updatedDoc || !updatedDoc.active_layer_id) return;
+
+    const newLayerId = updatedDoc.active_layer_id;
+    setTimeout(() => {
+      const newCanvas = document.getElementById(
+        `layer-canvas-${newLayerId}`
+      ) as HTMLCanvasElement | null;
+      if (newCanvas) {
+        newCanvas.width = updatedDoc.width;
+        newCanvas.height = updatedDoc.height;
+        const ctx = newCanvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, updatedDoc.width, updatedDoc.height);
+          ctx.drawImage(copyBuffer, 0, 0);
+          get().pushCanvasSnapshot(`Duplicate '${sourceLayer.name}'`);
+          get().bumpCanvasRevision();
+          toast.success('Layer Duplicated', `Created '${sourceLayer.name} Copy'`);
+        }
+      }
+    }, 40);
   },
 
   deleteLayer: async (id: string) => {
@@ -284,5 +364,493 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     } catch (err) {
       set({ error: String(err) });
     }
+  },
+
+  resizeCanvas: async (
+    newWidth: number,
+    newHeight: number,
+    anchorX: number,
+    anchorY: number,
+    backgroundFill = '#ffffff'
+  ) => {
+    const currentDoc = get().doc;
+    if (!currentDoc || newWidth <= 0 || newHeight <= 0) return;
+
+    const oldWidth = currentDoc.width;
+    const oldHeight = currentDoc.height;
+
+    if (oldWidth === newWidth && oldHeight === newHeight) return;
+
+    const offsetX = Math.round((newWidth - oldWidth) * anchorX);
+    const offsetY = Math.round((newHeight - oldHeight) * anchorY);
+
+    // 1. Capture snapshot of all existing layer canvases into offscreen buffers
+    const layerBuffers: { layerId: string; isBackground: boolean; buffer: HTMLCanvasElement }[] =
+      [];
+    for (const layer of currentDoc.layers) {
+      const domCanvas = document.getElementById(
+        `layer-canvas-${layer.id}`
+      ) as HTMLCanvasElement | null;
+      if (domCanvas) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = oldWidth;
+        tempCanvas.height = oldHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(domCanvas, 0, 0);
+        }
+        layerBuffers.push({
+          layerId: layer.id,
+          isBackground: layer.name === 'Background' || layer.id === currentDoc.layers[0]?.id,
+          buffer: tempCanvas,
+        });
+      }
+    }
+
+    // 2. Update document size in store (triggers React canvas dimension updates)
+    set({
+      doc: {
+        ...currentDoc,
+        width: newWidth,
+        height: newHeight,
+      },
+      canvasRevision: get().canvasRevision + 1,
+    });
+
+    // 3. Blit preserved buffers onto resized canvases after DOM updates
+    setTimeout(() => {
+      for (const item of layerBuffers) {
+        const canvas = document.getElementById(
+          `layer-canvas-${item.layerId}`
+        ) as HTMLCanvasElement | null;
+        if (canvas) {
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, newWidth, newHeight);
+
+            // Fill background layer with chosen background fill
+            if (item.isBackground && backgroundFill && backgroundFill !== 'transparent') {
+              ctx.fillStyle = backgroundFill;
+              ctx.fillRect(0, 0, newWidth, newHeight);
+            }
+
+            ctx.drawImage(item.buffer, offsetX, offsetY);
+          }
+        }
+      }
+
+      get().pushCanvasSnapshot(`Canvas Size (${newWidth}×${newHeight})`);
+      get().bumpCanvasRevision();
+      toast.success('Canvas Resized', `${newWidth} × ${newHeight} px`);
+    }, 40);
+  },
+
+  rotateCanvas: async (degrees: 90 | 180 | 270) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+
+    const oldWidth = currentDoc.width;
+    const oldHeight = currentDoc.height;
+    const newWidth = degrees === 180 ? oldWidth : oldHeight;
+    const newHeight = degrees === 180 ? oldHeight : oldWidth;
+
+    // 1. Capture and rotate each layer into an offscreen canvas
+    const layerBuffers: { layerId: string; buffer: HTMLCanvasElement }[] = [];
+    for (const layer of currentDoc.layers) {
+      const domCanvas = document.getElementById(
+        `layer-canvas-${layer.id}`
+      ) as HTMLCanvasElement | null;
+      if (domCanvas) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = newWidth;
+        tempCanvas.height = newHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.save();
+          if (degrees === 90) {
+            tempCtx.translate(newWidth, 0);
+            tempCtx.rotate((90 * Math.PI) / 180);
+          } else if (degrees === 270) {
+            tempCtx.translate(0, newHeight);
+            tempCtx.rotate((-90 * Math.PI) / 180);
+          } else if (degrees === 180) {
+            tempCtx.translate(newWidth, newHeight);
+            tempCtx.rotate(Math.PI);
+          }
+          tempCtx.drawImage(domCanvas, 0, 0);
+          tempCtx.restore();
+        }
+        layerBuffers.push({
+          layerId: layer.id,
+          buffer: tempCanvas,
+        });
+      }
+    }
+
+    // 2. Update document size in store (triggers React canvas resizing)
+    set({
+      doc: {
+        ...currentDoc,
+        width: newWidth,
+        height: newHeight,
+      },
+      canvasRevision: get().canvasRevision + 1,
+    });
+
+    // 3. Blit rotated layer buffers onto DOM canvases after React updates dimensions
+    setTimeout(() => {
+      for (const item of layerBuffers) {
+        const canvas = document.getElementById(
+          `layer-canvas-${item.layerId}`
+        ) as HTMLCanvasElement | null;
+        if (canvas) {
+          canvas.width = newWidth;
+          canvas.height = newHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, newWidth, newHeight);
+            ctx.drawImage(item.buffer, 0, 0);
+          }
+        }
+      }
+
+      get().pushCanvasSnapshot(`Rotate Canvas ${degrees}°`);
+      get().bumpCanvasRevision();
+      toast.success('Canvas Rotated', `Rotated ${degrees}°`);
+    }, 40);
+  },
+
+  flipCanvas: async (direction: 'horizontal' | 'vertical') => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
+
+    for (const layer of currentDoc.layers) {
+      const canvas = document.getElementById(
+        `layer-canvas-${layer.id}`
+      ) as HTMLCanvasElement | null;
+      if (canvas) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = currentDoc.width;
+        tempCanvas.height = currentDoc.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(canvas, 0, 0);
+        }
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.save();
+          ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+          if (direction === 'horizontal') {
+            ctx.translate(currentDoc.width, 0);
+            ctx.scale(-1, 1);
+          } else {
+            ctx.translate(0, currentDoc.height);
+            ctx.scale(1, -1);
+          }
+          ctx.drawImage(tempCanvas, 0, 0);
+          ctx.restore();
+        }
+      }
+    }
+
+    get().pushCanvasSnapshot(
+      `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
+    );
+    get().bumpCanvasRevision();
+    if (direction === 'horizontal') {
+      await bridge
+        .applyLayerFilter({ type: 'flip_horizontal', width: currentDoc.width })
+        .catch(() => {});
+    } else {
+      await bridge
+        .applyLayerFilter({ type: 'flip_vertical', height: currentDoc.height })
+        .catch(() => {});
+    }
+    toast.success('Canvas Flipped', `Flipped ${direction}`);
+  },
+
+  flipActiveLayer: async (direction: 'horizontal' | 'vertical') => {
+    const currentDoc = get().doc;
+    if (!currentDoc || !currentDoc.active_layer_id) return;
+
+    const canvas = document.getElementById(
+      `layer-canvas-${currentDoc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (canvas) {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = currentDoc.width;
+      tempCanvas.height = currentDoc.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, 0, 0);
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.save();
+        ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+        if (direction === 'horizontal') {
+          ctx.translate(currentDoc.width, 0);
+          ctx.scale(-1, 1);
+        } else {
+          ctx.translate(0, currentDoc.height);
+          ctx.scale(1, -1);
+        }
+        ctx.drawImage(tempCanvas, 0, 0);
+        ctx.restore();
+      }
+
+      get().pushCanvasSnapshot(
+        `Flip Layer ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
+      );
+      get().bumpCanvasRevision();
+      if (direction === 'horizontal') {
+        await bridge
+          .applyLayerFilter({
+            type: 'flip_horizontal',
+            width: currentDoc.width,
+            layer_id: currentDoc.active_layer_id,
+          })
+          .catch(() => {});
+      } else {
+        await bridge
+          .applyLayerFilter({
+            type: 'flip_vertical',
+            height: currentDoc.height,
+            layer_id: currentDoc.active_layer_id,
+          })
+          .catch(() => {});
+      }
+      toast.success('Layer Flipped', `Flipped layer ${direction}`);
+    }
+  },
+
+  importImageAsLayer: async (fileOrBlob: File | Blob, customName?: string) => {
+    const key =
+      fileOrBlob instanceof File ? `${fileOrBlob.name}_${fileOrBlob.size}` : customName || 'blob';
+    if (isDuplicateImportCall(key)) return;
+
+    try {
+      const imgRes = await loadImageFromFile(fileOrBlob, customName || 'Image Layer');
+      const currentDoc = get().doc;
+
+      if (!currentDoc) {
+        await get().openImageAsDocument(fileOrBlob, imgRes.name);
+        return;
+      }
+
+      await get().addNewLayer(imgRes.name);
+      const updatedDoc = get().doc;
+      if (!updatedDoc) return;
+
+      const newLayerId = updatedDoc.active_layer_id;
+      if (!newLayerId) return;
+
+      setTimeout(() => {
+        const canvas = document.getElementById(
+          `layer-canvas-${newLayerId}`
+        ) as HTMLCanvasElement | null;
+        if (canvas) {
+          const placement = calculateFittedPlacement(
+            imgRes.width,
+            imgRes.height,
+            updatedDoc.width,
+            updatedDoc.height
+          );
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(
+              imgRes.image,
+              placement.x,
+              placement.y,
+              placement.width,
+              placement.height
+            );
+            get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
+            get().bumpCanvasRevision();
+            toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
+          }
+        }
+      }, 50);
+    } catch (err) {
+      toast.error('Import Failed', String(err));
+    }
+  },
+
+  openImageAsDocument: async (fileOrBlob: File | Blob, customTitle?: string) => {
+    const key =
+      fileOrBlob instanceof File ? `${fileOrBlob.name}_${fileOrBlob.size}` : customTitle || 'blob';
+    if (isDuplicateImportCall(key)) return;
+
+    try {
+      const imgRes = await loadImageFromFile(fileOrBlob, customTitle || 'Imported Image');
+      await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
+
+      setTimeout(() => {
+        const doc = get().doc;
+        if (!doc) return;
+        const targetLayerId = doc.active_layer_id || doc.layers[0]?.id;
+        if (targetLayerId) {
+          const canvas = document.getElementById(
+            `layer-canvas-${targetLayerId}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
+              get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
+              get().bumpCanvasRevision();
+              toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
+            }
+          }
+        }
+      }, 80);
+    } catch (err) {
+      toast.error('Failed to open image', String(err));
+    }
+  },
+
+  importImagePathAsLayer: async (filePath: string) => {
+    if (isDuplicateImportCall(filePath)) return;
+
+    try {
+      const imgRes = await loadImageFromNativePath(filePath);
+      const currentDoc = get().doc;
+
+      if (!currentDoc) {
+        await get().openImagePathAsDocument(filePath);
+        return;
+      }
+
+      await get().addNewLayer(imgRes.name);
+      const updatedDoc = get().doc;
+      if (!updatedDoc) return;
+
+      const newLayerId = updatedDoc.active_layer_id;
+      if (!newLayerId) return;
+
+      setTimeout(() => {
+        const canvas = document.getElementById(
+          `layer-canvas-${newLayerId}`
+        ) as HTMLCanvasElement | null;
+        if (canvas) {
+          const placement = calculateFittedPlacement(
+            imgRes.width,
+            imgRes.height,
+            updatedDoc.width,
+            updatedDoc.height
+          );
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(
+              imgRes.image,
+              placement.x,
+              placement.y,
+              placement.width,
+              placement.height
+            );
+            get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
+            get().bumpCanvasRevision();
+            toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
+          }
+        }
+      }, 50);
+    } catch (err) {
+      toast.error('Import Failed', String(err));
+    }
+  },
+
+  openImagePathAsDocument: async (filePath: string) => {
+    if (isDuplicateImportCall(filePath)) return;
+
+    try {
+      const imgRes = await loadImageFromNativePath(filePath);
+      await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
+
+      setTimeout(() => {
+        const doc = get().doc;
+        if (!doc) return;
+        const targetLayerId = doc.active_layer_id || doc.layers[0]?.id;
+        if (targetLayerId) {
+          const canvas = document.getElementById(
+            `layer-canvas-${targetLayerId}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
+              get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
+              get().bumpCanvasRevision();
+              toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
+            }
+          }
+        }
+      }, 80);
+    } catch (err) {
+      toast.error('Failed to open image', String(err));
+    }
+  },
+
+  cropCanvas: async (x: number, y: number, width: number, height: number) => {
+    const currentDoc = get().doc;
+    if (!currentDoc || width <= 0 || height <= 0) return;
+
+    const roundX = Math.round(x);
+    const roundY = Math.round(y);
+    const roundW = Math.round(width);
+    const roundH = Math.round(height);
+
+    const layerBuffers: { layerId: string; buffer: HTMLCanvasElement }[] = [];
+    for (const layer of currentDoc.layers) {
+      const domCanvas = document.getElementById(
+        `layer-canvas-${layer.id}`
+      ) as HTMLCanvasElement | null;
+      if (domCanvas) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = currentDoc.width;
+        tempCanvas.height = currentDoc.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(domCanvas, 0, 0);
+        }
+        layerBuffers.push({
+          layerId: layer.id,
+          buffer: tempCanvas,
+        });
+      }
+    }
+
+    set({
+      doc: {
+        ...currentDoc,
+        width: roundW,
+        height: roundH,
+      },
+      canvasRevision: get().canvasRevision + 1,
+    });
+
+    setTimeout(() => {
+      for (const item of layerBuffers) {
+        const canvas = document.getElementById(
+          `layer-canvas-${item.layerId}`
+        ) as HTMLCanvasElement | null;
+        if (canvas) {
+          canvas.width = roundW;
+          canvas.height = roundH;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, roundW, roundH);
+            ctx.drawImage(item.buffer, -roundX, -roundY);
+          }
+        }
+      }
+
+      get().pushCanvasSnapshot(`Crop Canvas (${roundW}×${roundH})`);
+      get().bumpCanvasRevision();
+      toast.success('Canvas Cropped', `${roundW} × ${roundH} px`);
+    }, 40);
   },
 }));

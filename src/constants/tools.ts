@@ -25,6 +25,13 @@ export const TOOLS: ToolDefinition[] = [
     iconName: 'Lasso',
     category: 'Select',
   },
+  {
+    type: 'crop',
+    label: 'Crop Tool',
+    shortcut: 'C',
+    iconName: 'Crop',
+    category: 'Select',
+  },
 
   // Painting & Organic Suite
   { type: 'brush', label: 'Brush Tool', shortcut: 'B', iconName: 'Paintbrush', category: 'Paint' },

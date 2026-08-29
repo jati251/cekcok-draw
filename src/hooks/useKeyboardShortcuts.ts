@@ -6,12 +6,16 @@ import * as bridge from '../lib/tauriBridge';
 
 interface ShortcutActions {
   onOpenNewDoc: () => void;
+  onOpenOpenFile?: () => void;
+  onOpenCanvasSize?: () => void;
   onOpenExport: () => void;
   onOpenHueSaturation: () => void;
 }
 
 export const useKeyboardShortcuts = ({
   onOpenNewDoc,
+  onOpenOpenFile,
+  onOpenCanvasSize,
   onOpenExport,
   onOpenHueSaturation,
 }: ShortcutActions) => {
@@ -60,6 +64,39 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           if (e.shiftKey) addNewLayer();
           else onOpenNewDoc();
+        } else if (e.key.toLowerCase() === 'o') {
+          e.preventDefault();
+          onOpenOpenFile?.();
+        } else if (e.key.toLowerCase() === 't') {
+          e.preventDefault();
+          const currentDoc = useDocumentStore.getState().doc;
+          if (currentDoc && currentDoc.active_layer_id) {
+            const canvas = document.getElementById(
+              `layer-canvas-${currentDoc.active_layer_id}`
+            ) as HTMLCanvasElement | null;
+            if (canvas) {
+              const sourceCanvas = document.createElement('canvas');
+              sourceCanvas.width = canvas.width;
+              sourceCanvas.height = canvas.height;
+              const sCtx = sourceCanvas.getContext('2d');
+              if (sCtx) sCtx.drawImage(canvas, 0, 0);
+
+              useEditorStore.getState().setTransformState({
+                x: 0,
+                y: 0,
+                width: currentDoc.width,
+                height: currentDoc.height,
+                rotation: 0,
+                scaleX: 1,
+                scaleY: 1,
+                sourceCanvas,
+                layerId: currentDoc.active_layer_id,
+              });
+            }
+          }
+        } else if (e.altKey && e.key.toLowerCase() === 'c') {
+          e.preventDefault();
+          onOpenCanvasSize?.();
         } else if (e.key.toLowerCase() === 'e') {
           e.preventDefault();
           if (e.shiftKey) {
@@ -181,6 +218,7 @@ export const useKeyboardShortcuts = ({
         setPrimaryColor('#000000');
         setSecondaryColor('#ffffff');
       } else if (e.key.toLowerCase() === 'v') setActiveTool('move');
+      else if (e.key.toLowerCase() === 'c') setActiveTool('crop');
       else if (e.key.toLowerCase() === 'm') setActiveTool('selection');
       else if (e.key.toLowerCase() === 'l') setActiveTool('lasso');
       else if (e.key.toLowerCase() === 'b') setActiveTool('brush');
@@ -218,6 +256,8 @@ export const useKeyboardShortcuts = ({
     brushSettings.hardness,
     setActiveTool,
     onOpenNewDoc,
+    onOpenOpenFile,
+    onOpenCanvasSize,
     onOpenExport,
     onOpenHueSaturation,
   ]);

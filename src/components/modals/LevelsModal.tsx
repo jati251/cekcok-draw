@@ -129,7 +129,7 @@ export const LevelsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setInGamma(1.0);
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!doc || !doc.active_layer_id) return;
     const canvas = document.getElementById(
       `layer-canvas-${doc.active_layer_id}`
@@ -138,10 +138,24 @@ export const LevelsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        useDocumentStore
+          .getState()
+          .pushCanvasSnapshot(
+            `Levels Adjustment (In: ${inBlack}/${inGamma.toFixed(2)}/${inWhite}, Out: ${outBlack}/${outWhite})`
+          );
         applyLevels(ctx, doc.width, doc.height, inBlack, inGamma, inWhite, outBlack, outWhite);
-        bridge.commitStrokeHistory(
-          `Levels Adjustment (In: ${inBlack}/${inGamma.toFixed(2)}/${inWhite}, Out: ${outBlack}/${outWhite})`
-        );
+        useDocumentStore.getState().bumpCanvasRevision();
+        await bridge
+          .applyLayerFilter({
+            type: 'levels',
+            in_black: inBlack,
+            in_gamma: inGamma,
+            in_white: inWhite,
+            out_black: outBlack,
+            out_white: outWhite,
+            layer_id: doc.active_layer_id,
+          })
+          .catch(() => {});
       }
     }
     onClose();
