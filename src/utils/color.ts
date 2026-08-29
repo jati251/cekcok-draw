@@ -1,5 +1,5 @@
 /**
- * Pure color math & space transformations (Hex, RGBA, HSL)
+ * Robust Color Space Mathematics (HEX, RGBA, HSL, HSV)
  */
 
 export const hexToRgba = (hex: string, alpha = 255): [number, number, number, number] => {
@@ -18,6 +18,12 @@ export const rgbaToHex = (r: number, g: number, b: number): string => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
+/**
+ * Converts RGB (0..255) to HSL:
+ * h: 0..360 (degrees)
+ * s: 0..1 (saturation)
+ * l: 0..1 (lightness)
+ */
 export const rgbToHsl = (r: number, g: number, b: number): [number, number, number] => {
   const rf = r / 255;
   const gf = g / 255;
@@ -42,16 +48,20 @@ export const rgbToHsl = (r: number, g: number, b: number): [number, number, numb
         h = (rf - gf) / d + 4;
         break;
     }
-    h /= 6;
+    h = (h / 6) * 360;
   }
 
-  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+  return [Math.round(h), s, l];
 };
 
+/**
+ * Converts HSL to RGB (0..255).
+ * Safely accepts s and l as normalized (0..1) or percentage (0..100).
+ */
 export const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
-  const hf = h / 360;
-  const sf = s / 100;
-  const lf = l / 100;
+  const hf = (((h % 360) + 360) % 360) / 360;
+  const sf = s > 1 ? Math.min(1, s / 100) : Math.max(0, s);
+  const lf = l > 1 ? Math.min(1, l / 100) : Math.max(0, l);
 
   if (sf === 0) {
     const val = Math.round(lf * 255);

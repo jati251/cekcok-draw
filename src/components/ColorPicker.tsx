@@ -1,291 +1,101 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { Palette, Disc, SlidersHorizontal, ArrowLeftRight } from 'lucide-react';
-import { hexToRgba, rgbToHsl, hslToRgb, rgbaToHex } from '../utils/color';
-
-const presetColors = [
-  '#000000',
-  '#ffffff',
-  '#ef4444',
-  '#f97316',
-  '#f59e0b',
-  '#10b981',
-  '#06b6d4',
-  '#3b82f6',
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#71717a',
-  '#1e293b',
-  '#334155',
-  '#475569',
-  '#64748b',
-  '#94a3b8',
-  '#cbd5e1',
-];
+import { ColorWheel } from './color/ColorWheel';
+import { ColorSwatches } from './color/ColorSwatches';
+import { ColorSliders } from './color/ColorSliders';
 
 export const ColorPicker: React.FC = () => {
   const { primaryColor, secondaryColor, setPrimaryColor, swapColors } = useEditorStore();
   const [activeTab, setActiveTab] = useState<'wheel' | 'swatches' | 'sliders'>('wheel');
-  const wheelCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDraggingWheel, setIsDraggingWheel] = useState(false);
-
-  const rgba = hexToRgba(primaryColor, 255);
-  const [h, s, rawLightness] = rgbToHsl(rgba[0], rgba[1], rgba[2]);
-  const lightness = rawLightness;
-
-  // Draw vibrant, permanent HSL Chroma Disc (L=0.5) so wheel never goes black or white
-  const drawWheel = useCallback(() => {
-    const canvas = wheelCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = Math.min(cx, cy) - 3;
-
-    ctx.clearRect(0, 0, width, height);
-
-    const imgData = ctx.createImageData(width, height);
-    const data = imgData.data;
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = Math.hypot(dx, dy);
-        const idx = (y * width + x) * 4;
-
-        if (dist <= radius) {
-          let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-          if (angle < 0) angle += 360;
-
-          const sat = Math.min(1, dist / radius);
-          // Pure chromatic wheel at L=0.5
-          const [r, g, b] = hslToRgb(angle, sat, 0.5);
-
-          // Sub-pixel antialiased boundary edge
-          const edgeAlpha = Math.min(1.0, Math.max(0.0, radius - dist + 0.5));
-
-          data[idx] = r;
-          data[idx + 1] = g;
-          data[idx + 2] = b;
-          data[idx + 3] = Math.round(edgeAlpha * 255);
-        } else {
-          data[idx + 3] = 0;
-        }
-      }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
-
-    // Draw active color indicator ring on wheel
-    const angleRad = (h - 90) * (Math.PI / 180);
-    const indRadius = s * radius;
-    const indX = cx + indRadius * Math.cos(angleRad);
-    const indY = cy + indRadius * Math.sin(angleRad);
-
-    ctx.beginPath();
-    ctx.arc(indX, indY, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(indX, indY, 3.5, 0, Math.PI * 2);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }, [h, s]);
-
-  useEffect(() => {
-    if (activeTab === 'wheel') {
-      drawWheel();
-    }
-  }, [activeTab, drawWheel]);
-
-  const handleWheelPointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = wheelCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 3;
-
-    const dx = x - cx;
-    const dy = y - cy;
-    const dist = Math.hypot(dx, dy);
-
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-    if (angle < 0) angle += 360;
-
-    const newSat = Math.min(1, Math.max(0, dist / radius));
-    // If current lightness is pitch black or pure white, default to a balanced 0.5
-    const targetL = lightness < 0.05 || lightness > 0.95 ? 0.5 : lightness;
-
-    const [r, g, b] = hslToRgb(angle, newSat, targetL);
-    const newHex = rgbaToHex(r, g, b);
-    setPrimaryColor(newHex);
-  };
 
   return (
     <div className="flex flex-col bg-ps-panel border-b border-ps-border text-xs select-none p-3 space-y-3">
-      {/* Header & Tabs */}
+      {/* Header & Mode Tabs */}
       <div className="flex items-center justify-between font-semibold text-zinc-300">
         <div className="flex items-center space-x-1">
           <button
             onClick={() => setActiveTab('wheel')}
-            className={`p-1 rounded ${activeTab === 'wheel' ? 'bg-blue-600/30 text-blue-400' : 'text-zinc-400 hover:text-white'}`}
-            title="Color Wheel"
+            className={`p-1.5 rounded transition-colors ${
+              activeTab === 'wheel'
+                ? 'bg-blue-600/30 text-blue-400 border border-blue-500/50'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+            title="Rainbow Color Wheel (Pelangi 360°)"
           >
-            <Disc size={13} />
+            <Disc size={14} />
           </button>
           <button
             onClick={() => setActiveTab('swatches')}
-            className={`p-1 rounded ${activeTab === 'swatches' ? 'bg-blue-600/30 text-blue-400' : 'text-zinc-400 hover:text-white'}`}
-            title="Swatches"
+            className={`p-1.5 rounded transition-colors ${
+              activeTab === 'swatches'
+                ? 'bg-blue-600/30 text-blue-400 border border-blue-500/50'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+            title="Color Swatches"
           >
-            <Palette size={13} />
+            <Palette size={14} />
           </button>
           <button
             onClick={() => setActiveTab('sliders')}
-            className={`p-1 rounded ${activeTab === 'sliders' ? 'bg-blue-600/30 text-blue-400' : 'text-zinc-400 hover:text-white'}`}
-            title="RGB / HSL Sliders"
+            className={`p-1.5 rounded transition-colors ${
+              activeTab === 'sliders'
+                ? 'bg-blue-600/30 text-blue-400 border border-blue-500/50'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+            title="RGB Numeric Sliders"
           >
-            <SlidersHorizontal size={13} />
+            <SlidersHorizontal size={14} />
           </button>
         </div>
 
-        {/* Dual Swatch & Swap Button */}
-        <div className="flex items-center space-x-1.5">
-          <div className="relative w-7 h-7">
+        {/* Dual Primary / Secondary Swatch Preview & Quick Swap */}
+        <div className="flex items-center space-x-2">
+          <div className="relative w-8 h-8">
             <div
               style={{ backgroundColor: secondaryColor }}
-              className="absolute right-0 bottom-0 w-4 h-4 rounded-sm border border-zinc-600 shadow"
-              title="Secondary Color"
+              className="absolute right-0 bottom-0 w-5 h-5 rounded-sm border border-zinc-600 shadow"
+              title="Secondary Color (Background)"
             />
             <div
               style={{ backgroundColor: primaryColor }}
-              className="absolute left-0 top-0 w-4 h-4 rounded-sm border border-white z-10 shadow"
-              title="Primary Color"
+              className="absolute left-0 top-0 w-5 h-5 rounded-sm border border-white z-10 shadow-md"
+              title="Primary Color (Foreground)"
             />
           </div>
           <button
             onClick={swapColors}
-            className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-hover"
-            title="Swap Colors (X)"
+            className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors"
+            title="Swap Colors (Shortcut: X)"
           >
-            <ArrowLeftRight size={11} />
+            <ArrowLeftRight size={12} />
           </button>
         </div>
       </div>
 
-      {/* Mode 1: Permanent Vibrant Color Wheel */}
+      {/* Tab 1: Rainbow 360° Chroma Wheel */}
       {activeTab === 'wheel' && (
-        <div className="flex flex-col items-center space-y-2.5">
-          <div className="relative p-1 rounded-full bg-zinc-900 border border-zinc-700/80 shadow-inner">
-            <canvas
-              ref={wheelCanvasRef}
-              width={124}
-              height={124}
-              onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
-                setIsDraggingWheel(true);
-                handleWheelPointer(e);
-              }}
-              onPointerMove={(e) => {
-                if (isDraggingWheel) handleWheelPointer(e);
-              }}
-              onPointerUp={(e) => {
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                  e.currentTarget.releasePointerCapture(e.pointerId);
-                }
-                setIsDraggingWheel(false);
-              }}
-              className="rounded-full cursor-crosshair block"
-            />
-          </div>
-
-          {/* Lightness Slider */}
-          <div className="w-full flex items-center space-x-2">
-            <span className="text-[10px] text-zinc-400 font-mono">L:</span>
-            <input
-              type="range"
-              min="0.0"
-              max="1.0"
-              step="0.01"
-              value={lightness}
-              onChange={(e) => {
-                const newL = Number(e.target.value);
-                const [r, g, b] = hslToRgb(h, s, newL);
-                setPrimaryColor(rgbaToHex(r, g, b));
-              }}
-              className="flex-1 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
-            />
-            <span className="text-[10px] font-mono text-zinc-300 w-7 text-right">
-              {Math.round(lightness * 100)}%
-            </span>
-          </div>
-        </div>
+        <ColorWheel primaryColor={primaryColor} onChangeColor={setPrimaryColor} />
       )}
 
-      {/* Mode 2: Preset Palette Grid */}
+      {/* Tab 2: Swatch Palette Grid */}
       {activeTab === 'swatches' && (
-        <div className="grid grid-cols-6 gap-1.5">
-          {presetColors.map((color) => (
-            <button
-              key={color}
-              onClick={() => setPrimaryColor(color)}
-              style={{ backgroundColor: color }}
-              className={`w-full aspect-square rounded border transition-transform hover:scale-110 ${
-                primaryColor.toLowerCase() === color.toLowerCase()
-                  ? 'border-white ring-1 ring-blue-500'
-                  : 'border-zinc-700/80'
-              }`}
-              title={color}
-            />
-          ))}
-        </div>
+        <ColorSwatches activeColor={primaryColor} onSelectColor={setPrimaryColor} />
       )}
 
-      {/* Mode 3: RGB Sliders */}
+      {/* Tab 3: RGB Sliders */}
       {activeTab === 'sliders' && (
-        <div className="space-y-1.5 text-[10px]">
-          {(['R', 'G', 'B'] as const).map((channel, i) => (
-            <div key={channel} className="flex items-center space-x-2">
-              <span className="text-zinc-400 font-mono w-3">{channel}</span>
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={rgba[i]}
-                onChange={(e) => {
-                  const nextRgba: [number, number, number, number] = [...rgba];
-                  nextRgba[i] = Number(e.target.value);
-                  setPrimaryColor(rgbaToHex(nextRgba[0], nextRgba[1], nextRgba[2]));
-                }}
-                className="flex-1 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded appearance-none"
-              />
-              <span className="font-mono text-zinc-300 w-6 text-right">{rgba[i]}</span>
-            </div>
-          ))}
-        </div>
+        <ColorSliders activeColor={primaryColor} onChangeColor={setPrimaryColor} />
       )}
 
       {/* Hex Code Input */}
-      <div className="flex items-center space-x-2 pt-1 border-t border-ps-border/50">
-        <span className="text-[10px] font-mono text-zinc-400">HEX</span>
+      <div className="flex items-center space-x-2 pt-2 border-t border-ps-border/50">
+        <span className="text-[10px] font-mono text-zinc-400 font-semibold">HEX</span>
         <input
           type="text"
           value={primaryColor}
           onChange={(e) => setPrimaryColor(e.target.value)}
-          className="flex-1 bg-ps-surface border border-ps-border rounded px-2 py-1 text-zinc-200 font-mono text-[11px] focus:outline-none focus:border-blue-500 uppercase"
+          className="flex-1 bg-ps-surface border border-ps-border rounded px-2 py-1 text-zinc-200 font-mono text-[11px] focus:outline-none focus:border-blue-500 uppercase tracking-wide"
           placeholder="#FFFFFF"
         />
       </div>
