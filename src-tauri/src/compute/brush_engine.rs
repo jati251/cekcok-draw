@@ -36,7 +36,7 @@ pub struct BrushEngine;
 
 impl BrushEngine {
     /// Applies a smooth stroke using a stroke scratch buffer with max-alpha clamping
-    /// to avoid overlapping dark circles when drawing with less opacity.
+    /// and cosine bell curve radial falloff for ultra-smooth airbrush hardness.
     pub fn apply_stroke(
         grid: &mut SparseTileGrid,
         points: &[BrushPoint],
@@ -57,7 +57,7 @@ impl BrushEngine {
             let p1 = points[1];
             Self::interpolate_segment(&mut stroke_alpha_map, p0, p1, settings);
         } else {
-            // Smooth quadratic Bezier spline interpolation across consecutive points
+            // Smooth Catmull-Rom spline interpolation across consecutive points
             for i in 0..points.len() - 1 {
                 let p0 = if i > 0 { points[i - 1] } else { points[i] };
                 let p1 = points[i];
@@ -68,7 +68,6 @@ impl BrushEngine {
                     p2
                 };
 
-                // Catmull-Rom sub-stepping
                 let dist = ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt();
                 let radius = (settings.size * 0.5).max(1.0);
                 let step_size = (radius * settings.spacing * 0.5).max(0.5);
@@ -171,11 +170,13 @@ impl BrushEngine {
 
                 if dist_sq <= eff_radius_sq {
                     let dist = dist_sq.sqrt();
+                    // Photoshop-grade cosine bell curve falloff for true airbrush smoothness
                     let alpha_factor = if dist <= inner_radius {
                         1.0
                     } else {
                         let t = (dist - inner_radius) / (eff_radius - inner_radius).max(0.001);
-                        (1.0 - t * t * (3.0 - 2.0 * t)).clamp(0.0, 1.0)
+                        let t_clamped = t.clamp(0.0, 1.0);
+                        0.5 * (1.0 + (std::f32::consts::PI * t_clamped).cos())
                     };
 
                     let stamp_a = (alpha_factor * flow * 255.0).clamp(0.0, 255.0) as u8;

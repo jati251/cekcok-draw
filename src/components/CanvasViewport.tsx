@@ -52,27 +52,30 @@ export const CanvasViewport: React.FC = () => {
     [doc]
   );
 
+  // Synchronize canvas dimensions and redraw layers
+  const syncCanvasDimensions = useCallback(() => {
+    if (!doc) return;
+    const canvas = canvasRef.current;
+    const strokeCanvas = liveStrokeCanvasRef.current;
+
+    if (canvas && (canvas.width !== doc.width || canvas.height !== doc.height)) {
+      canvas.width = doc.width;
+      canvas.height = doc.height;
+    }
+    if (strokeCanvas && (strokeCanvas.width !== doc.width || strokeCanvas.height !== doc.height)) {
+      strokeCanvas.width = doc.width;
+      strokeCanvas.height = doc.height;
+    }
+  }, [doc]);
+
   // Redraw document canvas
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !doc) return;
+    syncCanvasDimensions();
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    if (canvas.width !== doc.width || canvas.height !== doc.height) {
-      canvas.width = doc.width;
-      canvas.height = doc.height;
-    }
-
-    if (liveStrokeCanvasRef.current) {
-      if (
-        liveStrokeCanvasRef.current.width !== doc.width ||
-        liveStrokeCanvasRef.current.height !== doc.height
-      ) {
-        liveStrokeCanvasRef.current.width = doc.width;
-        liveStrokeCanvasRef.current.height = doc.height;
-      }
-    }
 
     ctx.clearRect(0, 0, doc.width, doc.height);
 
@@ -99,44 +102,67 @@ export const CanvasViewport: React.FC = () => {
 
       ctx.restore();
     });
-  }, [doc]);
+  }, [doc, syncCanvasDimensions]);
 
   useEffect(() => {
     redrawCanvas();
   }, [redrawCanvas]);
 
-  // Create high-precision radial gradient brush stamp with hardness
-  const createStamp = useCallback(
+  // Create high-precision radial gradient brush stamp with Cosine Bell curve (Airbrush feathering)
+  const createSoftStamp = useCallback(
     (radius: number, hardness: number, color: [number, number, number, number]) => {
+      const size = Math.max(4, Math.ceil(radius * 2));
       const stamp = document.createElement('canvas');
-      const d = Math.max(2, Math.ceil(radius * 2));
-      stamp.width = d;
-      stamp.height = d;
-      const sCtx = stamp.getContext('2d');
-      if (!sCtx) return stamp;
+      stamp.width = size;
+      stamp.height = size;
+      const ctx = stamp.getContext('2d');
+      if (!ctx) return stamp;
 
-      const center = d / 2;
-      const innerRadius = radius * Math.min(0.99, Math.max(0, hardness));
+      const imgData = ctx.createImageData(size, size);
+      const data = imgData.data;
+      const center = size / 2;
+      const radSq = radius * radius;
+      const h = Math.min(0.999, Math.max(0, hardness));
+      const innerRad = radius * h;
 
-      const grad = sCtx.createRadialGradient(center, center, innerRadius, center, center, radius);
-      grad.addColorStop(0, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 1)`);
-      grad.addColorStop(1, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0)`);
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const dx = x + 0.5 - center;
+          const dy = y + 0.5 - center;
+          const distSq = dx * dx + dy * dy;
 
-      sCtx.fillStyle = grad;
-      sCtx.beginPath();
-      sCtx.arc(center, center, radius, 0, Math.PI * 2);
-      sCtx.fill();
+          if (distSq <= radSq) {
+            const dist = Math.sqrt(distSq);
+            let factor = 1.0;
+            if (dist > innerRad) {
+              const t = (dist - innerRad) / (radius - innerRad);
+              const tClamped = Math.min(1, Math.max(0, t));
+              // Ultra-smooth cosine bell curve falloff (Photoshop airbrush standard)
+              factor = 0.5 * (1 + Math.cos(Math.PI * tClamped));
+            }
 
+            const idx = (y * size + x) * 4;
+            data[idx] = color[0];
+            data[idx + 1] = color[1];
+            data[idx + 2] = color[2];
+            data[idx + 3] = Math.round(factor * 255);
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
       return stamp;
     },
     []
   );
 
-  // Render live stroke with Catmull-Rom / Bezier curve smoothing into liveStrokeCanvas
+  // Render live stroke into liveStrokeCanvas with smooth Bezier midpoint interpolation
   const drawStrokeLive = useCallback(
     (points: BrushPoint[]) => {
       const strokeCanvas = liveStrokeCanvasRef.current;
-      if (!strokeCanvas || points.length === 0) return;
+      if (!strokeCanvas || points.length === 0 || !doc) return;
+      syncCanvasDimensions();
+
       const ctx = strokeCanvas.getContext('2d');
       if (!ctx) return;
 
@@ -153,7 +179,7 @@ export const CanvasViewport: React.FC = () => {
       if (points.length === 1) {
         const p = points[0];
         const rad = Math.max(1, baseRadius * p.pressure);
-        const stamp = createStamp(rad, brushSettings.hardness, color);
+        const stamp = createSoftStamp(rad, brushSettings.hardness, color);
         ctx.drawImage(stamp, p.x - rad, p.y - rad);
       } else if (points.length === 2) {
         const p0 = points[0];
@@ -161,7 +187,7 @@ export const CanvasViewport: React.FC = () => {
         const dx = p1.x - p0.x;
         const dy = p1.y - p0.y;
         const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(1, baseRadius * 0.2);
+        const stepSize = Math.max(1, baseRadius * 0.15);
         const steps = Math.max(2, Math.ceil(dist / stepSize));
 
         for (let i = 0; i <= steps; i++) {
@@ -170,7 +196,7 @@ export const CanvasViewport: React.FC = () => {
           const y = p0.y + dy * t;
           const p = p0.pressure + (p1.pressure - p0.pressure) * t;
           const rad = Math.max(1, baseRadius * p);
-          const stamp = createStamp(rad, brushSettings.hardness, color);
+          const stamp = createSoftStamp(rad, brushSettings.hardness, color);
           ctx.drawImage(stamp, x - rad, y - rad);
         }
       } else {
@@ -185,7 +211,7 @@ export const CanvasViewport: React.FC = () => {
         const mid2Y = (p1.y + p2.y) / 2;
 
         const dist = Math.hypot(mid2X - mid1X, mid2Y - mid1Y);
-        const stepSize = Math.max(1, baseRadius * 0.2);
+        const stepSize = Math.max(1, baseRadius * 0.15);
         const steps = Math.max(3, Math.ceil(dist / stepSize));
 
         for (let i = 0; i <= steps; i++) {
@@ -197,14 +223,14 @@ export const CanvasViewport: React.FC = () => {
           const p =
             (1 - t) * ((p0.pressure + p1.pressure) / 2) + t * ((p1.pressure + p2.pressure) / 2);
           const rad = Math.max(1, baseRadius * p);
-          const stamp = createStamp(rad, brushSettings.hardness, color);
+          const stamp = createSoftStamp(rad, brushSettings.hardness, color);
           ctx.drawImage(stamp, x - rad, y - rad);
         }
       }
 
       ctx.restore();
     },
-    [activeTool, brushSettings, createStamp]
+    [activeTool, brushSettings, createSoftStamp, doc, syncCanvasDimensions]
   );
 
   // Eyedropper sampling
@@ -251,6 +277,7 @@ export const CanvasViewport: React.FC = () => {
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
+    syncCanvasDimensions();
     e.currentTarget.setPointerCapture(e.pointerId);
 
     // 1. Hand tool, Space drag, or Middle mouse -> Pan
@@ -316,7 +343,6 @@ export const CanvasViewport: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Update screen coordinates for the Photoshop brush cursor ring
     const containerRect = containerRef.current?.getBoundingClientRect();
     if (containerRect) {
       setMousePos({
@@ -480,8 +506,8 @@ export const CanvasViewport: React.FC = () => {
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
-            width: doc.width,
-            height: doc.height,
+            width: `${doc.width}px`,
+            height: `${doc.height}px`,
           }}
           className="relative shadow-2xl select-none bg-white will-change-transform"
         >
@@ -490,15 +516,21 @@ export const CanvasViewport: React.FC = () => {
             ref={canvasRef}
             width={doc.width}
             height={doc.height}
+            style={{
+              width: `${doc.width}px`,
+              height: `${doc.height}px`,
+            }}
             className="w-full h-full block"
           />
 
-          {/* 2. Live Stroke Overlay Canvas (Isolated stroke buffer with uniform opacity) */}
+          {/* 2. Live Stroke Overlay Canvas (1:1 dimension matching main canvas) */}
           <canvas
             ref={liveStrokeCanvasRef}
             width={doc.width}
             height={doc.height}
             style={{
+              width: `${doc.width}px`,
+              height: `${doc.height}px`,
               opacity: isDrawing ? brushSettings.opacity * brushSettings.flow : 0,
             }}
             className="absolute inset-0 pointer-events-none block z-10"
