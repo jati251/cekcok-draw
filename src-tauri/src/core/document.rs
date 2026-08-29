@@ -28,7 +28,7 @@ pub struct Document {
 impl Document {
     pub fn new(title: impl Into<String>, width: u32, height: u32) -> Self {
         let mut base_layer = Layer::new("Background");
-        
+
         // Fill base layer background with white tiles
         let tiles_x = (width + TILE_SIZE - 1) / TILE_SIZE;
         let tiles_y = (height + TILE_SIZE - 1) / TILE_SIZE;
@@ -113,14 +113,23 @@ impl Document {
     }
 
     /// Frustum Culling: Calculates which tiles intersect the viewport bounding box
-    pub fn get_visible_tile_coords(&self, vx: i32, vy: i32, vw: u32, vh: u32, lod: u8) -> Vec<TileCoord> {
+    pub fn get_visible_tile_coords(
+        &self,
+        vx: i32,
+        vy: i32,
+        vw: u32,
+        vh: u32,
+        lod: u8,
+    ) -> Vec<TileCoord> {
         let scale = 1 << lod;
         let effective_size = (TILE_SIZE as i32) * scale;
 
         let start_tx = (vx / effective_size).max(0);
         let start_ty = (vy / effective_size).max(0);
-        let end_tx = ((vx + vw as i32 + effective_size - 1) / effective_size).min((self.width as i32 + effective_size - 1) / effective_size);
-        let end_ty = ((vy + vh as i32 + effective_size - 1) / effective_size).min((self.height as i32 + effective_size - 1) / effective_size);
+        let end_tx = ((vx + vw as i32 + effective_size - 1) / effective_size)
+            .min((self.width as i32 + effective_size - 1) / effective_size);
+        let end_ty = ((vy + vh as i32 + effective_size - 1) / effective_size)
+            .min((self.height as i32 + effective_size - 1) / effective_size);
 
         let mut coords = Vec::new();
         for ty in start_ty..end_ty {
@@ -187,21 +196,102 @@ impl Document {
                             BlendMode::Screen => (
                                 1.0 - (1.0 - bot_r) * (1.0 - top_r),
                                 1.0 - (1.0 - bot_g) * (1.0 - top_g),
-                                1.0 - (1.0 - bot_b) * (1.0 - top_b),
+                                1.0 - (1.0 - bot_b) * (1.0 - top_r),
                             ),
                             BlendMode::Overlay => (
-                                if bot_r < 0.5 { 2.0 * bot_r * top_r } else { 1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r) },
-                                if bot_g < 0.5 { 2.0 * bot_g * top_g } else { 1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g) },
-                                if bot_b < 0.5 { 2.0 * bot_b * top_b } else { 1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b) },
+                                if bot_r < 0.5 {
+                                    2.0 * bot_r * top_r
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
+                                },
+                                if bot_g < 0.5 {
+                                    2.0 * bot_g * top_g
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
+                                },
+                                if bot_b < 0.5 {
+                                    2.0 * bot_b * top_b
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
+                                },
                             ),
-                            BlendMode::Darken => (bot_r.min(top_r), bot_g.min(top_g), bot_b.min(top_b)),
-                            BlendMode::Lighten => (bot_r.max(top_r), bot_g.max(top_g), bot_b.max(top_b)),
+                            BlendMode::Darken => {
+                                (bot_r.min(top_r), bot_g.min(top_g), bot_b.min(top_b))
+                            }
+                            BlendMode::Lighten => {
+                                (bot_r.max(top_r), bot_g.max(top_g), bot_b.max(top_b))
+                            }
                             BlendMode::ColorDodge => (
-                                if top_r >= 1.0 { 1.0 } else { (bot_r / (1.0 - top_r)).min(1.0) },
-                                if top_g >= 1.0 { 1.0 } else { (bot_g / (1.0 - top_g)).min(1.0) },
-                                if top_b >= 1.0 { 1.0 } else { (bot_b / (1.0 - top_b)).min(1.0) },
+                                if top_r >= 1.0 {
+                                    1.0
+                                } else {
+                                    (bot_r / (1.0 - top_r)).min(1.0)
+                                },
+                                if top_g >= 1.0 {
+                                    1.0
+                                } else {
+                                    (bot_g / (1.0 - top_g)).min(1.0)
+                                },
+                                if top_b >= 1.0 {
+                                    1.0
+                                } else {
+                                    (bot_b / (1.0 - top_b)).min(1.0)
+                                },
                             ),
-                            BlendMode::Difference => ((bot_r - top_r).abs(), (bot_g - top_g).abs(), (bot_b - top_b).abs()),
+                            BlendMode::ColorBurn => (
+                                if top_r <= 0.0 {
+                                    0.0
+                                } else {
+                                    1.0 - ((1.0 - bot_r) / top_r).min(1.0)
+                                },
+                                if top_g <= 0.0 {
+                                    0.0
+                                } else {
+                                    1.0 - ((1.0 - bot_g) / top_g).min(1.0)
+                                },
+                                if top_b <= 0.0 {
+                                    0.0
+                                } else {
+                                    1.0 - ((1.0 - bot_b) / top_b).min(1.0)
+                                },
+                            ),
+                            BlendMode::LinearDodge => (
+                                (bot_r + top_r).min(1.0),
+                                (bot_g + top_g).min(1.0),
+                                (bot_b + top_b).min(1.0),
+                            ),
+                            BlendMode::HardLight => (
+                                if top_r < 0.5 {
+                                    2.0 * bot_r * top_r
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
+                                },
+                                if top_g < 0.5 {
+                                    2.0 * bot_g * top_g
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
+                                },
+                                if top_b < 0.5 {
+                                    2.0 * bot_b * top_b
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
+                                },
+                            ),
+                            BlendMode::SoftLight => (
+                                (1.0 - 2.0 * top_r) * bot_r * bot_r + 2.0 * top_r * bot_r,
+                                (1.0 - 2.0 * top_g) * bot_g * bot_g + 2.0 * top_g * bot_g,
+                                (1.0 - 2.0 * top_b) * bot_b * bot_b + 2.0 * top_b * bot_b,
+                            ),
+                            BlendMode::Difference => (
+                                (bot_r - top_r).abs(),
+                                (bot_g - top_g).abs(),
+                                (bot_b - top_b).abs(),
+                            ),
+                            BlendMode::Exclusion => (
+                                bot_r + top_r - 2.0 * bot_r * top_r,
+                                bot_g + top_g - 2.0 * bot_g * top_g,
+                                bot_b + top_b - 2.0 * bot_b * top_b,
+                            ),
                             _ => (top_r, top_g, top_b),
                         };
 

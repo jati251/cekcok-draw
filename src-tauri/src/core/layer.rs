@@ -13,10 +13,16 @@ pub enum BlendMode {
     Lighten,
     ColorDodge,
     ColorBurn,
+    LinearDodge,
     HardLight,
     SoftLight,
+    VividLight,
     Difference,
     Exclusion,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
 }
 
 impl Default for BlendMode {

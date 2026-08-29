@@ -1,17 +1,27 @@
 import React from 'react';
 import { useDocumentStore } from '../stores/documentStore';
-import { Eye, EyeOff, Plus, Trash2, Lock, Layers } from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, Layers, Copy, ArrowDown } from 'lucide-react';
 import { BlendMode } from '../types';
 
-const blendModes: { value: BlendMode; label: string }[] = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'multiply', label: 'Multiply' },
-  { value: 'screen', label: 'Screen' },
-  { value: 'overlay', label: 'Overlay' },
-  { value: 'darken', label: 'Darken' },
-  { value: 'lighten', label: 'Lighten' },
-  { value: 'color_dodge', label: 'Color Dodge' },
-  { value: 'difference', label: 'Difference' },
+const blendModes: { value: BlendMode; label: string; group: string }[] = [
+  { value: 'normal', label: 'Normal', group: 'Normal' },
+  { value: 'darken', label: 'Darken', group: 'Darken' },
+  { value: 'multiply', label: 'Multiply', group: 'Darken' },
+  { value: 'color_burn', label: 'Color Burn', group: 'Darken' },
+  { value: 'lighten', label: 'Lighten', group: 'Lighten' },
+  { value: 'screen', label: 'Screen', group: 'Lighten' },
+  { value: 'color_dodge', label: 'Color Dodge', group: 'Lighten' },
+  { value: 'linear_dodge', label: 'Linear Dodge (Add)', group: 'Lighten' },
+  { value: 'overlay', label: 'Overlay', group: 'Contrast' },
+  { value: 'soft_light', label: 'Soft Light', group: 'Contrast' },
+  { value: 'hard_light', label: 'Hard Light', group: 'Contrast' },
+  { value: 'vivid_light', label: 'Vivid Light', group: 'Contrast' },
+  { value: 'difference', label: 'Difference', group: 'Inversion' },
+  { value: 'exclusion', label: 'Exclusion', group: 'Inversion' },
+  { value: 'hue', label: 'Hue', group: 'Component' },
+  { value: 'saturation', label: 'Saturation', group: 'Component' },
+  { value: 'color', label: 'Color', group: 'Component' },
+  { value: 'luminosity', label: 'Luminosity', group: 'Component' },
 ];
 
 export const LayerPanel: React.FC = () => {
@@ -84,7 +94,6 @@ export const LayerPanel: React.FC = () => {
 
       {/* Layer Stack List */}
       <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
-        {/* Render layers in reverse stack order (top layer first) */}
         {[...doc.layers].reverse().map((layer) => {
           const isSelected = layer.id === doc.active_layer_id;
           return (
@@ -113,7 +122,6 @@ export const LayerPanel: React.FC = () => {
                   )}
                 </button>
 
-                {/* Layer Thumbnail Placeholder */}
                 <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[9px] font-mono text-zinc-500">
                   Px
                 </div>
@@ -122,7 +130,11 @@ export const LayerPanel: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-1.5 text-zinc-500">
-                {layer.locked && <Lock size={12} />}
+                {layer.locked ? (
+                  <Lock size={12} />
+                ) : (
+                  <Unlock size={12} className="opacity-0 hover:opacity-100" />
+                )}
                 <span className="text-[10px] font-mono capitalize">
                   {layer.blend_mode.replace('_', ' ')}
                 </span>
@@ -133,24 +145,45 @@ export const LayerPanel: React.FC = () => {
       </div>
 
       {/* Layer Actions Footer */}
-      <div className="h-9 px-3 bg-ps-header border-t border-ps-border flex items-center justify-end space-x-2">
-        <button
-          onClick={() => addNewLayer()}
-          className="p-1 text-zinc-300 hover:text-white hover:bg-ps-hover rounded"
-          title="Create a new layer"
-        >
-          <Plus size={16} />
-        </button>
-        <button
-          onClick={() => {
-            if (activeLayer) deleteLayer(activeLayer.id);
-          }}
-          disabled={doc.layers.length <= 1}
-          className="p-1 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Delete selected layer"
-        >
-          <Trash2 size={16} />
-        </button>
+      <div className="h-9 px-3 bg-ps-header border-t border-ps-border flex items-center justify-between">
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => {
+              if (activeLayer) addNewLayer(`${activeLayer.name} Copy`);
+            }}
+            className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded"
+            title="Duplicate Layer"
+          >
+            <Copy size={14} />
+          </button>
+          <button
+            onClick={() => {}}
+            className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded"
+            title="Merge Down"
+          >
+            <ArrowDown size={14} />
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => addNewLayer()}
+            className="p-1 text-zinc-300 hover:text-white hover:bg-ps-hover rounded"
+            title="Create a new layer"
+          >
+            <Plus size={16} />
+          </button>
+          <button
+            onClick={() => {
+              if (activeLayer) deleteLayer(activeLayer.id);
+            }}
+            disabled={doc.layers.length <= 1}
+            className="p-1 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Delete selected layer"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import { BrushPoint } from '../types';
+import { RulersOverlay } from './RulersOverlay';
 import * as bridge from '../lib/tauriBridge';
 
 export const CanvasViewport: React.FC = () => {
@@ -14,6 +15,7 @@ export const CanvasViewport: React.FC = () => {
     activeTool,
     brushSettings,
     primaryColor,
+    secondaryColor,
     setPrimaryColor,
     zoom,
     pan,
@@ -31,10 +33,15 @@ export const CanvasViewport: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
+  const [gradientDrag, setGradientDrag] = useState<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
 
   const isPanningRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+  const gradientStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Exact, pixel-perfect conversion from client viewport coordinates to Canvas coordinates
   const screenToCanvas = useCallback(
@@ -92,7 +99,15 @@ export const CanvasViewport: React.FC = () => {
       else if (layer.blend_mode === 'darken') ctx.globalCompositeOperation = 'darken';
       else if (layer.blend_mode === 'lighten') ctx.globalCompositeOperation = 'lighten';
       else if (layer.blend_mode === 'color_dodge') ctx.globalCompositeOperation = 'color-dodge';
+      else if (layer.blend_mode === 'color_burn') ctx.globalCompositeOperation = 'color-burn';
+      else if (layer.blend_mode === 'hard_light') ctx.globalCompositeOperation = 'hard-light';
+      else if (layer.blend_mode === 'soft_light') ctx.globalCompositeOperation = 'soft-light';
       else if (layer.blend_mode === 'difference') ctx.globalCompositeOperation = 'difference';
+      else if (layer.blend_mode === 'exclusion') ctx.globalCompositeOperation = 'exclusion';
+      else if (layer.blend_mode === 'hue') ctx.globalCompositeOperation = 'hue';
+      else if (layer.blend_mode === 'saturation') ctx.globalCompositeOperation = 'saturation';
+      else if (layer.blend_mode === 'color') ctx.globalCompositeOperation = 'color';
+      else if (layer.blend_mode === 'luminosity') ctx.globalCompositeOperation = 'luminosity';
       else ctx.globalCompositeOperation = 'source-over';
 
       if (layer.name === 'Background') {
@@ -137,7 +152,6 @@ export const CanvasViewport: React.FC = () => {
             if (dist > innerRad) {
               const t = (dist - innerRad) / (radius - innerRad);
               const tClamped = Math.min(1, Math.max(0, t));
-              // Ultra-smooth cosine bell curve falloff (Photoshop airbrush standard)
               factor = 0.5 * (1 + Math.cos(Math.PI * tClamped));
             }
 
@@ -166,13 +180,23 @@ export const CanvasViewport: React.FC = () => {
       const ctx = strokeCanvas.getContext('2d');
       if (!ctx) return;
 
-      const color =
-        activeTool === 'eraser'
-          ? ([0, 0, 0, 255] as [number, number, number, number])
-          : brushSettings.color;
+      let color = brushSettings.color;
+      if (activeTool === 'eraser') {
+        color = [0, 0, 0, 255];
+      } else if (activeTool === 'dodge') {
+        color = [255, 255, 255, 255]; // Highlights
+      } else if (activeTool === 'burn') {
+        color = [0, 0, 0, 255]; // Shadows
+      }
 
       ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
+      if (activeTool === 'dodge') {
+        ctx.globalCompositeOperation = 'screen';
+      } else if (activeTool === 'burn') {
+        ctx.globalCompositeOperation = 'multiply';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
 
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
 
@@ -200,7 +224,6 @@ export const CanvasViewport: React.FC = () => {
           ctx.drawImage(stamp, x - rad, y - rad);
         }
       } else {
-        // Draw the latest smooth quadratic curve segment between midpoints
         const p0 = points[points.length - 3] || points[points.length - 2];
         const p1 = points[points.length - 2];
         const p2 = points[points.length - 1];
@@ -217,7 +240,6 @@ export const CanvasViewport: React.FC = () => {
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
           const invT = 1 - t;
-          // Quadratic Bezier interpolation for ultra-smooth rounded curves
           const x = invT * invT * mid1X + 2 * invT * t * p1.x + t * t * mid2X;
           const y = invT * invT * mid1Y + 2 * invT * t * p1.y + t * t * mid2Y;
           const p =
@@ -274,6 +296,30 @@ export const CanvasViewport: React.FC = () => {
     bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
   };
 
+  // Apply Gradient
+  const applyGradient = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !doc) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.save();
+    const grad = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+    grad.addColorStop(0, primaryColor);
+    grad.addColorStop(1, secondaryColor);
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = brushSettings.opacity;
+
+    if (selection && selection.active) {
+      ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
+    } else {
+      ctx.fillRect(0, 0, doc.width, doc.height);
+    }
+    ctx.restore();
+
+    bridge.commitStrokeHistory('Gradient Tool');
+  };
+
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
@@ -308,7 +354,15 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    // 5. Move tool -> Pan / Drag canvas
+    // 5. Gradient tool
+    if (activeTool === 'gradient') {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      gradientStartRef.current = { x: pos.x, y: pos.y };
+      setGradientDrag({ start: pos, current: pos });
+      return;
+    }
+
+    // 6. Move tool -> Pan / Drag canvas
     if (activeTool === 'move') {
       isPanningRef.current = true;
       setIsPanning(true);
@@ -316,7 +370,7 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    // 6. Selection / Marquee tool
+    // 7. Selection / Marquee tool
     if (activeTool === 'selection') {
       const pos = screenToCanvas(e.clientX, e.clientY);
       selectionStartRef.current = { x: pos.x, y: pos.y };
@@ -324,15 +378,19 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    // 7. Brush & Eraser tools
-    if (activeTool === 'brush' || activeTool === 'eraser') {
+    // 8. Brush, Eraser, Dodge, Burn tools
+    if (
+      activeTool === 'brush' ||
+      activeTool === 'eraser' ||
+      activeTool === 'dodge' ||
+      activeTool === 'burn'
+    ) {
       setIsDrawing(true);
       const pos = screenToCanvas(e.clientX, e.clientY);
       const pressure = e.pressure && e.pressure > 0 ? e.pressure : 1.0;
       const initialPoints: BrushPoint[] = [{ x: pos.x, y: pos.y, pressure }];
       setStrokePoints(initialPoints);
 
-      // Clear live stroke canvas buffer
       if (liveStrokeCanvasRef.current) {
         const sCtx = liveStrokeCanvasRef.current.getContext('2d');
         if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
@@ -362,6 +420,12 @@ export const CanvasViewport: React.FC = () => {
     const pos = screenToCanvas(e.clientX, e.clientY);
     setCursorPos({ x: Math.round(pos.x), y: Math.round(pos.y) });
 
+    // Live Gradient drag preview
+    if (activeTool === 'gradient' && gradientStartRef.current && e.buttons === 1) {
+      setGradientDrag({ start: gradientStartRef.current, current: pos });
+      return;
+    }
+
     // Live Eyedropper dragging
     if (activeTool === 'eyedropper' && e.buttons === 1) {
       sampleColorAt(e.clientX, e.clientY);
@@ -379,7 +443,13 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    if (isDrawing && (activeTool === 'brush' || activeTool === 'eraser')) {
+    if (
+      isDrawing &&
+      (activeTool === 'brush' ||
+        activeTool === 'eraser' ||
+        activeTool === 'dodge' ||
+        activeTool === 'burn')
+    ) {
       const nativeEv = e.nativeEvent as PointerEvent;
       const coalesced =
         typeof nativeEv.getCoalescedEvents === 'function'
@@ -414,6 +484,14 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'gradient' && gradientStartRef.current) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      applyGradient(gradientStartRef.current, pos);
+      gradientStartRef.current = null;
+      setGradientDrag(null);
+      return;
+    }
+
     if (activeTool === 'selection') {
       selectionStartRef.current = null;
       return;
@@ -422,7 +500,7 @@ export const CanvasViewport: React.FC = () => {
     if (isDrawing) {
       setIsDrawing(false);
 
-      // Bake the live stroke canvas into the permanent canvas with uniform stroke opacity
+      // Bake the live stroke canvas into the permanent canvas
       const mainCanvas = canvasRef.current;
       const strokeCanvas = liveStrokeCanvasRef.current;
       if (mainCanvas && strokeCanvas && doc) {
@@ -432,6 +510,10 @@ export const CanvasViewport: React.FC = () => {
           mainCtx.globalAlpha = brushSettings.opacity * brushSettings.flow;
           if (activeTool === 'eraser') {
             mainCtx.globalCompositeOperation = 'destination-out';
+          } else if (activeTool === 'dodge') {
+            mainCtx.globalCompositeOperation = 'screen';
+          } else if (activeTool === 'burn') {
+            mainCtx.globalCompositeOperation = 'multiply';
           } else {
             mainCtx.globalCompositeOperation = 'source-over';
           }
@@ -444,15 +526,25 @@ export const CanvasViewport: React.FC = () => {
       }
 
       if (strokePoints.length > 0) {
+        let color = brushSettings.color;
+        if (activeTool === 'eraser') color = [0, 0, 0, 0];
+        else if (activeTool === 'dodge') color = [255, 255, 255, 255];
+        else if (activeTool === 'burn') color = [0, 0, 0, 255];
+
         const settingsToApply = {
           ...brushSettings,
-          color:
-            activeTool === 'eraser'
-              ? ([0, 0, 0, 0] as [number, number, number, number])
-              : brushSettings.color,
+          color,
         };
         await bridge.applyBrushStroke(strokePoints, settingsToApply);
-        await bridge.commitStrokeHistory(activeTool === 'eraser' ? 'Eraser' : 'Brush Stroke');
+        await bridge.commitStrokeHistory(
+          activeTool === 'eraser'
+            ? 'Eraser'
+            : activeTool === 'dodge'
+              ? 'Dodge Tool'
+              : activeTool === 'burn'
+                ? 'Burn Tool'
+                : 'Brush Stroke'
+        );
         setStrokePoints([]);
       }
     }
@@ -461,7 +553,7 @@ export const CanvasViewport: React.FC = () => {
   // Wheel zoom and pan
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
       const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
       setZoom((z) => Math.min(32, Math.max(0.05, z * zoomFactor)));
     } else {
@@ -478,9 +570,15 @@ export const CanvasViewport: React.FC = () => {
     if (activeTool === 'move') return 'cursor-move';
     if (activeTool === 'zoom') return 'cursor-zoom-in';
     if (activeTool === 'eyedropper') return 'cursor-cell';
-    if (activeTool === 'paint_bucket') return 'cursor-copy';
+    if (activeTool === 'paint_bucket' || activeTool === 'gradient') return 'cursor-crosshair';
     if (activeTool === 'selection') return 'cursor-crosshair';
-    if (activeTool === 'brush' || activeTool === 'eraser') return 'cursor-none';
+    if (
+      activeTool === 'brush' ||
+      activeTool === 'eraser' ||
+      activeTool === 'dodge' ||
+      activeTool === 'burn'
+    )
+      return 'cursor-none';
     return 'cursor-default';
   };
 
@@ -501,6 +599,9 @@ export const CanvasViewport: React.FC = () => {
       }}
       className={`relative flex-1 h-full overflow-hidden bg-zinc-900 bg-transparency-grid flex items-center justify-center ${getCursorClass()}`}
     >
+      {/* 📏 Interactive Photoshop Rulers */}
+      <RulersOverlay />
+
       {doc && (
         <div
           style={{
@@ -523,7 +624,7 @@ export const CanvasViewport: React.FC = () => {
             className="w-full h-full block"
           />
 
-          {/* 2. Live Stroke Overlay Canvas (1:1 dimension matching main canvas) */}
+          {/* 2. Live Stroke Overlay Canvas */}
           <canvas
             ref={liveStrokeCanvasRef}
             width={doc.width}
@@ -536,7 +637,29 @@ export const CanvasViewport: React.FC = () => {
             className="absolute inset-0 pointer-events-none block z-10"
           />
 
-          {/* 3. Marquee Selection Box Overlay */}
+          {/* 3. Gradient Vector Line Preview */}
+          {gradientDrag && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
+              <line
+                x1={gradientDrag.start.x}
+                y1={gradientDrag.start.y}
+                x2={gradientDrag.current.x}
+                y2={gradientDrag.current.y}
+                stroke="#3b82f6"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+              />
+              <circle cx={gradientDrag.start.x} cy={gradientDrag.start.y} r="4" fill="#3b82f6" />
+              <circle
+                cx={gradientDrag.current.x}
+                cy={gradientDrag.current.y}
+                r="4"
+                fill="#60a5fa"
+              />
+            </svg>
+          )}
+
+          {/* 4. Marquee Selection Box Overlay */}
           {selection && selection.active && selection.width > 0 && (
             <div
               style={{
@@ -549,14 +672,16 @@ export const CanvasViewport: React.FC = () => {
             />
           )}
 
-          {/* 4. Grid Overlay for Pixel Art / Ultra Zoom */}
-          {showGrid && zoom >= 4 && (
+          {/* 5. 🔲 High Precision Pixel Grid (Visible when Zoom >= 200%) */}
+          {showGrid && zoom >= 2 && (
             <div
-              className="absolute inset-0 pointer-events-none opacity-25 z-20"
+              className="absolute inset-0 pointer-events-none opacity-30 z-20"
               style={{
                 backgroundImage:
-                  'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
-                backgroundSize: '1px 1px',
+                  zoom >= 4
+                    ? 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)'
+                    : 'linear-gradient(to right, #3b82f6 1px, transparent 1px), linear-gradient(to bottom, #3b82f6 1px, transparent 1px)',
+                backgroundSize: zoom >= 4 ? '1px 1px' : '50px 50px',
               }}
             />
           )}
@@ -564,41 +689,52 @@ export const CanvasViewport: React.FC = () => {
       )}
 
       {/* 🎯 Interactive Photoshop Brush Cursor Ring Overlay */}
-      {isHoveringCanvas && mousePos && (activeTool === 'brush' || activeTool === 'eraser') && (
-        <div
-          style={{
-            transform: `translate(${mousePos.x}px, ${mousePos.y}px)`,
-            left: 0,
-            top: 0,
-          }}
-          className="absolute pointer-events-none z-50 transition-none"
-        >
-          {/* Outer Brush Boundary Circle */}
+      {isHoveringCanvas &&
+        mousePos &&
+        (activeTool === 'brush' ||
+          activeTool === 'eraser' ||
+          activeTool === 'dodge' ||
+          activeTool === 'burn') && (
           <div
             style={{
-              width: `${brushScreenRadius * 2}px`,
-              height: `${brushScreenRadius * 2}px`,
-              transform: 'translate(-50%, -50%)',
+              transform: `translate(${mousePos.x}px, ${mousePos.y}px)`,
+              left: 0,
+              top: 0,
             }}
-            className="rounded-full border border-white shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
-          />
-
-          {/* Inner Hardness Indicator Circle */}
-          {brushSettings.hardness < 0.95 && (
+            className="absolute pointer-events-none z-50 transition-none"
+          >
+            {/* Outer Brush Boundary Circle */}
             <div
               style={{
-                width: `${brushInnerRadius * 2}px`,
-                height: `${brushInnerRadius * 2}px`,
+                width: `${brushScreenRadius * 2}px`,
+                height: `${brushScreenRadius * 2}px`,
                 transform: 'translate(-50%, -50%)',
               }}
-              className="absolute top-0 left-0 rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+              className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${
+                activeTool === 'dodge'
+                  ? 'border-amber-300'
+                  : activeTool === 'burn'
+                    ? 'border-purple-400'
+                    : 'border-white'
+              }`}
             />
-          )}
 
-          {/* Center Precision Crosshair Dot */}
-          <div className="absolute top-0 left-0 w-1 h-1 bg-white border border-black transform -translate-x-1/2 -translate-y-1/2 rounded-full" />
-        </div>
-      )}
+            {/* Inner Hardness Indicator Circle */}
+            {brushSettings.hardness < 0.95 && (
+              <div
+                style={{
+                  width: `${brushInnerRadius * 2}px`,
+                  height: `${brushInnerRadius * 2}px`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                className="absolute top-0 left-0 rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+              />
+            )}
+
+            {/* Center Precision Crosshair Dot */}
+            <div className="absolute top-0 left-0 w-1 h-1 bg-white border border-black transform -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          </div>
+        )}
     </div>
   );
 };

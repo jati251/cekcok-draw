@@ -9,6 +9,9 @@ import {
   PaintBucket,
   ArrowLeftRight,
   Scan,
+  Sun,
+  Moon,
+  Sparkles,
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { ToolType } from '../types';
@@ -25,30 +28,38 @@ export const ToolBar: React.FC = () => {
   } = useEditorStore();
 
   const tools: { type: ToolType; label: string; icon: React.ReactNode; shortcut: string }[] = [
-    { type: 'move', label: 'Move Tool', icon: <Move size={18} />, shortcut: 'V' },
+    { type: 'move', label: 'Move Tool', icon: <Move size={17} />, shortcut: 'V' },
     {
       type: 'selection',
       label: 'Rectangular Marquee Tool',
-      icon: <Scan size={18} />,
+      icon: <Scan size={17} />,
       shortcut: 'M',
     },
-    { type: 'brush', label: 'Brush Tool', icon: <Paintbrush size={18} />, shortcut: 'B' },
-    { type: 'eraser', label: 'Eraser Tool', icon: <Eraser size={18} />, shortcut: 'E' },
-    { type: 'eyedropper', label: 'Eyedropper Tool', icon: <Pipette size={18} />, shortcut: 'I' },
+    { type: 'brush', label: 'Brush Tool', icon: <Paintbrush size={17} />, shortcut: 'B' },
+    { type: 'eraser', label: 'Eraser Tool', icon: <Eraser size={17} />, shortcut: 'E' },
+    {
+      type: 'dodge',
+      label: 'Dodge Tool (Highlight Shading)',
+      icon: <Sun size={17} />,
+      shortcut: 'O',
+    },
+    { type: 'burn', label: 'Burn Tool (Shadow Shading)', icon: <Moon size={17} />, shortcut: '⇧O' },
+    { type: 'gradient', label: 'Gradient Tool', icon: <Sparkles size={17} />, shortcut: 'G' },
     {
       type: 'paint_bucket',
       label: 'Paint Bucket Tool',
-      icon: <PaintBucket size={18} />,
-      shortcut: 'G',
+      icon: <PaintBucket size={17} />,
+      shortcut: '⇧G',
     },
-    { type: 'hand', label: 'Hand Tool (Pan)', icon: <Hand size={18} />, shortcut: 'H / Space' },
-    { type: 'zoom', label: 'Zoom Tool', icon: <ZoomIn size={18} />, shortcut: 'Z' },
+    { type: 'eyedropper', label: 'Eyedropper Tool', icon: <Pipette size={17} />, shortcut: 'I' },
+    { type: 'hand', label: 'Hand Tool (Pan)', icon: <Hand size={17} />, shortcut: 'H / Space' },
+    { type: 'zoom', label: 'Zoom Tool', icon: <ZoomIn size={17} />, shortcut: 'Z' },
   ];
 
   return (
     <aside className="w-12 bg-ps-panel border-r border-ps-border flex flex-col items-center py-2 justify-between select-none z-30">
       {/* Tool buttons */}
-      <div className="flex flex-col items-center space-y-1 w-full px-1">
+      <div className="flex flex-col items-center space-y-1 w-full px-1 overflow-y-auto">
         {tools.map((tool) => {
           const isActive = activeTool === tool.type;
           return (

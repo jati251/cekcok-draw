@@ -7,10 +7,16 @@ export type BlendMode =
   | 'lighten'
   | 'color_dodge'
   | 'color_burn'
+  | 'linear_dodge'
   | 'hard_light'
   | 'soft_light'
+  | 'vivid_light'
   | 'difference'
-  | 'exclusion';
+  | 'exclusion'
+  | 'hue'
+  | 'saturation'
+  | 'color'
+  | 'luminosity';
 
 export interface LayerMetadata {
   id: string;
@@ -53,4 +59,20 @@ export interface HistoryAction {
 }
 
 export type ToolType =
-  'move' | 'brush' | 'eraser' | 'eyedropper' | 'paint_bucket' | 'hand' | 'zoom' | 'selection';
+  | 'move'
+  | 'brush'
+  | 'eraser'
+  | 'eyedropper'
+  | 'paint_bucket'
+  | 'gradient'
+  | 'dodge'
+  | 'burn'
+  | 'hand'
+  | 'zoom'
+  | 'selection';
+
+export interface GuideLine {
+  id: string;
+  orientation: 'horizontal' | 'vertical';
+  position: number; // document coordinate
+}

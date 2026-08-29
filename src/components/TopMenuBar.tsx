@@ -2,51 +2,115 @@ import React, { useState } from 'react';
 import { RotateCcw, RotateCw, Maximize2, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
+import * as filters from '../lib/filters';
+import * as bridge from '../lib/tauriBridge';
 
-export const TopMenuBar: React.FC = () => {
-  const { doc, triggerUndo, triggerRedo, initDocument } = useDocumentStore();
-  const { zoom, setZoom, resetView, activePanel, setActivePanel } = useEditorStore();
+interface Props {
+  onOpenNewDoc: () => void;
+  onOpenExport: () => void;
+  onOpenFilter: (type: 'brightness_contrast' | 'gaussian_blur') => void;
+}
+
+export const TopMenuBar: React.FC<Props> = ({ onOpenNewDoc, onOpenExport, onOpenFilter }) => {
+  const { doc, triggerUndo, triggerRedo, addNewLayer } = useDocumentStore();
+  const {
+    zoom,
+    setZoom,
+    resetView,
+    setActivePanel,
+    showRulers,
+    setShowRulers,
+    showGrid,
+    setShowGrid,
+    setSelection,
+  } = useEditorStore();
+
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const modKey = isMac ? '⌘' : 'Ctrl+';
 
-  const menus: Record<string, { label: string; action: () => void; shortcut?: string }[]> = {
+  const applyCanvasFilter = (filterName: 'invert' | 'desaturate') => {
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+    if (canvas && doc) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        if (filterName === 'invert') {
+          filters.applyInvert(ctx, doc.width, doc.height);
+          bridge.commitStrokeHistory('Invert Colors');
+        } else if (filterName === 'desaturate') {
+          filters.applyDesaturate(ctx, doc.width, doc.height);
+          bridge.commitStrokeHistory('Desaturate (Grayscale)');
+        }
+      }
+    }
+  };
+
+  const menus: Record<
+    string,
+    { label: string; action: () => void; shortcut?: string; divider?: boolean }[]
+  > = {
     File: [
-      {
-        label: 'New Document (1920x1080)...',
-        action: () => initDocument('Untitled-1', 1920, 1080),
-        shortcut: '⌘N',
-      },
-      {
-        label: 'New Square Canvas (2048x2048)...',
-        action: () => initDocument('Square-Artwork', 2048, 2048),
-      },
-      {
-        label: 'New 4K Ultra Canvas (3840x2160)...',
-        action: () => initDocument('4K-Master', 3840, 2160),
-      },
-      { label: 'Open...', action: () => {}, shortcut: '⌘O' },
-      { label: 'Export as PNG...', action: () => {}, shortcut: '⌘E' },
+      { label: 'New Document...', action: onOpenNewDoc, shortcut: `${modKey}N` },
+      { label: 'Export As Image (PNG / JPEG)...', action: onOpenExport, shortcut: `${modKey}E` },
+      { label: 'Save As PXL Master Format...', action: () => {}, shortcut: `${modKey}S` },
     ],
     Edit: [
-      { label: 'Undo', action: () => triggerUndo(), shortcut: '⌘Z' },
-      { label: 'Redo', action: () => triggerRedo(), shortcut: '⇧⌘Z' },
-      { label: 'Preferences...', action: () => {}, shortcut: '⌘K' },
+      { label: 'Undo', action: () => triggerUndo(), shortcut: `${modKey}Z` },
+      { label: 'Redo', action: () => triggerRedo(), shortcut: `${modKey}⇧Z` },
+      {
+        label: 'Select All',
+        action: () =>
+          doc && setSelection({ x: 0, y: 0, width: doc.width, height: doc.height, active: true }),
+        shortcut: `${modKey}A`,
+      },
+      { label: 'Deselect', action: () => setSelection(null), shortcut: `${modKey}D` },
+    ],
+    Image: [
+      { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
+      { label: 'Invert Colors', action: () => applyCanvasFilter('invert'), shortcut: `${modKey}I` },
+      {
+        label: 'Desaturate (Grayscale)',
+        action: () => applyCanvasFilter('desaturate'),
+        shortcut: `${modKey}⇧U`,
+      },
+    ],
+    Layer: [
+      { label: 'New Layer', action: () => addNewLayer(), shortcut: `${modKey}⇧N` },
+      {
+        label: 'Duplicate Active Layer',
+        action: () => addNewLayer('Layer Copy'),
+        shortcut: `${modKey}J`,
+      },
+    ],
+    Filter: [
+      { label: 'Gaussian Blur...', action: () => onOpenFilter('gaussian_blur') },
+      { label: 'Soft Airbrush Shading...', action: () => onOpenFilter('gaussian_blur') },
     ],
     View: [
-      { label: 'Zoom In', action: () => setZoom((z) => z * 1.25), shortcut: '⌘+' },
-      { label: 'Zoom Out', action: () => setZoom((z) => z / 1.25), shortcut: '⌘-' },
-      { label: 'Fit on Screen (100%)', action: () => resetView(), shortcut: '⌘0' },
-      { label: 'Actual Pixels (100%)', action: () => setZoom(1.0), shortcut: '⌘1' },
       {
-        label: 'Toggle All Panels',
-        action: () => setActivePanel(activePanel === 'all' ? 'layers' : 'all'),
-        shortcut: 'Tab',
+        label: 'Zoom In',
+        action: () => setZoom((z) => Math.min(32, z * 1.25)),
+        shortcut: `${modKey}+`,
       },
+      {
+        label: 'Zoom Out',
+        action: () => setZoom((z) => Math.max(0.05, z / 1.25)),
+        shortcut: `${modKey}-`,
+      },
+      { label: 'Fit on Screen (100%)', action: () => resetView(), shortcut: `${modKey}0` },
+      { label: 'Actual Pixels (100%)', action: () => setZoom(1.0), shortcut: `${modKey}1` },
+      { label: 'Toggle Rulers', action: () => setShowRulers(!showRulers), shortcut: `${modKey}R` },
+      { label: 'Toggle Pixel Grid', action: () => setShowGrid(!showGrid), shortcut: `${modKey}'` },
     ],
     Window: [
       { label: 'Layers Panel', action: () => setActivePanel('layers'), shortcut: 'F7' },
       { label: 'History Panel', action: () => setActivePanel('history') },
       { label: 'Color Picker', action: () => setActivePanel('color') },
-      { label: 'All Panels (Default Workspace)', action: () => setActivePanel('all') },
+      {
+        label: 'All Panels (Default Workspace)',
+        action: () => setActivePanel('all'),
+        shortcut: 'Tab',
+      },
     ],
   };
 
@@ -89,7 +153,9 @@ export const TopMenuBar: React.FC = () => {
                     >
                       <span>{item.label}</span>
                       {item.shortcut && (
-                        <span className="text-zinc-400 text-[10px] ml-4">{item.shortcut}</span>
+                        <span className="text-zinc-400 text-[10px] ml-4 font-mono">
+                          {item.shortcut}
+                        </span>
                       )}
                     </button>
                   ))}
@@ -116,35 +182,35 @@ export const TopMenuBar: React.FC = () => {
         <div className="flex items-center space-x-1 border-l border-ps-border pl-3">
           <button
             onClick={() => triggerUndo()}
-            title="Undo (⌘Z)"
+            title={`Undo (${modKey}Z)`}
             className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
           >
             <RotateCcw size={14} />
           </button>
           <button
             onClick={() => triggerRedo()}
-            title="Redo (⇧⌘Z)"
+            title={`Redo (${modKey}⇧Z)`}
             className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
           >
             <RotateCw size={14} />
           </button>
           <button
-            onClick={() => setZoom((z) => Math.max(0.1, z / 1.2))}
-            title="Zoom Out (⌘-)"
+            onClick={() => setZoom((z) => Math.max(0.05, z / 1.25))}
+            title={`Zoom Out (${modKey}-)`}
             className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
           >
             <ZoomOut size={14} />
           </button>
           <button
-            onClick={() => setZoom((z) => Math.min(32, z * 1.2))}
-            title="Zoom In (⌘+)"
+            onClick={() => setZoom((z) => Math.min(32, z * 1.25))}
+            title={`Zoom In (${modKey}+)`}
             className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
           >
             <ZoomIn size={14} />
           </button>
           <button
             onClick={() => resetView()}
-            title="Fit to Screen (⌘0)"
+            title={`Fit to Screen (${modKey}0)`}
             className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
           >
             <Maximize2 size={14} />
