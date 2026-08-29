@@ -30,7 +30,9 @@ impl SparseTileGrid {
     }
 
     pub fn get_or_create_mut(&mut self, coord: TileCoord) -> &mut Tile {
-        self.dirty_coords.push(coord);
+        if self.dirty_coords.last() != Some(&coord) {
+            self.dirty_coords.push(coord);
+        }
         let shared = self
             .tiles
             .entry(coord)
@@ -43,11 +45,14 @@ impl SparseTileGrid {
     }
 
     pub fn get_tile_mut(&mut self, coord: &TileCoord) -> Option<&mut Tile> {
-        self.dirty_coords.push(*coord);
+        if self.dirty_coords.last() != Some(coord) {
+            self.dirty_coords.push(*coord);
+        }
         let shared = self.tiles.get_mut(coord)?;
         Some(Arc::make_mut(shared))
     }
 
+    #[inline]
     pub fn set_pixel_cow(&mut self, global_x: i32, global_y: i32, color: [u8; 4]) {
         if global_x < 0 || global_y < 0 {
             return;
@@ -62,6 +67,7 @@ impl SparseTileGrid {
         tile.set_pixel(local_x, local_y, color);
     }
 
+    #[inline]
     pub fn blend_pixel_cow(&mut self, global_x: i32, global_y: i32, r: u8, g: u8, b: u8, a: u8) {
         if global_x < 0 || global_y < 0 {
             return;

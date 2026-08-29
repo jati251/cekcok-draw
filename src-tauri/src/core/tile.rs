@@ -60,6 +60,7 @@ impl Tile {
         }
     }
 
+    #[inline]
     pub fn get_pixel(&self, x: u32, y: u32) -> [u8; 4] {
         if x >= TILE_SIZE || y >= TILE_SIZE {
             return [0, 0, 0, 0];
@@ -73,6 +74,7 @@ impl Tile {
         ]
     }
 
+    #[inline]
     pub fn set_pixel(&mut self, x: u32, y: u32, color: [u8; 4]) {
         if x >= TILE_SIZE || y >= TILE_SIZE {
             return;
@@ -82,26 +84,29 @@ impl Tile {
         self.is_dirty = true;
     }
 
+    #[inline]
     pub fn blend_pixel_over(&mut self, x: u32, y: u32, r: u8, g: u8, b: u8, src_a: u8) {
         if x >= TILE_SIZE || y >= TILE_SIZE || src_a == 0 {
             return;
         }
         let offset = ((y * TILE_SIZE + x) * 4) as usize;
-        let dst_r = self.data[offset] as f32 / 255.0;
-        let dst_g = self.data[offset + 1] as f32 / 255.0;
-        let dst_b = self.data[offset + 2] as f32 / 255.0;
-        let dst_a = self.data[offset + 3] as f32 / 255.0;
+        let dst_r = self.data[offset] as f32 * (1.0 / 255.0);
+        let dst_g = self.data[offset + 1] as f32 * (1.0 / 255.0);
+        let dst_b = self.data[offset + 2] as f32 * (1.0 / 255.0);
+        let dst_a = self.data[offset + 3] as f32 * (1.0 / 255.0);
 
-        let src_r = r as f32 / 255.0;
-        let src_g = g as f32 / 255.0;
-        let src_b = b as f32 / 255.0;
-        let sa = src_a as f32 / 255.0;
+        let src_r = r as f32 * (1.0 / 255.0);
+        let src_g = g as f32 * (1.0 / 255.0);
+        let src_b = b as f32 * (1.0 / 255.0);
+        let sa = src_a as f32 * (1.0 / 255.0);
 
-        let out_a = sa + dst_a * (1.0 - sa);
+        let inv_sa = 1.0 - sa;
+        let out_a = sa + dst_a * inv_sa;
         if out_a > 0.0001 {
-            let out_r = (src_r * sa + dst_r * dst_a * (1.0 - sa)) / out_a;
-            let out_g = (src_g * sa + dst_g * dst_a * (1.0 - sa)) / out_a;
-            let out_b = (src_b * sa + dst_b * dst_a * (1.0 - sa)) / out_a;
+            let inv_out_a = 1.0 / out_a;
+            let out_r = (src_r * sa + dst_r * dst_a * inv_sa) * inv_out_a;
+            let out_g = (src_g * sa + dst_g * dst_a * inv_sa) * inv_out_a;
+            let out_b = (src_b * sa + dst_b * dst_a * inv_sa) * inv_out_a;
 
             self.data[offset] = (out_r.clamp(0.0, 1.0) * 255.0) as u8;
             self.data[offset + 1] = (out_g.clamp(0.0, 1.0) * 255.0) as u8;

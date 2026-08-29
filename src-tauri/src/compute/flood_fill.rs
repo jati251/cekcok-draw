@@ -1,10 +1,10 @@
 use crate::core::sparse_grid::SparseTileGrid;
-use std::collections::{HashSet, VecDeque};
 
 pub struct FloodFillEngine;
 
 impl FloodFillEngine {
-    /// High-performance 4-connected BFS Flood Fill directly on SparseTileGrid
+    /// High-performance Scanline Flood Fill directly on SparseTileGrid
+    /// Zero heap churn, bounded stack, and fast linear scanlines
     pub fn fill(
         grid: &mut SparseTileGrid,
         doc_w: u32,
@@ -30,35 +30,101 @@ impl FloodFillEngine {
             return false;
         }
 
-        let mut queue = VecDeque::with_capacity(1024);
-        let mut visited = HashSet::new();
-
-        queue.push_back((start_x, start_y));
-        visited.insert((start_x, start_y));
-
         let tol = tolerance as i32 * 4;
 
-        while let Some((cx, cy)) = queue.pop_front() {
-            grid.set_pixel_cow(cx, cy, fill_color);
+        let matches = |grid: &SparseTileGrid, x: i32, y: i32| -> bool {
+            if x < min_x || x >= max_x || y < min_y || y >= max_y {
+                return false;
+            }
+            let c = Self::get_pixel(grid, x, y);
+            if c == fill_color {
+                return false;
+            }
+            let diff = (c[0] as i32 - target_color[0] as i32).abs()
+                + (c[1] as i32 - target_color[1] as i32).abs()
+                + (c[2] as i32 - target_color[2] as i32).abs()
+                + (c[3] as i32 - target_color[3] as i32).abs();
+            diff <= tol
+        };
 
-            let neighbors = [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)];
+        // Stack contains: (lx, rx, y, dy)
+        let mut stack: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(1024);
 
-            for (nx, ny) in neighbors {
-                if nx >= min_x
-                    && nx < max_x
-                    && ny >= min_y
-                    && ny < max_y
-                    && visited.insert((nx, ny))
-                {
-                    let c = Self::get_pixel(grid, nx, ny);
-                    let diff = (c[0] as i32 - target_color[0] as i32).abs()
-                        + (c[1] as i32 - target_color[1] as i32).abs()
-                        + (c[2] as i32 - target_color[2] as i32).abs()
-                        + (c[3] as i32 - target_color[3] as i32).abs();
+        // Seed initial line
+        let mut l = start_x;
+        let mut r = start_x;
+        while l > min_x && matches(grid, l - 1, start_y) {
+            l -= 1;
+        }
+        while r < max_x - 1 && matches(grid, r + 1, start_y) {
+            r += 1;
+        }
 
-                    if diff <= tol {
-                        queue.push_back((nx, ny));
+        for x in l..=r {
+            grid.set_pixel_cow(x, start_y, fill_color);
+        }
+
+        if start_y > min_y {
+            stack.push((l, r, start_y - 1, -1));
+        }
+        if start_y + 1 < max_y {
+            stack.push((l, r, start_y + 1, 1));
+        }
+
+        let max_iterations = (max_x - min_x) * (max_y - min_y);
+        let mut iterations = 0;
+
+        while let Some((lx, rx, y, dy)) = stack.pop() {
+            iterations += 1;
+            if iterations > max_iterations {
+                break;
+            }
+
+            if y < min_y || y >= max_y {
+                continue;
+            }
+
+            let mut span_start: Option<i32> = None;
+            let mut x = lx;
+
+            while x <= rx {
+                if matches(grid, x, y) {
+                    if span_start.is_none() {
+                        let mut s = x;
+                        while s > min_x && matches(grid, s - 1, y) {
+                            s -= 1;
+                            grid.set_pixel_cow(s, y, fill_color);
+                        }
+                        span_start = Some(s);
                     }
+                    grid.set_pixel_cow(x, y, fill_color);
+                } else if let Some(s) = span_start {
+                    let span_end = x - 1;
+                    if y + dy >= min_y && y + dy < max_y {
+                        stack.push((s, span_end, y + dy, dy));
+                    }
+                    if s < lx && y - dy >= min_y && y - dy < max_y {
+                        stack.push((s, lx - 1, y - dy, -dy));
+                    }
+                    span_start = None;
+                }
+                x += 1;
+            }
+
+            if let Some(s) = span_start {
+                let mut span_end = rx;
+                while span_end < max_x - 1 && matches(grid, span_end + 1, y) {
+                    span_end += 1;
+                    grid.set_pixel_cow(span_end, y, fill_color);
+                }
+                if y + dy >= min_y && y + dy < max_y {
+                    stack.push((s, span_end, y + dy, dy));
+                }
+                if s < lx && y - dy >= min_y && y - dy < max_y {
+                    stack.push((s, lx - 1, y - dy, -dy));
+                }
+                if span_end > rx && y - dy >= min_y && y - dy < max_y {
+                    stack.push((rx + 1, span_end, y - dy, -dy));
                 }
             }
         }

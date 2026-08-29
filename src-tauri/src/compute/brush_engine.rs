@@ -87,6 +87,7 @@ impl Default for BrushSettings {
     }
 }
 
+#[inline]
 fn pseudo_noise(x: f32, y: f32, seed: f32) -> f32 {
     let n = ((x * 12.9898 + y * 78.233 + seed).sin() * 43758.5453).fract();
     n.abs()
@@ -125,7 +126,7 @@ impl BrushEngine {
         }
 
         // Single stroke scratch buffer: maps (x, y) -> max alpha [0..255]
-        let mut stroke_alpha_map: HashMap<(i32, i32), u8> = HashMap::new();
+        let mut stroke_alpha_map: HashMap<(i32, i32), u8> = HashMap::with_capacity(1024);
 
         if points.len() == 1 {
             let p = points[0];
@@ -174,6 +175,7 @@ impl BrushEngine {
         }
     }
 
+    #[inline]
     fn catmull_rom_point(
         p0: BrushPoint,
         p1: BrushPoint,
