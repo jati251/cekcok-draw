@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TopMenuBar } from './components/TopMenuBar';
 import { ToolOptionsBar } from './components/ToolOptionsBar';
 import { ToolBar } from './components/ToolBar';
@@ -14,6 +14,7 @@ import { HueSaturationModal } from './components/modals/HueSaturationModal';
 import { LevelsModal } from './components/modals/LevelsModal';
 import { UpdateModal } from './components/modals/UpdateModal';
 import { useEditorStore } from './stores/editorStore';
+import { useDocumentStore } from './stores/documentStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 export const App: React.FC = () => {
@@ -37,6 +38,61 @@ export const App: React.FC = () => {
     onOpenExport: () => setIsExportOpen(true),
     onOpenHueSaturation: () => setIsHueSatOpen(true),
   });
+
+  // Listen to native macOS & Windows application menu actions
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen<string>('native-menu-action', (event) => {
+          const action = event.payload;
+          if (action === 'new_doc') setIsNewDocOpen(true);
+          else if (action === 'export_image') setIsExportOpen(true);
+          else if (action === 'levels' || action === 'auto_tone') setIsLevelsOpen(true);
+          else if (action === 'hue_sat') setIsHueSatOpen(true);
+          else if (action === 'brightness_contrast')
+            setFilterModal({ isOpen: true, type: 'brightness_contrast' });
+          else if (action === 'gaussian_blur')
+            setFilterModal({ isOpen: true, type: 'gaussian_blur' });
+          else if (action === 'check_updates' || action === 'check_updates_help')
+            setIsUpdateOpen(true);
+          else if (action === 'new_layer') useDocumentStore.getState().addNewLayer();
+          else if (action === 'dup_layer') {
+            const currentDoc = useDocumentStore.getState().doc;
+            if (currentDoc?.active_layer_id) {
+              const active = currentDoc.layers.find((l) => l.id === currentDoc.active_layer_id);
+              useDocumentStore.getState().addNewLayer(`${active?.name || 'Layer'} Copy`);
+            }
+          } else if (action === 'del_layer') {
+            const currentDoc = useDocumentStore.getState().doc;
+            if (currentDoc?.active_layer_id) {
+              useDocumentStore.getState().deleteLayer(currentDoc.active_layer_id);
+            }
+          } else if (action === 'deselect') useEditorStore.getState().setSelection(null);
+          else if (action === 'toggle_grid')
+            useEditorStore.getState().setShowGrid(!useEditorStore.getState().showGrid);
+          else if (action === 'toggle_rulers')
+            useEditorStore.getState().setShowRulers(!useEditorStore.getState().showRulers);
+          else if (action === 'zoom_in')
+            useEditorStore.getState().setZoom((z) => Math.min(32, z * 1.25));
+          else if (action === 'zoom_out')
+            useEditorStore.getState().setZoom((z) => Math.max(0.05, z / 1.25));
+          else if (action === 'fit_screen') useEditorStore.getState().resetView();
+          else if (action === 'panel_all') useEditorStore.getState().setActivePanel('all');
+          else if (action === 'panel_layers') useEditorStore.getState().setActivePanel('layers');
+          else if (action === 'panel_color') useEditorStore.getState().setActivePanel('color');
+          else if (action === 'panel_history') useEditorStore.getState().setActivePanel('history');
+          else if (action === 'doc_github')
+            window.open('https://github.com/jati251/cekcok-draw', '_blank');
+        }).then((fn) => {
+          unlisten = fn;
+        });
+      });
+    }
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-ps-bg text-ps-text select-none">

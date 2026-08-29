@@ -1,6 +1,7 @@
 pub mod compute;
 pub mod core;
 pub mod ipc;
+pub mod native_menu;
 pub mod storage;
 
 use core::document::Document;
@@ -25,6 +26,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine_state)
+        .menu(|app| native_menu::build_native_menu(app))
+        .on_menu_event(|app, event| {
+            native_menu::handle_menu_event(app, event);
+        })
         .invoke_handler(tauri::generate_handler![
             create_document,
             get_document_info,
