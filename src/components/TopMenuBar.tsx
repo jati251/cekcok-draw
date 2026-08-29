@@ -183,7 +183,12 @@ export const TopMenuBar: React.FC<Props> = ({
   };
 
   return (
-    <header className="h-10 bg-ps-header border-b border-ps-border flex items-center justify-between px-3 text-xs select-none z-50">
+    <header
+      data-tauri-drag-region
+      className={`h-10 bg-ps-header border-b border-ps-border flex items-center justify-between pr-3 text-xs select-none z-50 ${
+        isMac ? 'pl-20' : 'pl-3'
+      }`}
+    >
       {/* Left brand & menu items */}
       <div className="flex items-center space-x-1">
         <div className="flex items-center space-x-2 mr-3 font-bold text-sm tracking-wide text-blue-400 bg-blue-950/40 border border-blue-800/40 px-2 py-0.5 rounded">

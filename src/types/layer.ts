@@ -18,6 +18,8 @@ export type BlendMode =
   | 'color'
   | 'luminosity';
 
+export type LayerType = 'raster' | 'text' | 'shape' | 'background';
+
 export interface LayerMetadata {
   id: string;
   name: string;
@@ -25,4 +27,5 @@ export interface LayerMetadata {
   locked: boolean;
   opacity: number;
   blend_mode: BlendMode;
+  layer_type?: LayerType;
 }

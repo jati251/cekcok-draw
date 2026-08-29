@@ -1,7 +1,19 @@
 import React from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { BLEND_MODES } from '../constants/blendModes';
-import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, Layers, Copy, ArrowDown } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Plus,
+  Trash2,
+  Lock,
+  Unlock,
+  Layers,
+  Copy,
+  ArrowDown,
+  Shapes,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { BlendMode } from '../types';
 import { LayerThumbnail } from './canvas/LayerThumbnail';
 
@@ -77,6 +89,9 @@ export const LayerPanel: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
         {[...doc.layers].reverse().map((layer) => {
           const isSelected = layer.id === doc.active_layer_id;
+          const isText = layer.name.startsWith('Text') || layer.layer_type === 'text';
+          const isShape = layer.name.startsWith('Shape') || layer.layer_type === 'shape';
+
           return (
             <div
               key={layer.id}
@@ -87,13 +102,13 @@ export const LayerPanel: React.FC = () => {
                   : 'bg-ps-surface/60 border-ps-border/50 text-zinc-300 hover:bg-ps-surface hover:text-white'
               }`}
             >
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 min-w-0">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleLayerVisibility(layer.id);
                   }}
-                  className="p-0.5 text-zinc-400 hover:text-white transition-colors"
+                  className="p-0.5 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
                   title={layer.visible ? 'Hide Layer' : 'Show Layer'}
                 >
                   {layer.visible ? (
@@ -105,10 +120,34 @@ export const LayerPanel: React.FC = () => {
 
                 <LayerThumbnail layerId={layer.id} />
 
-                <span className="font-medium truncate max-w-[110px]">{layer.name}</span>
+                {/* Layer Type Badge */}
+                {isText ? (
+                  <span
+                    className="rounded bg-purple-950/70 border border-purple-700/60 text-purple-400 font-serif font-bold text-[10px] w-4 h-4 flex items-center justify-center flex-shrink-0"
+                    title="Typography Text Layer"
+                  >
+                    T
+                  </span>
+                ) : isShape ? (
+                  <span
+                    className="rounded bg-amber-950/70 border border-amber-700/60 text-amber-400 flex items-center justify-center flex-shrink-0 w-4 h-4"
+                    title="Vector Shape Layer"
+                  >
+                    <Shapes size={10} />
+                  </span>
+                ) : (
+                  <span
+                    className="rounded bg-blue-950/40 border border-blue-800/40 text-blue-400 flex items-center justify-center flex-shrink-0 w-4 h-4"
+                    title="Raster Paint Layer"
+                  >
+                    <ImageIcon size={10} />
+                  </span>
+                )}
+
+                <span className="font-medium truncate max-w-[95px]">{layer.name}</span>
               </div>
 
-              <div className="flex items-center space-x-1.5 text-zinc-500">
+              <div className="flex items-center space-x-1.5 text-zinc-500 flex-shrink-0">
                 {layer.locked ? (
                   <Lock size={12} />
                 ) : (

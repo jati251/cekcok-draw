@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { useDocumentStore } from '../stores/documentStore';
 import { BrushPoint } from '../types';
@@ -9,6 +9,7 @@ import { GradientVector } from './canvas/GradientVector';
 import { ShapeOverlay } from './canvas/ShapeOverlay';
 import { TextLayerOverlay } from './canvas/TextLayerOverlay';
 import { BrushCursorRing } from './canvas/BrushCursorRing';
+import { ContextMenu } from './canvas/ContextMenu';
 import { RulersOverlay } from './RulersOverlay';
 import { useCanvasDrawing } from '../hooks/useCanvasDrawing';
 import { useCanvasViewport } from '../hooks/useCanvasViewport';
@@ -19,6 +20,7 @@ export const CanvasViewport: React.FC = () => {
   const viewportBoxRef = useRef<HTMLDivElement>(null);
   const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   const { doc } = useDocumentStore();
   const {
@@ -87,6 +89,10 @@ export const CanvasViewport: React.FC = () => {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
+    if (contextMenuPos) setContextMenuPos(null);
+
+    // Right-click opens Photoshop Context Menu instead of drawing
+    if (e.button === 2) return;
 
     if (activeTool !== 'text') {
       try {
@@ -302,6 +308,10 @@ export const CanvasViewport: React.FC = () => {
       onPointerCancel={handlePointerUp}
       onPointerEnter={() => setIsHoveringCanvas(true)}
       onPointerLeave={() => setIsHoveringCanvas(false)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenuPos({ x: e.clientX, y: e.clientY });
+      }}
       className={`flex-1 relative overflow-hidden bg-[#18181b] select-none touch-none ${
         isPanning
           ? 'cursor-grabbing'
@@ -358,6 +368,14 @@ export const CanvasViewport: React.FC = () => {
         brushSettings={brushSettings}
         zoom={zoom}
       />
+
+      {contextMenuPos && (
+        <ContextMenu
+          x={contextMenuPos.x}
+          y={contextMenuPos.y}
+          onClose={() => setContextMenuPos(null)}
+        />
+      )}
     </main>
   );
 };
