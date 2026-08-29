@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '../types';
-import { getOrCreateStamp } from '../utils/stamp';
+import { getOrCreateStamp, getOrCreateAlphaMask } from '../utils/stamp';
 import * as bridge from '../lib/tauriBridge';
 
 interface UseCanvasDrawingProps {
@@ -22,6 +22,7 @@ export const useCanvasDrawing = ({
 }: UseCanvasDrawingProps) => {
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const getToolColor = useCallback((): [number, number, number, number] => {
     if (activeTool === 'eraser') return [0, 0, 0, 255];
@@ -35,7 +36,7 @@ export const useCanvasDrawing = ({
       if (!doc) return;
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
 
-      // 1. Smudge Tool: Live Pixel Smearing directly on active layer canvas
+      // 1. Smudge Tool: Organic Sub-pixel Smear with Circular Soft Mask
       if (activeTool === 'smudge') {
         const activeCanvas = doc.active_layer_id
           ? layerCanvasesRef.current?.get(doc.active_layer_id)
@@ -44,29 +45,55 @@ export const useCanvasDrawing = ({
         const ctx = activeCanvas.getContext('2d');
         if (!ctx) return;
 
+        const dx = pCurr.x - pPrev.x;
+        const dy = pCurr.y - pPrev.y;
+        const dist = Math.hypot(dx, dy);
+        const stepSize = Math.max(1.0, baseRadius * 0.12);
+        const steps = Math.max(1, Math.ceil(dist / stepSize));
         const size = Math.ceil(baseRadius * 2);
-        try {
-          ctx.save();
-          ctx.globalAlpha = 0.5;
-          ctx.drawImage(
-            activeCanvas,
-            pPrev.x - baseRadius,
-            pPrev.y - baseRadius,
-            size,
-            size,
-            pCurr.x - baseRadius,
-            pCurr.y - baseRadius,
-            size,
-            size
-          );
-          ctx.restore();
-        } catch {
-          // ignore boundary error
+        const mask = getOrCreateAlphaMask(baseRadius, brushSettings.hardness);
+
+        if (!scratchCanvasRef.current) {
+          scratchCanvasRef.current = document.createElement('canvas');
+        }
+        const scratch = scratchCanvasRef.current;
+        if (scratch.width !== size || scratch.height !== size) {
+          scratch.width = size;
+          scratch.height = size;
+        }
+        const sCtx = scratch.getContext('2d');
+        if (!sCtx) return;
+
+        for (let i = 1; i <= steps; i++) {
+          const tPrev = (i - 1) / steps;
+          const tCurr = i / steps;
+          const sx = pPrev.x + dx * tPrev - baseRadius;
+          const sy = pPrev.y + dy * tPrev - baseRadius;
+          const tx = pPrev.x + dx * tCurr - baseRadius;
+          const ty = pPrev.y + dy * tCurr - baseRadius;
+
+          sCtx.clearRect(0, 0, size, size);
+          try {
+            sCtx.drawImage(activeCanvas, sx, sy, size, size, 0, 0, size, size);
+            sCtx.globalCompositeOperation = 'destination-in';
+            sCtx.drawImage(mask, 0, 0, size, size);
+            sCtx.globalCompositeOperation = 'source-over';
+
+            ctx.save();
+            ctx.globalAlpha = Math.min(
+              1.0,
+              (brushSettings.opacity || 0.8) * (brushSettings.flow || 0.8) * 0.7
+            );
+            ctx.drawImage(scratch, tx, ty);
+            ctx.restore();
+          } catch {
+            // ignore boundary clamp
+          }
         }
         return;
       }
 
-      // 2. Blur Tool: Localized soft blurring
+      // 2. Blur Tool: Localized Gaussian Soft Blurring with Circular Alpha Mask
       if (activeTool === 'blur') {
         const activeCanvas = doc.active_layer_id
           ? layerCanvasesRef.current?.get(doc.active_layer_id)
@@ -75,25 +102,63 @@ export const useCanvasDrawing = ({
         const ctx = activeCanvas.getContext('2d');
         if (!ctx) return;
 
+        const dx = pCurr.x - pPrev.x;
+        const dy = pCurr.y - pPrev.y;
+        const dist = Math.hypot(dx, dy);
+        const stepSize = Math.max(1.5, baseRadius * 0.18);
+        const steps = Math.max(1, Math.ceil(dist / stepSize));
         const size = Math.ceil(baseRadius * 2);
-        try {
-          ctx.save();
-          ctx.filter = `blur(${Math.max(1, baseRadius * 0.2)}px)`;
-          ctx.drawImage(
-            activeCanvas,
-            pCurr.x - baseRadius,
-            pCurr.y - baseRadius,
-            size,
-            size,
-            pCurr.x - baseRadius,
-            pCurr.y - baseRadius,
-            size,
-            size
-          );
-          ctx.filter = 'none';
-          ctx.restore();
-        } catch {
-          // ignore
+        const blurPadding = Math.ceil(baseRadius * 0.5);
+        const fullSize = size + blurPadding * 2;
+        const mask = getOrCreateAlphaMask(baseRadius, brushSettings.hardness);
+
+        if (!scratchCanvasRef.current) {
+          scratchCanvasRef.current = document.createElement('canvas');
+        }
+        const scratch = scratchCanvasRef.current;
+        if (scratch.width !== fullSize || scratch.height !== fullSize) {
+          scratch.width = fullSize;
+          scratch.height = fullSize;
+        }
+        const sCtx = scratch.getContext('2d');
+        if (!sCtx) return;
+
+        const blurRadius = Math.max(2, baseRadius * 0.3);
+
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const cx = pPrev.x + dx * t;
+          const cy = pPrev.y + dy * t;
+          const sx = cx - baseRadius - blurPadding;
+          const sy = cy - baseRadius - blurPadding;
+
+          sCtx.clearRect(0, 0, fullSize, fullSize);
+          try {
+            sCtx.filter = `blur(${blurRadius}px)`;
+            sCtx.drawImage(activeCanvas, sx, sy, fullSize, fullSize, 0, 0, fullSize, fullSize);
+            sCtx.filter = 'none';
+
+            sCtx.globalCompositeOperation = 'destination-in';
+            sCtx.drawImage(mask, blurPadding, blurPadding, size, size);
+            sCtx.globalCompositeOperation = 'source-over';
+
+            ctx.save();
+            ctx.globalAlpha = Math.min(1.0, (brushSettings.opacity || 0.8) * 0.5);
+            ctx.drawImage(
+              scratch,
+              blurPadding,
+              blurPadding,
+              size,
+              size,
+              cx - baseRadius,
+              cy - baseRadius,
+              size,
+              size
+            );
+            ctx.restore();
+          } catch {
+            // ignore boundary clamp
+          }
         }
         return;
       }

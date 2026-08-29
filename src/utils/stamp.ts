@@ -213,6 +213,25 @@ export const getOrCreateStamp = (
 };
 
 /**
+ * Circular soft alpha mask stamp for masking Smudge and Blur offscreen operations
+ */
+export const getOrCreateAlphaMask = (radius: number, hardness = 0.0): HTMLCanvasElement => {
+  return getOrCreateStamp(
+    radius,
+    {
+      type: 'round_soft',
+      size: radius * 2,
+      hardness,
+      opacity: 1,
+      flow: 1,
+      spacing: 0.15,
+      color: [255, 255, 255, 255],
+    },
+    [255, 255, 255, 255]
+  );
+};
+
+/**
  * Backwards compatibility helper
  */
 export const getOrCreateSoftStamp = (

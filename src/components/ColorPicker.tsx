@@ -31,9 +31,10 @@ export const ColorPicker: React.FC = () => {
   const [isDraggingWheel, setIsDraggingWheel] = useState(false);
 
   const rgba = hexToRgba(primaryColor, 255);
-  const [h, s, lightness] = rgbToHsl(rgba[0], rgba[1], rgba[2]);
+  const [h, s, rawLightness] = rgbToHsl(rgba[0], rgba[1], rgba[2]);
+  const lightness = rawLightness;
 
-  // Draw HSV / HSL Color Wheel Canvas
+  // Draw vibrant, permanent HSL Chroma Disc (L=0.5) so wheel never goes black or white
   const drawWheel = useCallback(() => {
     const canvas = wheelCanvasRef.current;
     if (!canvas) return;
@@ -44,7 +45,9 @@ export const ColorPicker: React.FC = () => {
     const height = canvas.height;
     const cx = width / 2;
     const cy = height / 2;
-    const radius = Math.min(cx, cy) - 2;
+    const radius = Math.min(cx, cy) - 3;
+
+    ctx.clearRect(0, 0, width, height);
 
     const imgData = ctx.createImageData(width, height);
     const data = imgData.data;
@@ -61,12 +64,16 @@ export const ColorPicker: React.FC = () => {
           if (angle < 0) angle += 360;
 
           const sat = Math.min(1, dist / radius);
-          const [r, g, b] = hslToRgb(angle, sat, lightness);
+          // Pure chromatic wheel at L=0.5
+          const [r, g, b] = hslToRgb(angle, sat, 0.5);
+
+          // Sub-pixel antialiased boundary edge
+          const edgeAlpha = Math.min(1.0, Math.max(0.0, radius - dist + 0.5));
 
           data[idx] = r;
           data[idx + 1] = g;
           data[idx + 2] = b;
-          data[idx + 3] = 255;
+          data[idx + 3] = Math.round(edgeAlpha * 255);
         } else {
           data[idx + 3] = 0;
         }
@@ -82,16 +89,17 @@ export const ColorPicker: React.FC = () => {
     const indY = cy + indRadius * Math.sin(angleRad);
 
     ctx.beginPath();
-    ctx.arc(indX, indY, 4.5, 0, Math.PI * 2);
+    ctx.arc(indX, indY, 5, 0, Math.PI * 2);
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
+
     ctx.beginPath();
-    ctx.arc(indX, indY, 3, 0, Math.PI * 2);
+    ctx.arc(indX, indY, 3.5, 0, Math.PI * 2);
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
-  }, [h, s, lightness]);
+  }, [h, s]);
 
   useEffect(() => {
     if (activeTab === 'wheel') {
@@ -108,7 +116,7 @@ export const ColorPicker: React.FC = () => {
 
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 2;
+    const radius = Math.min(cx, cy) - 3;
 
     const dx = x - cx;
     const dy = y - cy;
@@ -117,8 +125,11 @@ export const ColorPicker: React.FC = () => {
     let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
     if (angle < 0) angle += 360;
 
-    const newSat = Math.min(1, dist / radius);
-    const [r, g, b] = hslToRgb(angle, newSat, lightness);
+    const newSat = Math.min(1, Math.max(0, dist / radius));
+    // If current lightness is pitch black or pure white, default to a balanced 0.5
+    const targetL = lightness < 0.05 || lightness > 0.95 ? 0.5 : lightness;
+
+    const [r, g, b] = hslToRgb(angle, newSat, targetL);
     const newHex = rgbaToHex(r, g, b);
     setPrimaryColor(newHex);
   };
@@ -156,7 +167,7 @@ export const ColorPicker: React.FC = () => {
           <div className="relative w-7 h-7">
             <div
               style={{ backgroundColor: secondaryColor }}
-              className="absolute right-0 bottom-0 w-4 h-4 rounded-sm border border-zinc-600"
+              className="absolute right-0 bottom-0 w-4 h-4 rounded-sm border border-zinc-600 shadow"
               title="Secondary Color"
             />
             <div
@@ -175,37 +186,39 @@ export const ColorPicker: React.FC = () => {
         </div>
       </div>
 
-      {/* Mode 1: Color Wheel */}
+      {/* Mode 1: Permanent Vibrant Color Wheel */}
       {activeTab === 'wheel' && (
-        <div className="flex flex-col items-center space-y-2">
-          <canvas
-            ref={wheelCanvasRef}
-            width={120}
-            height={120}
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              setIsDraggingWheel(true);
-              handleWheelPointer(e);
-            }}
-            onPointerMove={(e) => {
-              if (isDraggingWheel) handleWheelPointer(e);
-            }}
-            onPointerUp={(e) => {
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-              setIsDraggingWheel(false);
-            }}
-            className="rounded-full cursor-crosshair shadow-md"
-          />
+        <div className="flex flex-col items-center space-y-2.5">
+          <div className="relative p-1 rounded-full bg-zinc-900 border border-zinc-700/80 shadow-inner">
+            <canvas
+              ref={wheelCanvasRef}
+              width={124}
+              height={124}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setIsDraggingWheel(true);
+                handleWheelPointer(e);
+              }}
+              onPointerMove={(e) => {
+                if (isDraggingWheel) handleWheelPointer(e);
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+                setIsDraggingWheel(false);
+              }}
+              className="rounded-full cursor-crosshair block"
+            />
+          </div>
 
           {/* Lightness Slider */}
           <div className="w-full flex items-center space-x-2">
             <span className="text-[10px] text-zinc-400 font-mono">L:</span>
             <input
               type="range"
-              min="0.05"
-              max="0.95"
+              min="0.0"
+              max="1.0"
               step="0.01"
               value={lightness}
               onChange={(e) => {
@@ -215,7 +228,7 @@ export const ColorPicker: React.FC = () => {
               }}
               className="flex-1 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
             />
-            <span className="text-[10px] font-mono text-zinc-300 w-6 text-right">
+            <span className="text-[10px] font-mono text-zinc-300 w-7 text-right">
               {Math.round(lightness * 100)}%
             </span>
           </div>
