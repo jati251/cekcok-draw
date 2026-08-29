@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
-import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2, Menu } from 'lucide-react';
+import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import * as filters from '../utils/filters';
 import { expandSelection, contractSelection } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
@@ -38,7 +38,6 @@ export const TopMenuBar: React.FC<Props> = ({
   } = useEditorStore();
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [showMacMenus, setShowMacMenus] = useState(false);
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
@@ -202,52 +201,8 @@ export const TopMenuBar: React.FC<Props> = ({
           </span>
         </div>
 
-        {/* On macOS: Clean dropdown toggle or native menu bar integration */}
-        {isMac ? (
-          <div className="relative">
-            <button
-              onClick={() => setShowMacMenus(!showMacMenus)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-surface flex items-center space-x-1"
-              title="Menu Options"
-            >
-              <Menu size={14} />
-              <span className="text-[11px]">Menu</span>
-            </button>
-
-            {showMacMenus && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowMacMenus(false)} />
-                <div className="absolute left-0 top-full mt-1 w-56 bg-ps-surface border border-ps-border rounded-lg shadow-2xl py-1 z-50 text-xs">
-                  {Object.entries(menus).map(([cat, items]) => (
-                    <div key={cat} className="px-1 py-0.5">
-                      <div className="text-[10px] font-bold text-zinc-500 uppercase px-2 py-0.5 font-mono">
-                        {cat}
-                      </div>
-                      {items.map((item, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => {
-                            item.action();
-                            setShowMacMenus(false);
-                          }}
-                          className="w-full px-2 py-1 text-left hover:bg-ps-active hover:text-white rounded flex items-center justify-between text-zinc-200"
-                        >
-                          <span>{item.label}</span>
-                          {item.shortcut && (
-                            <span className="text-zinc-400 text-[10px] font-mono">
-                              {item.shortcut}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        ) : (
-          /* On Windows / Linux: Standard inline horizontal menu bar */
+        {/* On Windows / Linux / Web: Standard inline horizontal menu bar */}
+        {!isMac &&
           Object.entries(menus).map(([menuName, items]) => (
             <div key={menuName} className="relative">
               <button
@@ -286,8 +241,7 @@ export const TopMenuBar: React.FC<Props> = ({
                 </>
               )}
             </div>
-          ))
-        )}
+          ))}
       </div>
 
       {/* Document info & quick view tools */}
