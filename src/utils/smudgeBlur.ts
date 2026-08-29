@@ -1,121 +1,8 @@
 /**
- * Production-Grade Wet Paint Smudge & Alpha-Weighted Blur Engines
- * Uses an offscreen soft-masked paint reservoir (Photoshop / Procreate architecture)
- * for 100% silky-smooth continuous blending without ridges, stepping bands, or lag.
+ * Zero-Black-Halo Continuous Sub-Stepping Smudge & Alpha-Weighted Blur
+ * Uses sub-pixel bilinear sampling and smooth cosine bell falloff
+ * to eliminate ghosting artifacts, stepping bands, and lag.
  */
-
-// Reusable offscreen canvas for paint pickup reservoir
-let pickupCanvas: HTMLCanvasElement | null = null;
-let pickupCtx: CanvasRenderingContext2D | null = null;
-let maskCanvas: HTMLCanvasElement | null = null;
-let maskCtx: CanvasRenderingContext2D | null = null;
-let currentMaskRadius = -1;
-
-const getOrCreateMask = (radius: number): HTMLCanvasElement => {
-  const size = Math.ceil(radius * 2);
-  if (!maskCanvas || currentMaskRadius !== radius || maskCanvas.width !== size) {
-    maskCanvas = document.createElement('canvas');
-    maskCanvas.width = size;
-    maskCanvas.height = size;
-    maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-    currentMaskRadius = radius;
-
-    if (maskCtx) {
-      const grad = maskCtx.createRadialGradient(radius, radius, 0, radius, radius, radius);
-      grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-      grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.7)');
-      grad.addColorStop(0.85, 'rgba(255, 255, 255, 0.25)');
-      grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
-
-      maskCtx.fillStyle = grad;
-      maskCtx.beginPath();
-      maskCtx.arc(radius, radius, radius, 0, Math.PI * 2);
-      maskCtx.fill();
-    }
-  }
-  return maskCanvas;
-};
-
-export const initSmudgePickup = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number
-) => {
-  const size = Math.ceil(radius * 2);
-  if (!pickupCanvas || pickupCanvas.width !== size) {
-    pickupCanvas = document.createElement('canvas');
-    pickupCanvas.width = size;
-    pickupCanvas.height = size;
-    pickupCtx = pickupCanvas.getContext('2d', { willReadFrequently: true });
-  }
-
-  if (pickupCtx) {
-    pickupCtx.clearRect(0, 0, size, size);
-    pickupCtx.save();
-    // Copy the canvas area directly under the initial touch point
-    pickupCtx.drawImage(ctx.canvas, x - radius, y - radius, size, size, 0, 0, size, size);
-
-    // Apply soft radial alpha mask
-    pickupCtx.globalCompositeOperation = 'destination-in';
-    pickupCtx.drawImage(getOrCreateMask(radius), 0, 0);
-    pickupCtx.restore();
-  }
-};
-
-export const applyLocalSmudge = (
-  ctx: CanvasRenderingContext2D,
-  _docWidth: number,
-  _docHeight: number,
-  pPrev: { x: number; y: number },
-  pCurr: { x: number; y: number },
-  radius: number,
-  strength = 0.6
-) => {
-  const size = Math.ceil(radius * 2);
-
-  // Initialize pickup buffer if not yet created for this stroke
-  if (!pickupCanvas || pickupCanvas.width !== size || !pickupCtx) {
-    initSmudgePickup(ctx, pPrev.x, pPrev.y, radius);
-  }
-
-  if (!pickupCanvas || !pickupCtx) return;
-
-  const dx = pCurr.x - pPrev.x;
-  const dy = pCurr.y - pPrev.y;
-  const dist = Math.hypot(dx, dy);
-
-  // Very tight sub-pixel step spacing (0.75px to 1.5px) for buttery liquid smooth dragging
-  const stepSize = Math.max(0.75, Math.min(1.5, radius * 0.08));
-  const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-  const mask = getOrCreateMask(radius);
-  const stampAlpha = Math.min(0.35, Math.max(0.08, (strength * 0.28) / Math.max(1, steps * 0.15)));
-
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const x = pPrev.x + dx * t;
-    const y = pPrev.y + dy * t;
-
-    // 1. Stamp the carried paint reservoir onto the canvas
-    ctx.save();
-    ctx.globalAlpha = stampAlpha;
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(pickupCanvas, x - radius, y - radius);
-    ctx.restore();
-
-    // 2. Refresh & mix the reservoir with a fraction of newly touched canvas paint
-    pickupCtx.save();
-    pickupCtx.globalAlpha = 0.18 * strength;
-    pickupCtx.globalCompositeOperation = 'source-over';
-    pickupCtx.drawImage(ctx.canvas, x - radius, y - radius, size, size, 0, 0, size, size);
-    // Keep the soft circular boundary on the reservoir
-    pickupCtx.globalCompositeOperation = 'destination-in';
-    pickupCtx.globalAlpha = 1.0;
-    pickupCtx.drawImage(mask, 0, 0);
-    pickupCtx.restore();
-  }
-};
 
 export const applyLocalBlur = (
   ctx: CanvasRenderingContext2D,
@@ -198,5 +85,117 @@ export const applyLocalBlur = (
   }
 
   imgData.data.set(out);
+  ctx.putImageData(imgData, minX, minY);
+};
+
+export const applyLocalSmudge = (
+  ctx: CanvasRenderingContext2D,
+  docWidth: number,
+  docHeight: number,
+  pPrev: { x: number; y: number },
+  pCurr: { x: number; y: number },
+  radius: number,
+  strength = 0.5
+) => {
+  const rInt = Math.ceil(radius);
+  const minX = Math.max(0, Math.floor(Math.min(pPrev.x, pCurr.x) - rInt - 2));
+  const minY = Math.max(0, Math.floor(Math.min(pPrev.y, pCurr.y) - rInt - 2));
+  const maxX = Math.min(docWidth, Math.ceil(Math.max(pPrev.x, pCurr.x) + rInt + 2));
+  const maxY = Math.min(docHeight, Math.ceil(Math.max(pPrev.y, pCurr.y) + rInt + 2));
+  const w = maxX - minX;
+  const h = maxY - minY;
+
+  if (w <= 0 || h <= 0) return;
+
+  const totalDx = pCurr.x - pPrev.x;
+  const totalDy = pCurr.y - pPrev.y;
+  const totalDist = Math.hypot(totalDx, totalDy);
+
+  // Sub-step size: 1.5px to 3px increments to prevent discrete jumps & ghost silhouettes
+  const stepSize = Math.max(1.2, Math.min(3.0, radius * 0.1));
+  const steps = Math.max(1, Math.ceil(totalDist / stepSize));
+  const stepDx = totalDx / steps;
+  const stepDy = totalDy / steps;
+
+  const imgData = ctx.getImageData(minX, minY, w, h);
+  const data = imgData.data;
+
+  // Bilinear pixel sampling helper inside local sub-buffer
+  const sampleBilinear = (
+    sx: number,
+    sy: number,
+    target: [number, number, number, number]
+  ): boolean => {
+    const x0 = Math.floor(sx);
+    const y0 = Math.floor(sy);
+    const x1 = x0 + 1;
+    const y1 = y0 + 1;
+
+    if (x0 < 0 || x1 >= w || y0 < 0 || y1 >= h) return false;
+
+    const fx = sx - x0;
+    const fy = sy - y0;
+    const w00 = (1 - fx) * (1 - fy);
+    const w10 = fx * (1 - fy);
+    const w01 = (1 - fx) * fy;
+    const w11 = fx * fy;
+
+    const i00 = (y0 * w + x0) * 4;
+    const i10 = (y0 * w + x1) * 4;
+    const i01 = (y1 * w + x0) * 4;
+    const i11 = (y1 * w + x1) * 4;
+
+    target[0] = data[i00] * w00 + data[i10] * w10 + data[i01] * w01 + data[i11] * w11;
+    target[1] =
+      data[i00 + 1] * w00 + data[i10 + 1] * w10 + data[i01 + 1] * w01 + data[i11 + 1] * w11;
+    target[2] =
+      data[i00 + 2] * w00 + data[i10 + 2] * w10 + data[i01 + 2] * w01 + data[i11 + 2] * w11;
+    target[3] =
+      data[i00 + 3] * w00 + data[i10 + 3] * w10 + data[i01 + 3] * w01 + data[i11 + 3] * w11;
+    return true;
+  };
+
+  const sampleColor: [number, number, number, number] = [0, 0, 0, 0];
+  const subStrength = Math.min(0.85, Math.max(0.2, strength * 0.75));
+
+  // Perform continuous fluid smearing across all sub-steps
+  for (let s = 1; s <= steps; s++) {
+    const currX = pPrev.x + stepDx * s - minX;
+    const currY = pPrev.y + stepDy * s - minY;
+
+    const minSubX = Math.max(0, Math.floor(currX - radius));
+    const maxSubX = Math.min(w - 1, Math.ceil(currX + radius));
+    const minSubY = Math.max(0, Math.floor(currY - radius));
+    const maxSubY = Math.min(h - 1, Math.ceil(currY + radius));
+
+    for (let y = minSubY; y <= maxSubY; y++) {
+      const dy = y - currY;
+      for (let x = minSubX; x <= maxSubX; x++) {
+        const dx = x - currX;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist <= radius) {
+          const sampleX = x - stepDx;
+          const sampleY = y - stepDy;
+
+          if (sampleBilinear(sampleX, sampleY, sampleColor)) {
+            const sA = sampleColor[3];
+            if (sA > 0) {
+              const falloff = 0.5 * (1 + Math.cos((Math.PI * dist) / radius));
+              const blend = subStrength * falloff;
+              const invBlend = 1 - blend;
+
+              const idx = (y * w + x) * 4;
+              data[idx] = Math.round(data[idx] * invBlend + sampleColor[0] * blend);
+              data[idx + 1] = Math.round(data[idx + 1] * invBlend + sampleColor[1] * blend);
+              data[idx + 2] = Math.round(data[idx + 2] * invBlend + sampleColor[2] * blend);
+              data[idx + 3] = Math.round(data[idx + 3] * invBlend + sampleColor[3] * blend);
+            }
+          }
+        }
+      }
+    }
+  }
+
   ctx.putImageData(imgData, minX, minY);
 };

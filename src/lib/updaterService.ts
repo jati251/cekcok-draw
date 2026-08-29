@@ -13,7 +13,7 @@ export interface AppUpdateInfo {
 
 let activeUpdateInstance: Update | null = null;
 
-export const checkForAppUpdate = async (currentVersion = '0.2.2'): Promise<AppUpdateInfo> => {
+export const checkForAppUpdate = async (currentVersion = '0.2.3'): Promise<AppUpdateInfo> => {
   if (!isTauriEnvironment()) {
     // Browser fallback simulation
     return {

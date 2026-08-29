@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '../types';
 import { getOrCreateStamp } from '../utils/stamp';
-import { applyLocalBlur, applyLocalSmudge, initSmudgePickup } from '../utils/smudgeBlur';
+import { applyLocalBlur, applyLocalSmudge } from '../utils/smudgeBlur';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import * as bridge from '../lib/tauriBridge';
@@ -241,18 +241,7 @@ export const useCanvasDrawing = ({
         return;
       }
 
-      if (activeTool === 'smudge') {
-        const activeCanvas = doc?.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas || !doc) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (ctx) initSmudgePickup(ctx, p.x, p.y, baseRadius);
-        return;
-      }
+      if (activeTool === 'smudge') return;
 
       if (activeTool === 'eraser') {
         const activeCanvas = doc?.active_layer_id
