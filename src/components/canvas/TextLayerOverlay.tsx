@@ -11,6 +11,7 @@ export const TextLayerOverlay: React.FC = () => {
   useEffect(() => {
     if (activeTextNode && textareaRef.current) {
       textareaRef.current.focus();
+      textareaRef.current.select();
     }
   }, [activeTextNode]);
 
@@ -22,14 +23,25 @@ export const TextLayerOverlay: React.FC = () => {
       return;
     }
 
-    const activeCanvas = doc.active_layer_id
-      ? (document.getElementById(`layer-canvas-${doc.active_layer_id}`) as HTMLCanvasElement | null)
-      : null;
+    const activeId = doc.active_layer_id || doc.layers[doc.layers.length - 1]?.id;
+    let activeCanvas = document.getElementById(
+      `layer-canvas-${activeId}`
+    ) as HTMLCanvasElement | null;
+
+    if (!activeCanvas) {
+      activeCanvas =
+        (document.querySelector(
+          `canvas[data-layer-id="${activeId}"]`
+        ) as HTMLCanvasElement | null) ||
+        (document.querySelector('canvas') as HTMLCanvasElement | null);
+    }
 
     if (activeCanvas) {
       const ctx = activeCanvas.getContext('2d');
       if (ctx) {
         ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
         ctx.font = `${textSettings.fontWeight} ${textSettings.fontSize}px ${textSettings.fontFamily}`;
         ctx.fillStyle = primaryColor;
         ctx.textAlign = textSettings.align;
@@ -55,6 +67,8 @@ export const TextLayerOverlay: React.FC = () => {
         left: `${activeTextNode.x}px`,
         top: `${activeTextNode.y}px`,
       }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       className="absolute z-50 pointer-events-auto"
     >
       <textarea
@@ -62,6 +76,8 @@ export const TextLayerOverlay: React.FC = () => {
         value={activeTextNode.text}
         onChange={(e) => setActiveTextNode({ ...activeTextNode, text: e.target.value })}
         onBlur={commitTextToCanvas}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -78,9 +94,9 @@ export const TextLayerOverlay: React.FC = () => {
           textAlign: textSettings.align,
           color: primaryColor,
         }}
-        className="bg-transparent border-2 border-blue-500 border-dashed rounded p-1 outline-none resize-both min-w-[120px] min-h-[40px] shadow-lg bg-black/20"
+        className="bg-transparent border-2 border-blue-500 border-dashed rounded p-1 outline-none resize-both min-w-[140px] min-h-[44px] shadow-lg bg-black/40 text-white cursor-text"
       />
-      <div className="text-[10px] text-zinc-400 bg-black/80 px-1 rounded absolute -bottom-5 left-0 whitespace-nowrap">
+      <div className="text-[10px] text-zinc-300 bg-black/90 px-1.5 py-0.5 rounded absolute -bottom-6 left-0 whitespace-nowrap shadow border border-zinc-700">
         Press ⌘+Enter to commit, Esc to cancel
       </div>
     </div>

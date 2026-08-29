@@ -310,7 +310,13 @@ export const useCanvasDrawing = ({
   const bakeStrokeToLayer = useCallback(async () => {
     const strokeCanvas = liveStrokeCanvasRef.current;
     const activeLayerId = doc?.active_layer_id;
-    const activeCanvas = activeLayerId ? layerCanvasesRef.current?.get(activeLayerId) : null;
+    const activeCanvas = activeLayerId
+      ? layerCanvasesRef.current?.get(activeLayerId) ||
+        (document.getElementById(`layer-canvas-${activeLayerId}`) as HTMLCanvasElement | null) ||
+        (document.querySelector(
+          `canvas[data-layer-id="${activeLayerId}"]`
+        ) as HTMLCanvasElement | null)
+      : null;
 
     if (activeCanvas && strokeCanvas && doc) {
       const mainCtx = activeCanvas.getContext('2d');

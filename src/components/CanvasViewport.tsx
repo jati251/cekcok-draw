@@ -29,6 +29,7 @@ export const CanvasViewport: React.FC = () => {
     showGrid,
     selection,
     setSelection,
+    activeTextNode,
   } = useEditorStore();
 
   const {
@@ -107,7 +108,9 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (activeTool === 'text') {
-      setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
+      if (!activeTextNode) {
+        setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
+      }
       return;
     }
 
