@@ -10,34 +10,39 @@ export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
   const { doc, canvasRevision } = useDocumentStore();
 
   useEffect(() => {
-    const thumbCanvas = canvasRef.current;
-    if (!thumbCanvas) return;
-    const thumbCtx = thumbCanvas.getContext('2d');
-    if (!thumbCtx) return;
+    // Debounce thumbnail downsampling so drawing never stutters or lags
+    const timer = setTimeout(() => {
+      const thumbCanvas = canvasRef.current;
+      if (!thumbCanvas) return;
+      const thumbCtx = thumbCanvas.getContext('2d');
+      if (!thumbCtx) return;
 
-    const sourceCanvas = document.getElementById(
-      `layer-canvas-${layerId}`
-    ) as HTMLCanvasElement | null;
+      const sourceCanvas = document.getElementById(
+        `layer-canvas-${layerId}`
+      ) as HTMLCanvasElement | null;
 
-    thumbCtx.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+      thumbCtx.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
 
-    if (sourceCanvas && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
-      try {
-        thumbCtx.drawImage(
-          sourceCanvas,
-          0,
-          0,
-          sourceCanvas.width,
-          sourceCanvas.height,
-          0,
-          0,
-          thumbCanvas.width,
-          thumbCanvas.height
-        );
-      } catch {
-        // ignore transient error
+      if (sourceCanvas && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
+        try {
+          thumbCtx.drawImage(
+            sourceCanvas,
+            0,
+            0,
+            sourceCanvas.width,
+            sourceCanvas.height,
+            0,
+            0,
+            thumbCanvas.width,
+            thumbCanvas.height
+          );
+        } catch {
+          // ignore transient error
+        }
       }
-    }
+    }, 120);
+
+    return () => clearTimeout(timer);
   }, [layerId, doc, canvasRevision]);
 
   return (

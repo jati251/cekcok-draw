@@ -31,7 +31,6 @@ export const CanvasViewport: React.FC = () => {
     showGrid,
     selection,
     setSelection,
-    activeTextNode,
   } = useEditorStore();
 
   const {
@@ -88,7 +87,14 @@ export const CanvasViewport: React.FC = () => {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+
+    if (activeTool !== 'text') {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
 
     if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
       startPanning(e.clientX, e.clientY);
@@ -119,9 +125,7 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (activeTool === 'text') {
-      if (!activeTextNode) {
-        setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
-      }
+      setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
       return;
     }
 

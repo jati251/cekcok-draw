@@ -1,17 +1,17 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditorStore } from '../../stores/editorStore';
 import { useDocumentStore } from '../../stores/documentStore';
+import { Check, X } from 'lucide-react';
 import * as bridge from '../../lib/tauriBridge';
 
 export const TextLayerOverlay: React.FC = () => {
   const { activeTextNode, setActiveTextNode, textSettings, primaryColor } = useEditorStore();
-  const { doc } = useDocumentStore();
+  const { doc, bumpCanvasRevision } = useDocumentStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (activeTextNode && textareaRef.current) {
       textareaRef.current.focus();
-      textareaRef.current.select();
     }
   }, [activeTextNode]);
 
@@ -44,7 +44,7 @@ export const TextLayerOverlay: React.FC = () => {
         ctx.globalAlpha = 1.0;
         ctx.font = `${textSettings.fontWeight} ${textSettings.fontSize}px ${textSettings.fontFamily}`;
         ctx.fillStyle = primaryColor;
-        ctx.textAlign = textSettings.align;
+        ctx.textAlign = textSettings.align || 'left';
         ctx.textBaseline = 'top';
 
         const lines = activeTextNode.text.split('\n');
@@ -54,6 +54,7 @@ export const TextLayerOverlay: React.FC = () => {
         });
         ctx.restore();
 
+        bumpCanvasRevision();
         bridge.commitStrokeHistory(`Text: "${activeTextNode.text.slice(0, 15)}..."`);
       }
     }
@@ -69,17 +70,16 @@ export const TextLayerOverlay: React.FC = () => {
       }}
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      className="absolute z-50 pointer-events-auto"
+      className="absolute z-50 pointer-events-auto flex flex-col items-start"
     >
       <textarea
         ref={textareaRef}
         value={activeTextNode.text}
         onChange={(e) => setActiveTextNode({ ...activeTextNode, text: e.target.value })}
-        onBlur={commitTextToCanvas}
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             commitTextToCanvas();
           } else if (e.key === 'Escape') {
@@ -94,10 +94,30 @@ export const TextLayerOverlay: React.FC = () => {
           textAlign: textSettings.align,
           color: primaryColor,
         }}
-        className="bg-transparent border-2 border-blue-500 border-dashed rounded p-1 outline-none resize-both min-w-[140px] min-h-[44px] shadow-lg bg-black/40 text-white cursor-text"
+        className="bg-black/60 border-2 border-blue-500 border-dashed rounded p-1.5 outline-none resize-both min-w-[160px] min-h-[48px] shadow-2xl text-white cursor-text block"
       />
-      <div className="text-[10px] text-zinc-300 bg-black/90 px-1.5 py-0.5 rounded absolute -bottom-6 left-0 whitespace-nowrap shadow border border-zinc-700">
-        Press ⌘+Enter to commit, Esc to cancel
+
+      {/* Floating Action Controls */}
+      <div className="flex items-center space-x-1.5 mt-1 bg-zinc-900/95 border border-zinc-700 px-2 py-1 rounded shadow-xl text-zinc-300">
+        <button
+          onClick={commitTextToCanvas}
+          className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded transition-colors"
+          title="Commit Text to Layer (Enter)"
+        >
+          <Check size={12} />
+          <span>Done</span>
+        </button>
+        <button
+          onClick={() => setActiveTextNode(null)}
+          className="flex items-center space-x-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-[11px] px-2 py-0.5 rounded transition-colors"
+          title="Cancel (Esc)"
+        >
+          <X size={12} />
+          <span>Cancel</span>
+        </button>
+        <span className="text-[10px] text-zinc-400 font-mono ml-1">
+          Enter = Commit | Shift+Enter = Line
+        </span>
       </div>
     </div>
   );
