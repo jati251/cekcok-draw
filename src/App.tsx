@@ -71,7 +71,10 @@ export const App: React.FC = () => {
         <CanvasViewport />
 
         {/* Right Dockable Studio Panels */}
-        {activePanel !== 'all' && activePanel !== 'layers' && activePanel !== 'history' && activePanel !== 'color' ? null : (
+        {activePanel !== 'all' &&
+        activePanel !== 'layers' &&
+        activePanel !== 'history' &&
+        activePanel !== 'color' ? null : (
           <aside className="w-72 bg-ps-panel border-l border-ps-border flex flex-col z-20 shadow-xl">
             {(activePanel === 'all' || activePanel === 'color') && <ColorPicker />}
             {(activePanel === 'all' || activePanel === 'history') && <HistoryPanel />}

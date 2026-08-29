@@ -3,8 +3,15 @@ import { useEditorStore } from '../stores/editorStore';
 import { Grid, Compass } from 'lucide-react';
 
 export const ToolOptionsBar: React.FC = () => {
-  const { activeTool, brushSettings, setBrushSettings, showGrid, setShowGrid, showRulers, setShowRulers } =
-    useEditorStore();
+  const {
+    activeTool,
+    brushSettings,
+    setBrushSettings,
+    showGrid,
+    setShowGrid,
+    showRulers,
+    setShowRulers,
+  } = useEditorStore();
 
   return (
     <div className="h-9 bg-ps-surface border-b border-ps-border flex items-center px-4 space-x-6 text-xs text-zinc-300 select-none z-20">
@@ -41,7 +48,9 @@ export const ToolOptionsBar: React.FC = () => {
               onChange={(e) => setBrushSettings({ hardness: Number(e.target.value) })}
               className="w-16 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
             />
-            <span className="font-mono text-[11px] w-8 text-zinc-200">{Math.round(brushSettings.hardness * 100)}%</span>
+            <span className="font-mono text-[11px] w-8 text-zinc-200">
+              {Math.round(brushSettings.hardness * 100)}%
+            </span>
           </div>
 
           {/* Opacity */}
@@ -56,7 +65,9 @@ export const ToolOptionsBar: React.FC = () => {
               onChange={(e) => setBrushSettings({ opacity: Number(e.target.value) })}
               className="w-16 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
             />
-            <span className="font-mono text-[11px] w-8 text-zinc-200">{Math.round(brushSettings.opacity * 100)}%</span>
+            <span className="font-mono text-[11px] w-8 text-zinc-200">
+              {Math.round(brushSettings.opacity * 100)}%
+            </span>
           </div>
 
           {/* Flow */}
@@ -71,7 +82,9 @@ export const ToolOptionsBar: React.FC = () => {
               onChange={(e) => setBrushSettings({ flow: Number(e.target.value) })}
               className="w-16 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
             />
-            <span className="font-mono text-[11px] w-8 text-zinc-200">{Math.round(brushSettings.flow * 100)}%</span>
+            <span className="font-mono text-[11px] w-8 text-zinc-200">
+              {Math.round(brushSettings.flow * 100)}%
+            </span>
           </div>
         </div>
       )}
@@ -81,7 +94,9 @@ export const ToolOptionsBar: React.FC = () => {
         <button
           onClick={() => setShowGrid(!showGrid)}
           className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
-            showGrid ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-hover'
+            showGrid
+              ? 'bg-blue-600 text-white'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-hover'
           }`}
           title="Toggle Pixel Grid"
         >
@@ -92,7 +107,9 @@ export const ToolOptionsBar: React.FC = () => {
         <button
           onClick={() => setShowRulers(!showRulers)}
           className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
-            showRulers ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-hover'
+            showRulers
+              ? 'bg-blue-600 text-white'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-hover'
           }`}
           title="Toggle Rulers"
         >

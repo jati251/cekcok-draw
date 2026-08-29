@@ -53,11 +53,4 @@ export interface HistoryAction {
 }
 
 export type ToolType =
-  | 'move'
-  | 'brush'
-  | 'eraser'
-  | 'eyedropper'
-  | 'paint_bucket'
-  | 'hand'
-  | 'zoom'
-  | 'selection';
+  'move' | 'brush' | 'eraser' | 'eyedropper' | 'paint_bucket' | 'hand' | 'zoom' | 'selection';

@@ -20,7 +20,9 @@ interface EditorState {
   setSecondaryColor: (hex: string) => void;
   swapColors: () => void;
   setZoom: (zoom: number | ((prev: number) => number)) => void;
-  setPan: (pan: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })) => void;
+  setPan: (
+    pan: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })
+  ) => void;
   setCursorPos: (pos: { x: number; y: number }) => void;
   setIsDrawing: (drawing: boolean) => void;
   setShowGrid: (show: boolean) => void;
@@ -86,7 +88,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
   setZoom: (zoom) =>
     set((state) => ({
-      zoom: typeof zoom === 'function' ? Math.min(32, Math.max(0.05, zoom(state.zoom))) : Math.min(32, Math.max(0.05, zoom)),
+      zoom:
+        typeof zoom === 'function'
+          ? Math.min(32, Math.max(0.05, zoom(state.zoom)))
+          : Math.min(32, Math.max(0.05, zoom)),
     })),
   setPan: (pan) =>
     set((state) => ({

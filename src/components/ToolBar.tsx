@@ -28,7 +28,12 @@ export const ToolBar: React.FC = () => {
     { type: 'brush', label: 'Brush Tool', icon: <Paintbrush size={18} />, shortcut: 'B' },
     { type: 'eraser', label: 'Eraser Tool', icon: <Eraser size={18} />, shortcut: 'E' },
     { type: 'eyedropper', label: 'Eyedropper Tool', icon: <Pipette size={18} />, shortcut: 'I' },
-    { type: 'paint_bucket', label: 'Paint Bucket Tool', icon: <PaintBucket size={18} />, shortcut: 'G' },
+    {
+      type: 'paint_bucket',
+      label: 'Paint Bucket Tool',
+      icon: <PaintBucket size={18} />,
+      shortcut: 'G',
+    },
     { type: 'hand', label: 'Hand Tool (Pan)', icon: <Hand size={18} />, shortcut: 'H / Space' },
     { type: 'zoom', label: 'Zoom Tool', icon: <ZoomIn size={18} />, shortcut: 'Z' },
   ];

@@ -33,7 +33,7 @@ const mockDoc: DocumentInfo = {
   active_layer_id: 'layer-1',
 };
 
-let mockHistory: HistoryAction[] = [
+const mockHistory: HistoryAction[] = [
   {
     id: 'h-1',
     description: 'Initialize Document',
@@ -41,7 +41,11 @@ let mockHistory: HistoryAction[] = [
   },
 ];
 
-export async function createDocument(title: string, width: number, height: number): Promise<DocumentInfo> {
+export async function createDocument(
+  title: string,
+  width: number,
+  height: number
+): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('create_document', { title, width, height });
   }
@@ -72,7 +76,11 @@ export async function addLayer(name: string): Promise<DocumentInfo> {
     locked: false,
   });
   mockDoc.active_layer_id = newId;
-  mockHistory.push({ id: `h-${Date.now()}`, description: `Add Layer '${name}'`, timestamp: Date.now() });
+  mockHistory.push({
+    id: `h-${Date.now()}`,
+    description: `Add Layer '${name}'`,
+    timestamp: Date.now(),
+  });
   return { ...mockDoc };
 }
 
@@ -115,7 +123,10 @@ export async function setLayerVisibility(layerId: string, visible: boolean): Pro
   return { ...mockDoc };
 }
 
-export async function setLayerBlendMode(layerId: string, blendMode: BlendMode): Promise<DocumentInfo> {
+export async function setLayerBlendMode(
+  layerId: string,
+  blendMode: BlendMode
+): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_layer_blend_mode', { layerId, blendMode });
   }
@@ -174,7 +185,12 @@ export async function getHistory(): Promise<HistoryAction[]> {
   return [...mockHistory];
 }
 
-export async function renderViewport(vx: number, vy: number, vw: number, vh: number): Promise<Uint8Array | null> {
+export async function renderViewport(
+  vx: number,
+  vy: number,
+  vw: number,
+  vh: number
+): Promise<Uint8Array | null> {
   if (isTauriEnvironment()) {
     const raw = await invoke<number[]>('render_viewport', {
       request: { vx, vy, vw, vh },

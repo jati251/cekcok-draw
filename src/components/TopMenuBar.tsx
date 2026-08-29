@@ -1,12 +1,5 @@
 import React, { useState } from 'react';
-import {
-  RotateCcw,
-  RotateCw,
-  Maximize2,
-  ZoomIn,
-  ZoomOut,
-  Sparkles,
-} from 'lucide-react';
+import { RotateCcw, RotateCw, Maximize2, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 
@@ -17,9 +10,19 @@ export const TopMenuBar: React.FC = () => {
 
   const menus: Record<string, { label: string; action: () => void; shortcut?: string }[]> = {
     File: [
-      { label: 'New Document (1920x1080)...', action: () => initDocument('Untitled-1', 1920, 1080), shortcut: '⌘N' },
-      { label: 'New Square Canvas (2048x2048)...', action: () => initDocument('Square-Artwork', 2048, 2048) },
-      { label: 'New 4K Ultra Canvas (3840x2160)...', action: () => initDocument('4K-Master', 3840, 2160) },
+      {
+        label: 'New Document (1920x1080)...',
+        action: () => initDocument('Untitled-1', 1920, 1080),
+        shortcut: '⌘N',
+      },
+      {
+        label: 'New Square Canvas (2048x2048)...',
+        action: () => initDocument('Square-Artwork', 2048, 2048),
+      },
+      {
+        label: 'New 4K Ultra Canvas (3840x2160)...',
+        action: () => initDocument('4K-Master', 3840, 2160),
+      },
       { label: 'Open...', action: () => {}, shortcut: '⌘O' },
       { label: 'Export as PNG...', action: () => {}, shortcut: '⌘E' },
     ],
@@ -33,7 +36,11 @@ export const TopMenuBar: React.FC = () => {
       { label: 'Zoom Out', action: () => setZoom((z) => z / 1.25), shortcut: '⌘-' },
       { label: 'Fit on Screen (100%)', action: () => resetView(), shortcut: '⌘0' },
       { label: 'Actual Pixels (100%)', action: () => setZoom(1.0), shortcut: '⌘1' },
-      { label: 'Toggle All Panels', action: () => setActivePanel(activePanel === 'all' ? 'layers' : 'all'), shortcut: 'Tab' },
+      {
+        label: 'Toggle All Panels',
+        action: () => setActivePanel(activePanel === 'all' ? 'layers' : 'all'),
+        shortcut: 'Tab',
+      },
     ],
     Window: [
       { label: 'Layers Panel', action: () => setActivePanel('layers'), shortcut: 'F7' },
@@ -49,7 +56,9 @@ export const TopMenuBar: React.FC = () => {
       <div className="flex items-center space-x-1">
         <div className="flex items-center space-x-2 mr-3 font-bold text-sm tracking-wide text-blue-400 bg-blue-950/40 border border-blue-800/40 px-2 py-0.5 rounded">
           <Sparkles size={14} className="text-blue-400" />
-          <span>CEKCOK<span className="text-white font-extralight ml-0.5">DRAW</span></span>
+          <span>
+            CEKCOK<span className="text-white font-extralight ml-0.5">DRAW</span>
+          </span>
         </div>
 
         {Object.entries(menus).map(([menuName, items]) => (
@@ -57,7 +66,9 @@ export const TopMenuBar: React.FC = () => {
             <button
               onClick={() => setActiveMenu(activeMenu === menuName ? null : menuName)}
               className={`px-2.5 py-1 rounded transition-colors ${
-                activeMenu === menuName ? 'bg-ps-surface text-white' : 'hover:bg-ps-surface/60 text-zinc-300'
+                activeMenu === menuName
+                  ? 'bg-ps-surface text-white'
+                  : 'hover:bg-ps-surface/60 text-zinc-300'
               }`}
             >
               {menuName}
@@ -77,7 +88,9 @@ export const TopMenuBar: React.FC = () => {
                       className="w-full px-3 py-1.5 text-left hover:bg-ps-active hover:text-white flex items-center justify-between text-zinc-200"
                     >
                       <span>{item.label}</span>
-                      {item.shortcut && <span className="text-zinc-400 text-[10px] ml-4">{item.shortcut}</span>}
+                      {item.shortcut && (
+                        <span className="text-zinc-400 text-[10px] ml-4">{item.shortcut}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -94,7 +107,9 @@ export const TopMenuBar: React.FC = () => {
             <span className="text-zinc-200 font-medium">{doc.title}</span>
             <span className="text-zinc-500">@</span>
             <span className="text-blue-400 font-mono">{Math.round(zoom * 100)}%</span>
-            <span className="text-zinc-500">({doc.width} × {doc.height} px)</span>
+            <span className="text-zinc-500">
+              ({doc.width} × {doc.height} px)
+            </span>
           </div>
         )}
 

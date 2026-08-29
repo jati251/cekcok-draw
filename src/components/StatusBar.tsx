@@ -7,7 +7,9 @@ export const StatusBar: React.FC = () => {
   const { doc } = useDocumentStore();
   const { zoom, cursorPos } = useEditorStore();
 
-  const totalTiles = doc ? Math.ceil(doc.width / 512) * Math.ceil(doc.height / 512) * doc.layers.length : 0;
+  const totalTiles = doc
+    ? Math.ceil(doc.width / 512) * Math.ceil(doc.height / 512) * doc.layers.length
+    : 0;
   const estimatedRamMb = (totalTiles * 1.0).toFixed(1);
 
   return (
@@ -31,7 +33,9 @@ export const StatusBar: React.FC = () => {
       <div className="flex items-center space-x-4 font-mono text-[10px] text-zinc-400">
         <div className="flex items-center space-x-1">
           <HardDrive size={11} className="text-emerald-400" />
-          <span>Sparse Pool: {totalTiles} Tiles (~{estimatedRamMb} MB)</span>
+          <span>
+            Sparse Pool: {totalTiles} Tiles (~{estimatedRamMb} MB)
+          </span>
         </div>
         <div className="flex items-center space-x-1 border-l border-ps-border/70 pl-3">
           <Cpu size={11} className="text-blue-400" />

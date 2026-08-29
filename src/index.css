@@ -21,7 +21,7 @@ body {
   background-color: var(--ps-bg);
   color: var(--ps-text);
   user-select: none;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 /* Custom Photoshop-like dark scrollbar */
@@ -43,10 +43,15 @@ body {
 /* Checkerboard pattern for transparency */
 .bg-transparency-grid {
   background-color: #262626;
-  background-image: linear-gradient(45deg, #1f1f1f 25%, transparent 25%),
+  background-image:
+    linear-gradient(45deg, #1f1f1f 25%, transparent 25%),
     linear-gradient(-45deg, #1f1f1f 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #1f1f1f 75%),
     linear-gradient(-45deg, transparent 75%, #1f1f1f 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0px;
 }

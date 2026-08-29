@@ -23,6 +23,7 @@ export const CanvasViewport: React.FC = () => {
   } = useEditorStore();
 
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
+  const [isPanning, setIsPanning] = useState(false);
   const isPanningRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
 
@@ -117,7 +118,7 @@ export const CanvasViewport: React.FC = () => {
       const p = points[0];
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, (brushSettings.size * 0.5 * p.pressure) || 1, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, brushSettings.size * 0.5 * p.pressure || 1, 0, Math.PI * 2);
       ctx.fill();
     } else {
       const p0 = points[points.length - 2];
@@ -139,6 +140,7 @@ export const CanvasViewport: React.FC = () => {
     // Space or middle mouse or Hand tool -> Pan
     if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
       isPanningRef.current = true;
+      setIsPanning(true);
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -169,7 +171,10 @@ export const CanvasViewport: React.FC = () => {
 
     if (isDrawing && (activeTool === 'brush' || activeTool === 'eraser')) {
       const nativeEv = e.nativeEvent as PointerEvent;
-      const coalesced = typeof nativeEv.getCoalescedEvents === 'function' ? nativeEv.getCoalescedEvents() : [nativeEv];
+      const coalesced =
+        typeof nativeEv.getCoalescedEvents === 'function'
+          ? nativeEv.getCoalescedEvents()
+          : [nativeEv];
       const newPoints: BrushPoint[] = [];
 
       for (const ev of coalesced) {
@@ -189,10 +194,13 @@ export const CanvasViewport: React.FC = () => {
   const handlePointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch {
+      // ignore
+    }
 
     if (isPanningRef.current) {
       isPanningRef.current = false;
+      setIsPanning(false);
       return;
     }
 
@@ -201,7 +209,10 @@ export const CanvasViewport: React.FC = () => {
       if (strokePoints.length > 0) {
         const settingsToApply = {
           ...brushSettings,
-          color: activeTool === 'eraser' ? [0, 0, 0, 0] as [number, number, number, number] : brushSettings.color,
+          color:
+            activeTool === 'eraser'
+              ? ([0, 0, 0, 0] as [number, number, number, number])
+              : brushSettings.color,
         };
         // Commit stroke to Rust Core Engine
         await bridge.applyBrushStroke(strokePoints, settingsToApply);
@@ -235,7 +246,7 @@ export const CanvasViewport: React.FC = () => {
       onPointerUp={handlePointerUp}
       onWheel={handleWheel}
       className={`relative flex-1 h-full overflow-hidden bg-zinc-900 bg-transparency-grid flex items-center justify-center cursor-${
-        activeTool === 'hand' ? (isPanningRef.current ? 'grabbing' : 'grab') : 'crosshair'
+        activeTool === 'hand' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair'
       }`}
     >
       {doc && (
@@ -261,7 +272,8 @@ export const CanvasViewport: React.FC = () => {
             <div
               className="absolute inset-0 pointer-events-none opacity-25"
               style={{
-                backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
+                backgroundImage:
+                  'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
                 backgroundSize: '1px 1px',
               }}
             />

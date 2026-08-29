@@ -3,9 +3,24 @@ import { useEditorStore } from '../stores/editorStore';
 import { Palette } from 'lucide-react';
 
 const presetColors = [
-  '#000000', '#ffffff', '#ef4444', '#f97316', '#f59e0b', '#10b981',
-  '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#71717a',
-  '#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1',
+  '#000000',
+  '#ffffff',
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#10b981',
+  '#06b6d4',
+  '#3b82f6',
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#71717a',
+  '#1e293b',
+  '#334155',
+  '#475569',
+  '#64748b',
+  '#94a3b8',
+  '#cbd5e1',
 ];
 
 export const ColorPicker: React.FC = () => {

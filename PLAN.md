@@ -43,23 +43,27 @@ Arsitektur memisahkan runtime secara tegas antara **User Interface (Webview / Re
 ## 2. Deep Dive: Memory & Storage Subsystem
 
 ### 2.1 Sparse Tile Matrix Design
-* **Tile Dimensions:** $512 \times 512$ piksel, 4 kanal warna (`RGBA8_UNORM` atau `RGBA16F`).
-* **Tile Size in Memory:**
+
+- **Tile Dimensions:** $512 \times 512$ piksel, 4 kanal warna (`RGBA8_UNORM` atau `RGBA16F`).
+- **Tile Size in Memory:**
   $$\text{Size per Tile} = 512 \times 512 \times 4 \text{ bytes} = 1\text{ MB (1,048,576 bytes)}$$
-* **Coordinate Mapping:** Kanvas $32768 \times 32768$ piksel dipetakan ke dalam grid $64 \times 64$ ubin per layer.
-* **Sparse In-Memory Allocation:** Area layer yang belum digambar tidak mengonsumsi memori fisik; referensi dipetakan ke `Option<Arc<Tile>>` bernilai `None`.
+- **Coordinate Mapping:** Kanvas $32768 \times 32768$ piksel dipetakan ke dalam grid $64 \times 64$ ubin per layer.
+- **Sparse In-Memory Allocation:** Area layer yang belum digambar tidak mengonsumsi memori fisik; referensi dipetakan ke `Option<Arc<Tile>>` bernilai `None`.
 
 ### 2.2 Pyramidal Level of Detail (Image Pyramid)
-Untuk menjaga performa navigasi *zoom out*, engine memelihara struktur piramida resolusi:
-* **LoD 0:** $100\%$ Resolusi Asli ($1 \times 1$ pixel scale)
-* **LoD 1:** $50\%$ Resolusi (Downsampled $2\times2 \to 1$)
-* **LoD 2:** $25\%$ Resolusi (Downsampled $4\times4 \to 1$)
-* **LoD 3:** $12.5\%$ Resolusi (Downsampled $8\times8 \to 1$)
+
+Untuk menjaga performa navigasi _zoom out_, engine memelihara struktur piramida resolusi:
+
+- **LoD 0:** $100\%$ Resolusi Asli ($1 \times 1$ pixel scale)
+- **LoD 1:** $50\%$ Resolusi (Downsampled $2\times2 \to 1$)
+- **LoD 2:** $25\%$ Resolusi (Downsampled $4\times4 \to 1$)
+- **LoD 3:** $12.5\%$ Resolusi (Downsampled $8\times8 \to 1$)
 
 Saat pengguna melihat kanvas pada zoom 20%, engine **hanya** memproses dan memuat ubin pada **LoD 2/3**, mengurangi beban throughput memori hingga 93.75%.
 
 ### 2.3 Custom Scratch Disk Engine (`memmap2` Direct I/O)
-Paging memori sistem operasi standar (*pagefile/swapfile*) dihindari karena overhead OS *page-fault* berbasis 4KB blocks tidak optimal untuk data grafis gigabyte.
+
+Paging memori sistem operasi standar (_pagefile/swapfile_) dihindari karena overhead OS _page-fault_ berbasis 4KB blocks tidak optimal untuk data grafis gigabyte.
 
 ```
               ┌──────────────────────────────┐
@@ -92,24 +96,27 @@ Paging memori sistem operasi standar (*pagefile/swapfile*) dihindari karena over
                                   └──────────────────────────┘
 ```
 
-* **Scratch Disk File Structure:** File binary `.scratch` monolitik yang dialokasikan di NVMe SSD dengan *free-block allocation bitmap* (chunk alokasi 1MB teraligni secara kontinu).
+- **Scratch Disk File Structure:** File binary `.scratch` monolitik yang dialokasikan di NVMe SSD dengan _free-block allocation bitmap_ (chunk alokasi 1MB teraligni secara kontinu).
 
 ### 2.4 History & Undo/Redo (Copy-on-Write DAG)
-* Struktur data *History* menggunakan **Directed Acyclic Graph (DAG)** untuk mendukung percabangan *undo/redo*.
-* **Copy-on-Write (CoW):** Saat sebuah stroke kuas menyentuh 3 ubin dari total 200 ubin dalam satu layer, sistem **hanya** menduplikasi 3 ubin tersebut (`Arc::make_mut`). 197 ubin lainnya tetap membagikan pointer yang sama ke state sebelumnya. Overhead memori per action hanya sebanding dengan luas area goresan, bukan ukuran total kanvas.
+
+- Struktur data _History_ menggunakan **Directed Acyclic Graph (DAG)** untuk mendukung percabangan _undo/redo_.
+- **Copy-on-Write (CoW):** Saat sebuah stroke kuas menyentuh 3 ubin dari total 200 ubin dalam satu layer, sistem **hanya** menduplikasi 3 ubin tersebut (`Arc::make_mut`). 197 ubin lainnya tetap membagikan pointer yang sama ke state sebelumnya. Overhead memori per action hanya sebanding dengan luas area goresan, bukan ukuran total kanvas.
 
 ---
 
 ## 3. GPU Compute & Compositing Pipeline (`wgpu` + WGSL)
 
 ### 3.1 Mathematical Compositing Specification
-Compositing layer dieksekusi secara asinkron via *Compute Shaders*. Komposisi per-pixel dihitung dengan formula berikut:
+
+Compositing layer dieksekusi secara asinkron via _Compute Shaders_. Komposisi per-pixel dihitung dengan formula berikut:
 
 $$\text{BlendedRGB} = f_{\text{blend}}(\text{BaseRGB}, \text{TopRGB})$$
 $$\text{OutRGB} = \text{BaseRGB} \cdot (1 - \alpha_{\text{top}} \cdot \text{Opacity}) + \text{BlendedRGB} \cdot (\alpha_{\text{top}} \cdot \text{Opacity})$$
 $$\alpha_{\text{out}} = \alpha_{\text{base}} + \alpha_{\text{top}} \cdot \text{Opacity} \cdot (1 - \alpha_{\text{base}})$$
 
 ### 3.2 Implemented Blend Modes Matrix in WGSL
+
 1. **Normal:** $f(a, b) = b$
 2. **Multiply:** $f(a, b) = a \cdot b$
 3. **Screen:** $f(a, b) = 1 - (1 - a) \cdot (1 - b)$
@@ -118,10 +125,12 @@ $$\alpha_{\text{out}} = \alpha_{\text{base}} + \alpha_{\text{top}} \cdot \text{O
 5. **Color Dodge:** $f(a, b) = \min(1.0, \frac{a}{1.0 - b})$
 
 ### 3.3 Brush Engine & Stamp Interpolation
+
 Untuk menghindari diskontinuitas garis kuas saat mouse/stylus bergerak cepat:
-* **Hermite Spline / Catmull-Rom Interpolation:** Menginterpolasi titik koordinat di antara input event.
-* **Distance Accumulator:** Stamp kuas hanya di-generate jika $\Delta \text{distance} \ge \text{BrushRadius} \times \text{SpacingPercentage}$.
-* **Hardware Texture Blitting:** Setiap stamp dieksekusi langsung sebagai operasi komputasi GPU ke tekstur layer sementara (*scratch tile*).
+
+- **Hermite Spline / Catmull-Rom Interpolation:** Menginterpolasi titik koordinat di antara input event.
+- **Distance Accumulator:** Stamp kuas hanya di-generate jika $\Delta \text{distance} \ge \text{BrushRadius} \times \text{SpacingPercentage}$.
+- **Hardware Texture Blitting:** Setiap stamp dieksekusi langsung sebagai operasi komputasi GPU ke tekstur layer sementara (_scratch tile_).
 
 ---
 
@@ -158,6 +167,7 @@ Untuk mengatasi bottleneck transfer data antara Rust dan Webview:
 ## 5. Technical Implementation Roadmap
 
 ### Phase 1: Core Tile Storage & Scratch Disk
+
 - [x] Implementasi struct `Tile`, `TileCoord`, `Layer`, dan `Document` di Rust.
 - [x] Implementasi `SparseTileGrid` berbasis `HashMap<TileCoord, Arc<Tile>>`.
 - [x] Integrasi crate `memmap2` untuk manajemen file scratch biner `.scratch`.
@@ -165,22 +175,26 @@ Untuk mengatasi bottleneck transfer data antara Rust dan Webview:
 - [x] Unit Test: Alokasi dokumen $32768 \times 32768$ piksel dan simulasi pengisian ubin.
 
 ### Phase 2: GPU Compute Pipeline & Shaders
+
 - [x] Inisialisasi headless instance `wgpu` (Metal / Vulkan / DX12).
 - [x] Penulisan WGSL Compute Shaders untuk blend modes inti (Normal, Multiply, Screen, Overlay, Color Dodge).
 - [x] Pyramidal Downsampler untuk men-generate LoD 1, 2, dan 3.
 - [x] Fast CPU Fallback Blending Engine untuk maximum portability.
 
 ### Phase 3: Brush Engine & Input Subsystem
+
 - [x] Implementasi algoritma interpolasi lintasan kuas (Catmull-Rom Spline & Spacing engine).
 - [x] Brush stamp masking & opacity blending.
 - [x] Copy-on-Write (CoW) History DAG Undo/Redo.
 
 ### Phase 4: High-Performance Viewport & Tauri IPC
+
 - [x] Frustum Culling di Rust untuk viewport rendering.
 - [x] Tauri v2 binary commands.
 - [x] Viewport canvas dengan pan & zoom GPU matrix transform + Pointer event capture.
 
 ### Phase 5: UI Shell & Layer Management
+
 - [x] Antarmuka pengguna React 19 + TypeScript + Tailwind CSS / Lucide icons.
 - [x] Dockable Photoshop-like panels (Layer Stack, Color Picker, Brush Settings, History List).
 - [x] Zustand state synchronization.
@@ -189,10 +203,10 @@ Untuk mengatasi bottleneck transfer data antara Rust dan Webview:
 
 ## 6. Risk Matrix & Technical Mitigations
 
-| Potensi Resiko / Bottleneck | Tingkat Resiko | Strategi Mitigasi Teknis |
-| :--- | :--- | :--- |
-| **IPC Serialization Lag** | Tinggi | Dilarang keras mengirim data piksel via JSON IPC. Gunakan **Tauri Custom Binary Protocol / Direct Pixel Buffers**. |
-| **V8 Garbage Collection Stutter** | Sedang | Frontend React tidak boleh menyimpan pixel buffer mentah di state JavaScript. Data piksel langsung ditulis ke texture/canvas. |
-| **GPU Texture Upload Overhead** | Tinggi | Hanya upload dirty tiles ke GPU VRAM. Hindari re-upload seluruh kanvas jika hanya 1 ubin yang berubah. |
-| **Scratch Disk Fragmentation** | Sedang | Gunakan fixed-size block allocation ($1\text{ MB}$ per slot ubin) di dalam file `.scratch`. |
-| **Stylus Input Jitter / Lag** | Rendah | Tangani input via `e.getCoalescedEvents()` pada pointer event listener untuk menangkap semua sub-frame koordinat stylus. |
+| Potensi Resiko / Bottleneck       | Tingkat Resiko | Strategi Mitigasi Teknis                                                                                                      |
+| :-------------------------------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| **IPC Serialization Lag**         | Tinggi         | Dilarang keras mengirim data piksel via JSON IPC. Gunakan **Tauri Custom Binary Protocol / Direct Pixel Buffers**.            |
+| **V8 Garbage Collection Stutter** | Sedang         | Frontend React tidak boleh menyimpan pixel buffer mentah di state JavaScript. Data piksel langsung ditulis ke texture/canvas. |
+| **GPU Texture Upload Overhead**   | Tinggi         | Hanya upload dirty tiles ke GPU VRAM. Hindari re-upload seluruh kanvas jika hanya 1 ubin yang berubah.                        |
+| **Scratch Disk Fragmentation**    | Sedang         | Gunakan fixed-size block allocation ($1\text{ MB}$ per slot ubin) di dalam file `.scratch`.                                   |
+| **Stylus Input Jitter / Lag**     | Rendah         | Tangani input via `e.getCoalescedEvents()` pada pointer event listener untuk menangkap semua sub-frame koordinat stylus.      |

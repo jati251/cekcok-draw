@@ -1,13 +1,6 @@
 import React from 'react';
 import { useDocumentStore } from '../stores/documentStore';
-import {
-  Eye,
-  EyeOff,
-  Plus,
-  Trash2,
-  Lock,
-  Layers,
-} from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2, Lock, Layers } from 'lucide-react';
 import { BlendMode } from '../types';
 
 const blendModes: { value: BlendMode; label: string }[] = [
@@ -113,7 +106,11 @@ export const LayerPanel: React.FC = () => {
                   className="p-0.5 text-zinc-400 hover:text-white transition-colors"
                   title={layer.visible ? 'Hide Layer' : 'Show Layer'}
                 >
-                  {layer.visible ? <Eye size={14} /> : <EyeOff size={14} className="text-zinc-600" />}
+                  {layer.visible ? (
+                    <Eye size={14} />
+                  ) : (
+                    <EyeOff size={14} className="text-zinc-600" />
+                  )}
                 </button>
 
                 {/* Layer Thumbnail Placeholder */}
@@ -126,7 +123,9 @@ export const LayerPanel: React.FC = () => {
 
               <div className="flex items-center space-x-1.5 text-zinc-500">
                 {layer.locked && <Lock size={12} />}
-                <span className="text-[10px] font-mono capitalize">{layer.blend_mode.replace('_', ' ')}</span>
+                <span className="text-[10px] font-mono capitalize">
+                  {layer.blend_mode.replace('_', ' ')}
+                </span>
               </div>
             </div>
           );

@@ -25,6 +25,7 @@ CekcokDraw replicates Photoshop's production raster engine principles from scrat
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - [Rust & Cargo](https://www.rust-lang.org/) (1.80+)
 - [Node.js](https://nodejs.org/) (v20+)
 
@@ -71,4 +72,5 @@ cekcok-draw/
 ---
 
 ## 📜 License
+
 Private repository & proprietary prototype engine.
