@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { DocumentInfo } from '../types';
+import { floodFill } from '../utils/floodFill';
+import { hexToRgba } from '../utils/color';
 import * as bridge from '../lib/tauriBridge';
 
 interface UseVectorInteractionsProps {
@@ -58,24 +60,23 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     [doc, layerCanvasesRef, setPrimaryColor]
   );
 
-  const handlePaintBucket = useCallback(() => {
-    if (!doc || !doc.active_layer_id) return;
-    const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const handlePaintBucket = useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!doc || !doc.active_layer_id) return;
+      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    ctx.save();
-    ctx.fillStyle = primaryColor;
-    ctx.globalAlpha = brushSettings.opacity;
-    if (selection && selection.active && selection.width > 0) {
-      ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
-    } else {
-      ctx.fillRect(0, 0, doc.width, doc.height);
-    }
-    ctx.restore();
-    bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
-  }, [brushSettings.opacity, doc, layerCanvasesRef, primaryColor, selection]);
+      const fillColor = hexToRgba(primaryColor, Math.round(brushSettings.opacity * 255));
+      const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
+
+      if (filled) {
+        bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
+      }
+    },
+    [brushSettings.opacity, doc, layerCanvasesRef, primaryColor, selection]
+  );
 
   const applyGradient = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {

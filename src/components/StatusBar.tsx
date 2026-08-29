@@ -52,7 +52,7 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
             title="Check for updates"
           >
             <Sparkles size={10} className="text-blue-400" />
-            <span>v0.1.1</span>
+            <span>v{__APP_VERSION__}</span>
           </button>
         )}
       </div>

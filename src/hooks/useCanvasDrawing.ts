@@ -98,7 +98,41 @@ export const useCanvasDrawing = ({
         return;
       }
 
-      // 3. Regular Brushes & Tonals on liveStrokeCanvas
+      // 3. Live Eraser: Immediate zero-latency erasing on active layer canvas
+      if (activeTool === 'eraser') {
+        const activeCanvas = doc.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          : null;
+        if (!activeCanvas) return;
+        const ctx = activeCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalAlpha = brushSettings.opacity * brushSettings.flow;
+
+        const dx = pCurr.x - pPrev.x;
+        const dy = pCurr.y - pPrev.y;
+        const dist = Math.hypot(dx, dy);
+        const stepSize = Math.max(0.75, baseRadius * 0.15);
+        const steps = Math.max(1, Math.ceil(dist / stepSize));
+        const stamp = getOrCreateStamp(baseRadius, brushSettings, [0, 0, 0, 255]);
+
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          let x = pPrev.x + dx * t;
+          let y = pPrev.y + dy * t;
+          if (brushSettings.type === 'pixel') {
+            x = Math.round(x);
+            y = Math.round(y);
+          }
+          ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+        }
+        ctx.restore();
+        return;
+      }
+
+      // 4. Regular Brushes & Tonals on liveStrokeCanvas
       const strokeCanvas = liveStrokeCanvasRef.current;
       if (!strokeCanvas) return;
       const ctx = strokeCanvas.getContext('2d');
@@ -154,6 +188,31 @@ export const useCanvasDrawing = ({
     (p: BrushPoint) => {
       if (activeTool === 'smudge' || activeTool === 'blur') return;
 
+      const baseRadius = Math.max(1, brushSettings.size * 0.5);
+
+      if (activeTool === 'eraser') {
+        const activeCanvas = doc?.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          : null;
+        if (!activeCanvas) return;
+        const ctx = activeCanvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalAlpha = brushSettings.opacity * brushSettings.flow;
+        const stamp = getOrCreateStamp(baseRadius, brushSettings, [0, 0, 0, 255]);
+        let x = p.x;
+        let y = p.y;
+        if (brushSettings.type === 'pixel') {
+          x = Math.round(x);
+          y = Math.round(y);
+        }
+        ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+        ctx.restore();
+        return;
+      }
+
       const strokeCanvas = liveStrokeCanvasRef.current;
       if (!strokeCanvas || !doc) return;
 
@@ -168,7 +227,6 @@ export const useCanvasDrawing = ({
       else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
       else ctx.globalCompositeOperation = 'source-over';
 
-      const baseRadius = Math.max(1, brushSettings.size * 0.5);
       const stamp = getOrCreateStamp(baseRadius, brushSettings, color);
 
       let x = p.x;
@@ -181,7 +239,7 @@ export const useCanvasDrawing = ({
       ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
       ctx.restore();
     },
-    [activeTool, brushSettings, doc, getToolColor, liveStrokeCanvasRef]
+    [activeTool, brushSettings, doc, getToolColor, layerCanvasesRef, liveStrokeCanvasRef]
   );
 
   const bakeStrokeToLayer = useCallback(async () => {

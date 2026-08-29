@@ -3,6 +3,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { BLEND_MODES } from '../constants/blendModes';
 import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, Layers, Copy, ArrowDown } from 'lucide-react';
 import { BlendMode } from '../types';
+import { LayerThumbnail } from './canvas/LayerThumbnail';
 
 export const LayerPanel: React.FC = () => {
   const {
@@ -102,9 +103,7 @@ export const LayerPanel: React.FC = () => {
                   )}
                 </button>
 
-                <div className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[9px] font-mono text-zinc-500">
-                  Px
-                </div>
+                <LayerThumbnail layerId={layer.id} />
 
                 <span className="font-medium truncate max-w-[110px]">{layer.name}</span>
               </div>

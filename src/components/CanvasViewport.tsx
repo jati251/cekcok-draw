@@ -102,7 +102,7 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (activeTool === 'paint_bucket') {
-      handlePaintBucket();
+      handlePaintBucket(pos);
       return;
     }
 

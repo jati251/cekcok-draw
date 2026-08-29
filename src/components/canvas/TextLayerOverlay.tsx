@@ -23,7 +23,7 @@ export const TextLayerOverlay: React.FC = () => {
     }
 
     const activeCanvas = doc.active_layer_id
-      ? (document.querySelector(`canvas[style*="opacity"]`) as HTMLCanvasElement)
+      ? (document.getElementById(`layer-canvas-${doc.active_layer_id}`) as HTMLCanvasElement | null)
       : null;
 
     if (activeCanvas) {

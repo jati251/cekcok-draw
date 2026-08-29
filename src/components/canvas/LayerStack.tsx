@@ -45,6 +45,8 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
               layerCanvasesRef.current.delete(layer.id);
             }
           }}
+          data-layer-id={layer.id}
+          id={`layer-canvas-${layer.id}`}
           width={doc.width}
           height={doc.height}
           style={{

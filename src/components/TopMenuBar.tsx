@@ -3,6 +3,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import * as filters from '../utils/filters';
+import { expandSelection, contractSelection } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   onOpenExport: () => void;
   onOpenFilter: (type: 'brightness_contrast' | 'gaussian_blur') => void;
   onOpenHueSaturation: () => void;
+  onOpenLevels: () => void;
   onOpenUpdateModal: () => void;
 }
 
@@ -18,6 +20,7 @@ export const TopMenuBar: React.FC<Props> = ({
   onOpenExport,
   onOpenFilter,
   onOpenHueSaturation,
+  onOpenLevels,
   onOpenUpdateModal,
 }) => {
   const { doc, triggerUndo, triggerRedo, addNewLayer } = useDocumentStore();
@@ -30,6 +33,7 @@ export const TopMenuBar: React.FC<Props> = ({
     showRulers,
     setShowRulers,
     setActivePanel,
+    selection,
     setSelection,
   } = useEditorStore();
 
@@ -70,12 +74,29 @@ export const TopMenuBar: React.FC<Props> = ({
         shortcut: `${modKey}A`,
       },
       { label: 'Deselect', action: () => setSelection(null), shortcut: `${modKey}D` },
+      {
+        label: 'Expand Selection (+10px)',
+        action: () => {
+          if (selection && selection.active && doc) {
+            setSelection(expandSelection(selection, 10, doc.width, doc.height));
+          }
+        },
+      },
+      {
+        label: 'Contract Selection (-10px)',
+        action: () => {
+          if (selection && selection.active) {
+            setSelection(contractSelection(selection, 10));
+          }
+        },
+      },
     ],
     Image: [
-      { label: 'Flip Canvas Horizontal', action: () => handleFlip('horizontal') },
-      { label: 'Flip Canvas Vertical', action: () => handleFlip('vertical') },
+      { label: 'Levels (Histogram)...', action: onOpenLevels, shortcut: `${modKey}L` },
       { label: 'Hue / Saturation...', action: onOpenHueSaturation, shortcut: `${modKey}U` },
       { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
+      { label: 'Flip Canvas Horizontal', action: () => handleFlip('horizontal') },
+      { label: 'Flip Canvas Vertical', action: () => handleFlip('vertical') },
       {
         label: 'Invert Colors',
         action: async () => {

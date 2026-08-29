@@ -140,6 +140,61 @@ export const applyHueSaturation = (
   ctx.putImageData(imgData, 0, 0);
 };
 
+export const computeHistogram = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): number[] => {
+  const histogram = new Array(256).fill(0);
+  try {
+    const data = ctx.getImageData(0, 0, width, height).data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 0) {
+        const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        histogram[gray]++;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return histogram;
+};
+
+export const applyLevels = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  inBlack: number,
+  inGamma: number,
+  inWhite: number,
+  outBlack: number,
+  outWhite: number
+) => {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+
+  const inDiff = Math.max(1, inWhite - inBlack);
+  const outDiff = outWhite - outBlack;
+  const invGamma = 1 / Math.max(0.01, inGamma);
+
+  // Pre-calculate 256-lookup table (LUT) for lightning-fast performance
+  const lut = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const norm = Math.min(1, Math.max(0, (i - inBlack) / inDiff));
+    const gammaAdj = Math.pow(norm, invGamma);
+    const result = outBlack + gammaAdj * outDiff;
+    lut[i] = Math.min(255, Math.max(0, Math.round(result)));
+  }
+
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = lut[data[i]];
+    data[i + 1] = lut[data[i + 1]];
+    data[i + 2] = lut[data[i + 2]];
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+};
+
 export const applyFlip = (
   ctx: CanvasRenderingContext2D,
   width: number,

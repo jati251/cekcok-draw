@@ -8,6 +8,7 @@ import { TextOptions } from './toolbars/TextOptions';
 export const ToolOptionsBar: React.FC = () => {
   const {
     activeTool,
+    setActiveTool,
     brushSettings,
     setBrushSettings,
     shapeSettings,
@@ -31,7 +32,11 @@ export const ToolOptionsBar: React.FC = () => {
 
       {/* 1. Brush Preset & Options */}
       {activeTool === 'brush' && (
-        <BrushOptions brushSettings={brushSettings} setBrushSettings={setBrushSettings} />
+        <BrushOptions
+          brushSettings={brushSettings}
+          setBrushSettings={setBrushSettings}
+          setActiveTool={setActiveTool}
+        />
       )}
 
       {/* 2. Eraser Options */}

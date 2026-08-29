@@ -5,9 +5,14 @@ import { BRUSH_TYPES } from '../../constants/brushes';
 interface Props {
   brushSettings: BrushSettings;
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
+  setActiveTool?: (tool: 'brush') => void;
 }
 
-export const BrushOptions: React.FC<Props> = ({ brushSettings, setBrushSettings }) => {
+export const BrushOptions: React.FC<Props> = ({
+  brushSettings,
+  setBrushSettings,
+  setActiveTool,
+}) => {
   const currentBrushType = brushSettings.type || 'round_soft';
 
   return (
@@ -17,7 +22,10 @@ export const BrushOptions: React.FC<Props> = ({ brushSettings, setBrushSettings 
         <span className="text-zinc-400">Type:</span>
         <select
           value={currentBrushType}
-          onChange={(e) => setBrushSettings({ type: e.target.value as BrushType })}
+          onChange={(e) => {
+            setBrushSettings({ type: e.target.value as BrushType });
+            if (setActiveTool) setActiveTool('brush');
+          }}
           className="bg-ps-panel border border-ps-border rounded px-2 py-1 text-zinc-200 text-[11px] font-medium focus:outline-none focus:border-blue-500 cursor-pointer"
         >
           {BRUSH_TYPES.map((b) => (
