@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { TOOLS } from '../constants/tools';
+import { Tooltip } from './ui/Tooltip';
 
 const getToolIcon = (iconName: string) => {
   switch (iconName) {
@@ -85,18 +86,23 @@ export const ToolBar: React.FC = () => {
               {catTools.map((tool) => {
                 const isActive = activeTool === tool.type;
                 return (
-                  <button
+                  <Tooltip
                     key={tool.type}
-                    onClick={() => setActiveTool(tool.type)}
-                    title={`${tool.label} (${tool.shortcut})`}
-                    className={`w-8 h-8 flex items-center justify-center rounded transition-all ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover'
-                    }`}
+                    content={tool.label}
+                    shortcut={tool.shortcut}
+                    position="right"
                   >
-                    {getToolIcon(tool.iconName)}
-                  </button>
+                    <button
+                      onClick={() => setActiveTool(tool.type)}
+                      className={`w-8 h-8 flex items-center justify-center rounded transition-all ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-md'
+                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover'
+                      }`}
+                    >
+                      {getToolIcon(tool.iconName)}
+                    </button>
+                  </Tooltip>
                 );
               })}
             </React.Fragment>
@@ -108,40 +114,43 @@ export const ToolBar: React.FC = () => {
       <div className="flex flex-col items-center pb-1 w-full px-1 border-t border-ps-border/60 pt-2">
         <div className="relative w-8 h-8 mb-1">
           {/* Secondary color */}
-          <div
-            className="absolute bottom-0 right-0 w-5 h-5 rounded border-2 border-ps-panel cursor-pointer shadow"
-            style={{ backgroundColor: secondaryColor }}
-            title="Secondary Color (Click to edit)"
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'color';
-              input.value = secondaryColor;
-              input.onchange = (e) => setSecondaryColor((e.target as HTMLInputElement).value);
-              input.click();
-            }}
-          />
+          <Tooltip content="Secondary Color" position="right">
+            <div
+              className="absolute bottom-0 right-0 w-5 h-5 rounded border-2 border-ps-panel cursor-pointer shadow"
+              style={{ backgroundColor: secondaryColor }}
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'color';
+                input.value = secondaryColor;
+                input.onchange = (e) => setSecondaryColor((e.target as HTMLInputElement).value);
+                input.click();
+              }}
+            />
+          </Tooltip>
           {/* Primary color */}
-          <div
-            className="absolute top-0 left-0 w-5 h-5 rounded border-2 border-ps-border cursor-pointer shadow z-10"
-            style={{ backgroundColor: primaryColor }}
-            title="Primary Color (Click to edit)"
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'color';
-              input.value = primaryColor;
-              input.onchange = (e) => setPrimaryColor((e.target as HTMLInputElement).value);
-              input.click();
-            }}
-          />
+          <Tooltip content="Primary Color" position="right">
+            <div
+              className="absolute top-0 left-0 w-5 h-5 rounded border-2 border-ps-border cursor-pointer shadow z-10"
+              style={{ backgroundColor: primaryColor }}
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'color';
+                input.value = primaryColor;
+                input.onchange = (e) => setPrimaryColor((e.target as HTMLInputElement).value);
+                input.click();
+              }}
+            />
+          </Tooltip>
         </div>
 
-        <button
-          onClick={swapColors}
-          title="Swap Colors (X)"
-          className="text-zinc-400 hover:text-white p-1 hover:bg-ps-hover rounded text-[10px]"
-        >
-          <ArrowLeftRight size={11} />
-        </button>
+        <Tooltip content="Swap Colors" shortcut="X" position="right">
+          <button
+            onClick={swapColors}
+            className="text-zinc-400 hover:text-white p-1 hover:bg-ps-hover rounded text-[10px]"
+          >
+            <ArrowLeftRight size={11} />
+          </button>
+        </Tooltip>
       </div>
     </aside>
   );

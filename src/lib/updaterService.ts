@@ -12,9 +12,9 @@ export interface AppUpdateInfo {
 
 let activeUpdateInstance: Update | null = null;
 
-export const checkForAppUpdate = async (currentVersion = '0.1.0'): Promise<AppUpdateInfo> => {
+export const checkForAppUpdate = async (currentVersion = '0.2.1'): Promise<AppUpdateInfo> => {
   if (!isTauriEnvironment()) {
-    // Pure browser fallback simulation for development preview
+    // Browser fallback simulation
     return {
       available: false,
       currentVersion,
@@ -50,7 +50,26 @@ export const checkForAppUpdate = async (currentVersion = '0.1.0'): Promise<AppUp
       body: 'CekcokDraw is up to date.',
       rawUpdate: null,
     };
-  } catch (err) {
+  } catch (err: unknown) {
+    const errStr = String(err).toLowerCase();
+    // If the server returns 404 or no valid release json exists yet, the current build is the latest
+    if (
+      errStr.includes('valid release json') ||
+      errStr.includes('404') ||
+      errStr.includes('nosuchkey') ||
+      errStr.includes('not found')
+    ) {
+      activeUpdateInstance = null;
+      return {
+        available: false,
+        currentVersion,
+        version: currentVersion,
+        date: new Date().toISOString().split('T')[0],
+        body: `CekcokDraw v${currentVersion} is up to date.`,
+        rawUpdate: null,
+      };
+    }
+
     console.error('Failed to check for updates:', err);
     throw err;
   }
@@ -106,7 +125,6 @@ export const relaunchApp = async (): Promise<void> => {
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
   } catch {
-    // Fallback: standard location reload
     window.location.reload();
   }
 };

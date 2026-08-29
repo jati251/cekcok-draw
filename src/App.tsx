@@ -3,9 +3,7 @@ import { TopMenuBar } from './components/TopMenuBar';
 import { ToolOptionsBar } from './components/ToolOptionsBar';
 import { ToolBar } from './components/ToolBar';
 import { CanvasViewport } from './components/CanvasViewport';
-import { LayerPanel } from './components/LayerPanel';
-import { ColorPicker } from './components/ColorPicker';
-import { HistoryPanel } from './components/HistoryPanel';
+import { StudioSidebar } from './components/StudioSidebar';
 import { StatusBar } from './components/StatusBar';
 import { NewDocumentModal } from './components/NewDocumentModal';
 import { ExportModal } from './components/ExportModal';
@@ -19,7 +17,6 @@ import { useDocumentStore } from './stores/documentStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 export const App: React.FC = () => {
-  const { activePanel } = useEditorStore();
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isHueSatOpen, setIsHueSatOpen] = useState(false);
@@ -114,22 +111,7 @@ export const App: React.FC = () => {
       <div className="flex flex-1 overflow-hidden relative">
         <ToolBar />
         <CanvasViewport />
-
-        {/* Right Studio Panels with Smooth Custom Scrollbar */}
-        {(activePanel === 'all' ||
-          activePanel === 'layers' ||
-          activePanel === 'history' ||
-          activePanel === 'color') && (
-          <aside className="w-72 bg-ps-panel border-l border-ps-border flex flex-col z-20 shadow-xl overflow-y-auto overflow-x-hidden select-none">
-            {(activePanel === 'all' || activePanel === 'color') && <ColorPicker />}
-            {(activePanel === 'all' || activePanel === 'history') && <HistoryPanel />}
-            {(activePanel === 'all' || activePanel === 'layers') && (
-              <div className="flex-1 min-h-[220px]">
-                <LayerPanel />
-              </div>
-            )}
-          </aside>
-        )}
+        <StudioSidebar />
       </div>
 
       {/* 4. Bottom Metrics Status Bar */}

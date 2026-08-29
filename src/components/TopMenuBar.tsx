@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import * as filters from '../utils/filters';
 import { expandSelection, contractSelection } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
+import { isTauriEnvironment } from '../lib/tauriBridge';
 
 interface Props {
   onOpenNewDoc: () => void;
@@ -41,6 +42,17 @@ export const TopMenuBar: React.FC<Props> = ({
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
+
+  // Manual window drag — reliable fallback for macOS Overlay titlebar
+  const handleTitleBarDrag = useCallback((e: React.MouseEvent) => {
+    // Only drag if clicking on the header background itself, not on buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('select') || target.closest('input')) return;
+    if (!isTauriEnvironment()) return;
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().startDragging();
+    });
+  }, []);
 
   const handleFlip = async (direction: 'horizontal' | 'vertical') => {
     if (!doc) return;
@@ -188,112 +200,141 @@ export const TopMenuBar: React.FC<Props> = ({
   return (
     <header
       data-tauri-drag-region
-      className={`h-9 bg-ps-header border-b border-ps-border flex items-center justify-between pr-3 text-xs select-none z-50 ${
+      onMouseDown={handleTitleBarDrag}
+      className={`h-9 bg-ps-header border-b border-ps-border flex items-center justify-between pr-3 text-xs select-none z-40 relative ${
         isMac ? 'pl-20' : 'pl-3'
       }`}
     >
-      {/* Brand & Menu */}
-      <div className="flex items-center space-x-1.5" data-tauri-drag-region>
-        <div className="flex items-center space-x-2 mr-2 font-bold text-sm tracking-wide text-blue-400 bg-blue-950/40 border border-blue-800/40 px-2 py-0.5 rounded flex-shrink-0">
-          <img src="/app-logo.png" alt="Cekcok Draw" className="w-4 h-4 rounded object-cover" />
-          <span>
-            CEKCOK<span className="text-white font-extralight ml-0.5">DRAW</span>
+      {/* Left: Brand & In-Window Menus */}
+      <div className="flex items-center space-x-2" data-tauri-drag-region>
+        <div
+          className="flex items-center space-x-1.5 font-bold text-xs tracking-wide text-blue-400"
+          data-tauri-drag-region
+        >
+          <img
+            src="/app-logo.png"
+            alt="Cekcok Draw"
+            className="w-4 h-4 rounded object-cover pointer-events-none"
+          />
+          <span
+            className="text-zinc-200 font-semibold tracking-normal text-[11px] pointer-events-none"
+            data-tauri-drag-region
+          >
+            Cekcok<span className="text-blue-400 font-bold ml-0.5">Draw</span>
           </span>
         </div>
 
-        {/* On Windows / Linux / Web: Standard inline horizontal menu bar */}
-        {!isMac &&
-          Object.entries(menus).map(([menuName, items]) => (
-            <div key={menuName} className="relative">
-              <button
-                onClick={() => setActiveMenu(activeMenu === menuName ? null : menuName)}
-                className={`px-2 py-0.5 rounded transition-colors ${
-                  activeMenu === menuName
-                    ? 'bg-ps-surface text-white'
-                    : 'hover:bg-ps-surface/60 text-zinc-300'
-                }`}
-              >
-                {menuName}
-              </button>
+        {/* On Windows / Linux: Standard inline horizontal menu bar */}
+        {!isMac && (
+          <div className="flex items-center space-x-0.5 ml-2">
+            {Object.entries(menus).map(([menuName, items]) => (
+              <div key={menuName} className="relative">
+                <button
+                  onClick={() => setActiveMenu(activeMenu === menuName ? null : menuName)}
+                  className={`px-2 py-0.5 rounded transition-colors text-[11px] ${
+                    activeMenu === menuName
+                      ? 'bg-ps-surface text-white'
+                      : 'hover:bg-ps-surface/60 text-zinc-300'
+                  }`}
+                >
+                  {menuName}
+                </button>
 
-              {activeMenu === menuName && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
-                  <div className="absolute left-0 top-full mt-1 w-64 bg-ps-surface border border-ps-border rounded shadow-2xl py-1 z-50 text-xs">
-                    {items.map((item, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          item.action();
-                          setActiveMenu(null);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-ps-active hover:text-white flex items-center justify-between text-zinc-200"
-                      >
-                        <span>{item.label}</span>
-                        {item.shortcut && (
-                          <span className="text-zinc-400 text-[10px] ml-4 font-mono">
-                            {item.shortcut}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+                {activeMenu === menuName && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
+                    <div className="absolute left-0 top-full mt-1 w-64 bg-ps-surface border border-ps-border rounded shadow-2xl py-1 z-50 text-xs">
+                      {items.map((item, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            item.action();
+                            setActiveMenu(null);
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-ps-active hover:text-white flex items-center justify-between text-zinc-200"
+                        >
+                          <span>{item.label}</span>
+                          {item.shortcut && (
+                            <span className="text-zinc-400 text-[10px] ml-4 font-mono">
+                              {item.shortcut}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Document info & quick view tools */}
-      <div className="flex items-center space-x-3 text-zinc-400" data-tauri-drag-region>
-        {doc && (
-          <div className="flex items-center space-x-2 bg-ps-surface/80 px-2.5 py-0.5 rounded border border-ps-border/50 text-[11px]">
-            <span className="text-zinc-200 font-medium">{doc.title}</span>
-            <span className="text-zinc-500">@</span>
-            <span className="text-blue-400 font-mono">{Math.round(zoom * 100)}%</span>
-            <span className="text-zinc-500">
+      {/* Center: Document Title — fully draggable */}
+      {doc && (
+        <div
+          data-tauri-drag-region
+          className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+        >
+          <div
+            data-tauri-drag-region
+            className="flex items-center space-x-1.5 bg-ps-surface/70 px-2.5 py-0.5 rounded-full border border-ps-border/60 text-[11px] shadow-sm pointer-events-none"
+          >
+            <span className="text-zinc-200 font-medium pointer-events-none">{doc.title}</span>
+            <span className="text-zinc-500 pointer-events-none">@</span>
+            <span className="text-blue-400 font-mono font-medium pointer-events-none">
+              {Math.round(zoom * 100)}%
+            </span>
+            <span className="text-zinc-500 text-[10px] pointer-events-none">
               ({doc.width} × {doc.height} px)
             </span>
           </div>
-        )}
-
-        <div className="flex items-center space-x-1 border-l border-ps-border pl-2.5">
-          <button
-            onClick={() => triggerUndo()}
-            title={`Undo (${modKey}Z)`}
-            className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
-          >
-            <RotateCcw size={13} />
-          </button>
-          <button
-            onClick={() => triggerRedo()}
-            title={`Redo (${modKey}⇧Z)`}
-            className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
-          >
-            <RotateCw size={13} />
-          </button>
-          <button
-            onClick={() => setZoom((z) => Math.max(0.05, z / 1.25))}
-            title={`Zoom Out (${modKey}-)`}
-            className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
-          >
-            <ZoomOut size={13} />
-          </button>
-          <button
-            onClick={() => setZoom((z) => Math.min(32, z * 1.25))}
-            title={`Zoom In (${modKey}+)`}
-            className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
-          >
-            <ZoomIn size={13} />
-          </button>
-          <button
-            onClick={() => resetView()}
-            title={`Fit to Screen (${modKey}0)`}
-            className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white"
-          >
-            <Maximize2 size={13} />
-          </button>
         </div>
+      )}
+
+      {/* Right: Quick Tools — no Tooltip wrappers to avoid blocking drag */}
+      <div className="flex items-center space-x-1 text-zinc-400">
+        <button
+          onClick={() => triggerUndo()}
+          title={`Undo (${modKey}Z)`}
+          className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white transition-colors"
+        >
+          <RotateCcw size={13} />
+        </button>
+        <button
+          onClick={() => triggerRedo()}
+          title={`Redo (${modKey}⇧Z)`}
+          className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white transition-colors"
+        >
+          <RotateCw size={13} />
+        </button>
+
+        <div
+          className="w-[1px] h-3.5 bg-ps-border mx-1 pointer-events-none"
+          data-tauri-drag-region
+        />
+
+        <button
+          onClick={() => setZoom((z) => Math.max(0.05, z / 1.25))}
+          title={`Zoom Out (${modKey}-)`}
+          className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white transition-colors"
+        >
+          <ZoomOut size={13} />
+        </button>
+        <button
+          onClick={() => setZoom((z) => Math.min(32, z * 1.25))}
+          title={`Zoom In (${modKey}+)`}
+          className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white transition-colors"
+        >
+          <ZoomIn size={13} />
+        </button>
+        <button
+          onClick={() => resetView()}
+          title={`Fit to Screen (${modKey}0)`}
+          className="p-1 hover:bg-ps-surface rounded text-zinc-300 hover:text-white transition-colors"
+        >
+          <Maximize2 size={13} />
+        </button>
       </div>
     </header>
   );

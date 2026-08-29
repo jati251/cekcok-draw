@@ -17,6 +17,7 @@ import {
 import { BlendMode, LayerMetadata } from '../types';
 import { LayerThumbnail } from './canvas/LayerThumbnail';
 import { LayerContextMenu } from './LayerContextMenu';
+import { Tooltip } from './ui/Tooltip';
 
 export const LayerPanel: React.FC = () => {
   const {
@@ -40,6 +41,10 @@ export const LayerPanel: React.FC = () => {
     layer: LayerMetadata;
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
+  const modKey = isMac ? '⌘' : 'Ctrl+';
 
   useEffect(() => {
     if (renamingId && inputRef.current) {
@@ -78,9 +83,7 @@ export const LayerPanel: React.FC = () => {
       {/* Layer Properties (Blend Mode & Opacity) */}
       <div className="p-2 border-b border-ps-border/70 bg-ps-surface/50 space-y-2">
         <div className="flex items-center justify-between space-x-2">
-          <label className="text-zinc-400 text-[11px]" title="Layer Blending Mode">
-            Mode:
-          </label>
+          <label className="text-zinc-400 text-[11px]">Mode:</label>
           <select
             value={activeLayer?.blend_mode || 'normal'}
             onChange={(e) => {
@@ -88,7 +91,6 @@ export const LayerPanel: React.FC = () => {
             }}
             disabled={!activeLayer}
             className="flex-1 bg-ps-surface border border-ps-border rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-blue-500 text-[11px]"
-            title="Layer Blending Mode"
           >
             {BLEND_MODES.map((mode) => (
               <option key={mode.value} value={mode.value}>
@@ -99,9 +101,7 @@ export const LayerPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center justify-between space-x-2">
-          <label className="text-zinc-400 text-[11px]" title="Layer Opacity">
-            Opacity:
-          </label>
+          <label className="text-zinc-400 text-[11px]">Opacity:</label>
           <div className="flex-1 flex items-center space-x-2">
             <input
               type="range"
@@ -114,7 +114,6 @@ export const LayerPanel: React.FC = () => {
               }}
               disabled={!activeLayer}
               className="flex-1 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
-              title={`Opacity: ${Math.round((activeLayer?.opacity ?? 1) * 100)}%`}
             />
             <span className="font-mono text-[11px] w-8 text-right text-zinc-300">
               {Math.round((activeLayer?.opacity ?? 1) * 100)}%
@@ -147,20 +146,21 @@ export const LayerPanel: React.FC = () => {
             >
               <div className="flex items-center space-x-2 min-w-0 flex-1">
                 {/* Visibility Toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleLayerVisibility(layer.id);
-                  }}
-                  className="p-0.5 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
-                  title={layer.visible ? 'Hide Layer' : 'Show Layer'}
-                >
-                  {layer.visible ? (
-                    <Eye size={14} />
-                  ) : (
-                    <EyeOff size={14} className="text-zinc-600" />
-                  )}
-                </button>
+                <Tooltip content={layer.visible ? 'Hide Layer' : 'Show Layer'} position="right">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLayerVisibility(layer.id);
+                    }}
+                    className="p-0.5 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+                  >
+                    {layer.visible ? (
+                      <Eye size={14} />
+                    ) : (
+                      <EyeOff size={14} className="text-zinc-600" />
+                    )}
+                  </button>
+                </Tooltip>
 
                 {/* Layer Thumbnail */}
                 <LayerThumbnail layerId={layer.id} />
@@ -205,31 +205,27 @@ export const LayerPanel: React.FC = () => {
                     className="bg-zinc-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-white outline-none w-full max-w-[120px]"
                   />
                 ) : (
-                  <span
-                    className="font-medium truncate max-w-[95px]"
-                    title={`${layer.name} (Double-click to rename)`}
-                  >
-                    {layer.name}
-                  </span>
+                  <span className="font-medium truncate max-w-[95px]">{layer.name}</span>
                 )}
               </div>
 
               <div className="flex items-center space-x-1.5 text-zinc-500 flex-shrink-0">
                 {/* Lock Toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleLayerLock(layer.id);
-                  }}
-                  className={`p-0.5 rounded hover:text-white transition-colors ${
-                    layer.locked ? 'text-amber-400' : 'text-zinc-500 opacity-40 hover:opacity-100'
-                  }`}
-                  title={layer.locked ? 'Unlock Layer' : 'Lock Layer'}
-                >
-                  {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
-                </button>
+                <Tooltip content={layer.locked ? 'Unlock Layer' : 'Lock Layer'} position="left">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLayerLock(layer.id);
+                    }}
+                    className={`p-0.5 rounded hover:text-white transition-colors ${
+                      layer.locked ? 'text-amber-400' : 'text-zinc-500 opacity-40 hover:opacity-100'
+                    }`}
+                  >
+                    {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
+                  </button>
+                </Tooltip>
 
-                <span className="text-[10px] font-mono capitalize" title="Blend Mode">
+                <span className="text-[10px] font-mono capitalize">
                   {layer.blend_mode.replace('_', ' ')}
                 </span>
               </div>
@@ -241,45 +237,51 @@ export const LayerPanel: React.FC = () => {
       {/* Layer Actions Footer */}
       <div className="h-9 px-3 bg-ps-header border-t border-ps-border flex items-center justify-between">
         <div className="flex items-center space-x-1">
-          <button
-            onClick={() => {
-              if (activeLayer) addNewLayer(`${activeLayer.name} Copy`);
-            }}
-            className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded"
-            title="Duplicate Layer (⌘J)"
-          >
-            <Copy size={14} />
-          </button>
-          <button
-            onClick={() => {
-              if (activeLayer) mergeDown(activeLayer.id);
-            }}
-            disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
-            className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Merge Down (⌘E)"
-          >
-            <ArrowDown size={14} />
-          </button>
+          <Tooltip content="Duplicate Layer" shortcut={`${modKey}J`} position="top">
+            <button
+              onClick={() => {
+                if (activeLayer) addNewLayer(`${activeLayer.name} Copy`);
+              }}
+              className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded transition-colors"
+            >
+              <Copy size={14} />
+            </button>
+          </Tooltip>
+
+          <Tooltip content="Merge Down" shortcut={`${modKey}E`} position="top">
+            <button
+              onClick={() => {
+                if (activeLayer) mergeDown(activeLayer.id);
+              }}
+              disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
+              className="p-1 text-zinc-400 hover:text-white hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <ArrowDown size={14} />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex items-center space-x-1">
-          <button
-            onClick={() => addNewLayer()}
-            className="p-1 text-zinc-300 hover:text-white hover:bg-ps-hover rounded"
-            title="Create a new layer (⇧⌘N)"
-          >
-            <Plus size={16} />
-          </button>
-          <button
-            onClick={() => {
-              if (activeLayer) deleteLayer(activeLayer.id);
-            }}
-            disabled={doc.layers.length <= 1}
-            className="p-1 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Delete selected layer (Delete)"
-          >
-            <Trash2 size={16} />
-          </button>
+          <Tooltip content="New Layer" shortcut={`${modKey}⇧N`} position="top">
+            <button
+              onClick={() => addNewLayer()}
+              className="p-1 text-zinc-300 hover:text-white hover:bg-ps-hover rounded transition-colors"
+            >
+              <Plus size={16} />
+            </button>
+          </Tooltip>
+
+          <Tooltip content="Delete Layer" shortcut="Delete" position="top">
+            <button
+              onClick={() => {
+                if (activeLayer) deleteLayer(activeLayer.id);
+              }}
+              disabled={doc.layers.length <= 1}
+              className="p-1 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

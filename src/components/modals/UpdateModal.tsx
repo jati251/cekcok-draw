@@ -25,7 +25,7 @@ interface Props {
 type UpdateState =
   'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up_to_date' | 'error';
 
-const CURRENT_VERSION = '0.2.0';
+const CURRENT_VERSION = '0.2.1';
 
 export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [status, setStatus] = useState<UpdateState>('checking');

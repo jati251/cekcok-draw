@@ -189,15 +189,7 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    // Brush drawing suite
-    if (
-      activeTool === 'brush' ||
-      activeTool === 'eraser' ||
-      activeTool === 'dodge' ||
-      activeTool === 'burn' ||
-      activeTool === 'smudge' ||
-      activeTool === 'blur'
-    ) {
+    if (['brush', 'eraser', 'dodge', 'burn', 'smudge', 'blur'].includes(activeTool)) {
       setIsDrawing(true);
       const point: BrushPoint = { x: pos.x, y: pos.y, pressure: e.pressure || 0.5 };
       setStrokePoints([point]);
