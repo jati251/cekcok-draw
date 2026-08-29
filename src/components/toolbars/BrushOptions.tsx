@@ -28,8 +28,10 @@ export const BrushOptions: React.FC<Props> = ({
         <select
           value={currentBrushType}
           onChange={(e) => {
-            setBrushSettings({ type: e.target.value as BrushType });
+            const newType = e.target.value as BrushType;
+            setBrushSettings({ type: newType });
             if (setActiveTool) setActiveTool('brush');
+            e.target.blur();
           }}
           className="bg-ps-panel border border-ps-border rounded px-2 py-1 text-zinc-200 text-[11px] font-medium focus:outline-none focus:border-blue-500 cursor-pointer"
         >

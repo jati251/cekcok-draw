@@ -78,12 +78,11 @@ export const CanvasViewport: React.FC = () => {
 
   const {
     isDrawing,
-    setIsDrawing,
     setStrokePoints,
-    drawInitialDot,
+    startStroke,
+    endStroke,
     drawStrokeSegment,
     processSmoothPoint,
-    bakeStrokeToLayer,
   } = useCanvasDrawing({
     doc,
     activeTool,
@@ -204,7 +203,6 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (['brush', 'eraser', 'dodge', 'burn', 'smudge', 'blur'].includes(activeTool)) {
-      setIsDrawing(true);
       const rawBrushPoint: BrushPoint = {
         x: pos.x,
         y: pos.y,
@@ -214,9 +212,7 @@ export const CanvasViewport: React.FC = () => {
         twist: rawPointData.twist,
         pointerType: rawPointData.pointerType,
       };
-      const initialPoint = processSmoothPoint(rawBrushPoint);
-      setStrokePoints([initialPoint]);
-      drawInitialDot(initialPoint);
+      startStroke(rawBrushPoint);
     }
   };
 
@@ -361,8 +357,7 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (isDrawing) {
-      setIsDrawing(false);
-      bakeStrokeToLayer();
+      endStroke();
     }
   };
 

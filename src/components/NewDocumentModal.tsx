@@ -37,7 +37,7 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   const handleCreate = () => {
-    initDocument(title, width, height);
+    initDocument(title, width, height, true);
     onClose();
   };
 

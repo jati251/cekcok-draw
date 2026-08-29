@@ -84,11 +84,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
 
       if (filled) {
         bumpCanvasRevision();
-        bridge.applyFloodFill(
-          pos.x,
-          pos.y,
-          fillColor,
-          32,
+        const selBounds: [number, number, number, number] | undefined =
           selection && selection.active
             ? [
                 Math.floor(selection.x),
@@ -96,9 +92,13 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
                 Math.ceil(selection.x + selection.width),
                 Math.ceil(selection.y + selection.height),
               ]
-            : undefined,
-          doc.active_layer_id
-        );
+            : undefined;
+        const activeLayerId = doc.active_layer_id;
+        setTimeout(() => {
+          bridge
+            .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
+            .catch(() => {});
+        }, 0);
       }
     },
     [brushSettings.opacity, bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, selection]

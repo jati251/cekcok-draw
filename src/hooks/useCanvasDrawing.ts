@@ -435,11 +435,29 @@ export const useCanvasDrawing = ({
     strokePoints,
   ]);
 
+  const startStroke = useCallback(
+    (rawPoint: BrushPoint) => {
+      stabilizerRef.current.reset(rawPoint);
+      setIsDrawing(true);
+      setStrokePoints([rawPoint]);
+      drawInitialDot(rawPoint);
+    },
+    [drawInitialDot]
+  );
+
+  const endStroke = useCallback(async () => {
+    setIsDrawing(false);
+    stabilizerRef.current.reset();
+    await bakeStrokeToLayer();
+  }, [bakeStrokeToLayer]);
+
   return {
     strokePoints,
     setStrokePoints,
     isDrawing,
     setIsDrawing,
+    startStroke,
+    endStroke,
     drawInitialDot,
     drawStrokeSegment,
     processSmoothPoint,

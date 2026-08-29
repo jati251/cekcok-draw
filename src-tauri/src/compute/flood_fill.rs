@@ -60,9 +60,7 @@ impl FloodFillEngine {
             r += 1;
         }
 
-        for x in l..=r {
-            grid.set_pixel_cow(x, start_y, fill_color);
-        }
+        grid.fill_horizontal_span(l, r, start_y, fill_color);
 
         if start_y > min_y {
             stack.push((l, r, start_y - 1, -1));
@@ -93,13 +91,12 @@ impl FloodFillEngine {
                         let mut s = x;
                         while s > min_x && matches(grid, s - 1, y) {
                             s -= 1;
-                            grid.set_pixel_cow(s, y, fill_color);
                         }
                         span_start = Some(s);
                     }
-                    grid.set_pixel_cow(x, y, fill_color);
                 } else if let Some(s) = span_start {
                     let span_end = x - 1;
+                    grid.fill_horizontal_span(s, span_end, y, fill_color);
                     if y + dy >= min_y && y + dy < max_y {
                         stack.push((s, span_end, y + dy, dy));
                     }
@@ -115,8 +112,8 @@ impl FloodFillEngine {
                 let mut span_end = rx;
                 while span_end < max_x - 1 && matches(grid, span_end + 1, y) {
                     span_end += 1;
-                    grid.set_pixel_cow(span_end, y, fill_color);
                 }
+                grid.fill_horizontal_span(s, span_end, y, fill_color);
                 if y + dy >= min_y && y + dy < max_y {
                     stack.push((s, span_end, y + dy, dy));
                 }

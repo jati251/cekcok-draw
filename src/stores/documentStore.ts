@@ -11,7 +11,12 @@ interface DocumentState {
   error: string | null;
   canvasRevision: number;
 
-  initDocument: (title?: string, width?: number, height?: number) => Promise<void>;
+  initDocument: (
+    title?: string,
+    width?: number,
+    height?: number,
+    showToast?: boolean
+  ) => Promise<void>;
   addNewLayer: (name?: string) => Promise<void>;
   deleteLayer: (id: string) => Promise<void>;
   selectLayer: (id: string) => Promise<void>;
@@ -48,7 +53,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
-  initDocument: async (title = 'Untitled-1', width = 1920, height = 1080) => {
+  initDocument: async (title = 'Untitled-1', width = 1920, height = 1080, showToast = false) => {
     set({ isLoading: true, error: null });
     canvasHistoryManager.clear();
     try {
@@ -59,7 +64,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       setTimeout(() => {
         canvasHistoryManager.pushState(doc, 'Initialize Document');
       }, 50);
-      toast.success('Document Created', `${title} (${width}×${height}px)`);
+      if (showToast) {
+        toast.success('Document Created', `${title} (${width}×${height}px)`);
+      }
     } catch (err) {
       set({ error: String(err), isLoading: false });
       toast.error('Failed to create document', String(err));

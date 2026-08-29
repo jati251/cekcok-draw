@@ -15,7 +15,10 @@ export const TextOptions: React.FC<Props> = ({ textSettings, setTextSettings }) 
         <span className="text-zinc-400">Font:</span>
         <select
           value={textSettings.fontFamily}
-          onChange={(e) => setTextSettings({ fontFamily: e.target.value })}
+          onChange={(e) => {
+            setTextSettings({ fontFamily: e.target.value });
+            e.target.blur();
+          }}
           className="bg-ps-panel border border-ps-border rounded px-2 py-1 text-zinc-200 text-[11px] font-medium focus:outline-none focus:border-blue-500 cursor-pointer"
         >
           <option value="Inter, sans-serif">Inter</option>

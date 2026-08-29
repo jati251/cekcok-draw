@@ -68,6 +68,42 @@ impl SparseTileGrid {
     }
 
     #[inline]
+    pub fn fill_horizontal_span(&mut self, x1: i32, x2: i32, y: i32, color: [u8; 4]) {
+        if y < 0 || x1 > x2 || x2 < 0 {
+            return;
+        }
+        let ts = TILE_SIZE as i32;
+        let tile_y = y / ts;
+        let local_y = (y % ts) as u32;
+
+        let start_tx = (x1 / ts).max(0);
+        let end_tx = x2 / ts;
+
+        for tx in start_tx..=end_tx {
+            let tile_start_x = tx * ts;
+            let tile_end_x = tile_start_x + ts - 1;
+
+            let span_x1 = x1.max(tile_start_x);
+            let span_x2 = x2.min(tile_end_x);
+
+            let local_x1 = (span_x1 - tile_start_x) as usize;
+            let local_x2 = (span_x2 - tile_start_x) as usize;
+
+            let coord = TileCoord::new(tx, tile_y, 0);
+            let tile = self.get_or_create_mut(coord);
+
+            let row_offset = (local_y as usize * TILE_SIZE as usize + local_x1) * 4;
+            let count = local_x2 - local_x1 + 1;
+
+            for i in 0..count {
+                let offset = row_offset + i * 4;
+                tile.data[offset..offset + 4].copy_from_slice(&color);
+            }
+            tile.is_dirty = true;
+        }
+    }
+
+    #[inline]
     pub fn blend_pixel_cow(&mut self, global_x: i32, global_y: i32, r: u8, g: u8, b: u8, a: u8) {
         if global_x < 0 || global_y < 0 {
             return;

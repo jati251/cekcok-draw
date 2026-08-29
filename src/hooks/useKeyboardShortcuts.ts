@@ -35,8 +35,10 @@ export const useKeyboardShortcuts = ({
   } = useEditorStore();
 
   useEffect(() => {
-    initDocument('Untitled-1', 1920, 1080);
-  }, [initDocument]);
+    if (!doc) {
+      initDocument('Untitled-1', 1920, 1080, false);
+    }
+  }, [doc, initDocument]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
