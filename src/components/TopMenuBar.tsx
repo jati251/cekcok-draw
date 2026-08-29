@@ -99,8 +99,16 @@ export const TopMenuBar: React.FC<Props> = ({ onOpenNewDoc, onOpenExport, onOpen
       },
       { label: 'Fit on Screen (100%)', action: () => resetView(), shortcut: `${modKey}0` },
       { label: 'Actual Pixels (100%)', action: () => setZoom(1.0), shortcut: `${modKey}1` },
-      { label: 'Toggle Rulers', action: () => setShowRulers(!showRulers), shortcut: `${modKey}R` },
-      { label: 'Toggle Pixel Grid', action: () => setShowGrid(!showGrid), shortcut: `${modKey}'` },
+      {
+        label: showRulers ? '✓ Rulers' : '  Rulers',
+        action: () => setShowRulers(!showRulers),
+        shortcut: `${modKey}R`,
+      },
+      {
+        label: showGrid ? '✓ Grid' : '  Grid',
+        action: () => setShowGrid(!showGrid),
+        shortcut: `${modKey}'`,
+      },
     ],
     Window: [
       { label: 'Layers Panel', action: () => setActivePanel('layers'), shortcut: 'F7' },
