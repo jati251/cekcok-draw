@@ -6,8 +6,10 @@ import { RulersOverlay } from './RulersOverlay';
 import { LayerStack } from './canvas/LayerStack';
 import { BrushCursorRing } from './canvas/BrushCursorRing';
 import { PixelGrid } from './canvas/PixelGrid';
-import { SelectionBox } from './canvas/SelectionBox';
+import { MarchingAntsSelection } from './canvas/MarchingAntsSelection';
 import { GradientVector } from './canvas/GradientVector';
+import { ShapeOverlay } from './canvas/ShapeOverlay';
+import { TextLayerOverlay } from './canvas/TextLayerOverlay';
 import { useCanvasDrawing } from '../hooks/useCanvasDrawing';
 import { screenToCanvasCoord } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
@@ -22,6 +24,7 @@ export const CanvasViewport: React.FC = () => {
   const {
     activeTool,
     brushSettings,
+    shapeSettings,
     primaryColor,
     secondaryColor,
     setPrimaryColor,
@@ -33,6 +36,7 @@ export const CanvasViewport: React.FC = () => {
     showGrid,
     selection,
     setSelection,
+    setActiveTextNode,
   } = useEditorStore();
 
   const [isPanning, setIsPanning] = useState(false);
@@ -44,11 +48,16 @@ export const CanvasViewport: React.FC = () => {
     start: { x: number; y: number };
     current: { x: number; y: number };
   } | null>(null);
+  const [shapeDrag, setShapeDrag] = useState<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
 
   const isPanningRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const gradientStartRef = useRef<{ x: number; y: number } | null>(null);
+  const shapeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const {
     isDrawing,
@@ -110,7 +119,7 @@ export const CanvasViewport: React.FC = () => {
     ctx.save();
     ctx.fillStyle = primaryColor;
     ctx.globalAlpha = brushSettings.opacity;
-    if (selection && selection.active) {
+    if (selection && selection.active && selection.width > 0) {
       ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
     } else {
       ctx.fillRect(0, 0, doc.width, doc.height);
@@ -133,13 +142,60 @@ export const CanvasViewport: React.FC = () => {
     ctx.fillStyle = grad;
     ctx.globalAlpha = brushSettings.opacity;
 
-    if (selection && selection.active) {
+    if (selection && selection.active && selection.width > 0) {
       ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
     } else {
       ctx.fillRect(0, 0, doc.width, doc.height);
     }
     ctx.restore();
     bridge.commitStrokeHistory('Gradient Tool');
+  };
+
+  const bakeShapeToCanvas = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = layerCanvasesRef.current.get(doc.active_layer_id);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const x = Math.min(start.x, end.x);
+    const y = Math.min(start.y, end.y);
+    const w = Math.abs(end.x - start.x);
+    const h = Math.abs(end.y - start.y);
+
+    ctx.save();
+    ctx.fillStyle = primaryColor;
+    ctx.strokeStyle = secondaryColor;
+    ctx.lineWidth = shapeSettings.strokeWidth;
+
+    if (shapeSettings.type === 'line' || shapeSettings.type === 'arrow') {
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      if (shapeSettings.type === 'arrow') {
+        ctx.beginPath();
+        ctx.arc(end.x, end.y, shapeSettings.strokeWidth * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (shapeSettings.type === 'ellipse') {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      if (shapeSettings.fill) ctx.fill();
+      if (shapeSettings.stroke) ctx.stroke();
+    } else {
+      ctx.beginPath();
+      if (shapeSettings.radius > 0 && typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, w, h, shapeSettings.radius);
+      } else {
+        ctx.rect(x, y, w, h);
+      }
+      if (shapeSettings.fill) ctx.fill();
+      if (shapeSettings.stroke) ctx.stroke();
+    }
+
+    ctx.restore();
+    bridge.commitStrokeHistory(`Shape: ${shapeSettings.type}`);
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -152,6 +208,8 @@ export const CanvasViewport: React.FC = () => {
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
+
+    const pos = screenToCanvas(e.clientX, e.clientY);
 
     if (activeTool === 'zoom') {
       const factor = e.altKey ? 0.7 : 1.4;
@@ -169,17 +227,31 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'text') {
+      setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
+      return;
+    }
+
     if (activeTool === 'gradient') {
-      const pos = screenToCanvas(e.clientX, e.clientY);
       gradientStartRef.current = { x: pos.x, y: pos.y };
       setGradientDrag({ start: pos, current: pos });
       return;
     }
 
+    if (activeTool === 'shape') {
+      shapeStartRef.current = { x: pos.x, y: pos.y };
+      setShapeDrag({ start: pos, current: pos });
+      return;
+    }
+
     if (activeTool === 'selection') {
-      const pos = screenToCanvas(e.clientX, e.clientY);
       selectionStartRef.current = { x: pos.x, y: pos.y };
       setSelection({ x: pos.x, y: pos.y, width: 0, height: 0, active: true });
+      return;
+    }
+
+    if (activeTool === 'lasso') {
+      setSelection({ x: pos.x, y: pos.y, width: 0, height: 0, active: true, path: [pos] });
       return;
     }
 
@@ -187,10 +259,11 @@ export const CanvasViewport: React.FC = () => {
       activeTool === 'brush' ||
       activeTool === 'eraser' ||
       activeTool === 'dodge' ||
-      activeTool === 'burn'
+      activeTool === 'burn' ||
+      activeTool === 'smudge' ||
+      activeTool === 'blur'
     ) {
       setIsDrawing(true);
-      const pos = screenToCanvas(e.clientX, e.clientY);
       const pressure = e.pressure && e.pressure > 0 ? e.pressure : 1.0;
       const initialPoint: BrushPoint = { x: pos.x, y: pos.y, pressure };
       setStrokePoints([initialPoint]);
@@ -223,8 +296,8 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
-    if (activeTool === 'eyedropper' && e.buttons === 1) {
-      sampleColorAt(e.clientX, e.clientY);
+    if (activeTool === 'shape' && shapeStartRef.current && e.buttons === 1) {
+      setShapeDrag({ start: shapeStartRef.current, current: pos });
       return;
     }
 
@@ -240,12 +313,22 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'lasso' && selection && selection.path && e.buttons === 1) {
+      setSelection({
+        ...selection,
+        path: [...selection.path, pos],
+      });
+      return;
+    }
+
     if (
       isDrawing &&
       (activeTool === 'brush' ||
         activeTool === 'eraser' ||
         activeTool === 'dodge' ||
-        activeTool === 'burn')
+        activeTool === 'burn' ||
+        activeTool === 'smudge' ||
+        activeTool === 'blur')
     ) {
       const nativeEv = e.nativeEvent as PointerEvent;
       const coalesced =
@@ -292,6 +375,14 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'shape' && shapeStartRef.current) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      bakeShapeToCanvas(shapeStartRef.current, pos);
+      shapeStartRef.current = null;
+      setShapeDrag(null);
+      return;
+    }
+
     if (activeTool === 'selection') {
       selectionStartRef.current = null;
       return;
@@ -318,13 +409,22 @@ export const CanvasViewport: React.FC = () => {
     if (activeTool === 'move') return 'cursor-move';
     if (activeTool === 'zoom') return 'cursor-zoom-in';
     if (activeTool === 'eyedropper') return 'cursor-cell';
-    if (activeTool === 'paint_bucket' || activeTool === 'gradient' || activeTool === 'selection')
+    if (activeTool === 'text') return 'cursor-text';
+    if (
+      activeTool === 'paint_bucket' ||
+      activeTool === 'gradient' ||
+      activeTool === 'selection' ||
+      activeTool === 'lasso' ||
+      activeTool === 'shape'
+    )
       return 'cursor-crosshair';
     if (
       activeTool === 'brush' ||
       activeTool === 'eraser' ||
       activeTool === 'dodge' ||
-      activeTool === 'burn'
+      activeTool === 'burn' ||
+      activeTool === 'smudge' ||
+      activeTool === 'blur'
     )
       return 'cursor-none';
     return 'cursor-default';
@@ -376,8 +476,15 @@ export const CanvasViewport: React.FC = () => {
             className="absolute inset-0 pointer-events-none block z-30"
           />
 
+          <ShapeOverlay
+            shapeDrag={shapeDrag}
+            shapeSettings={shapeSettings}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+          />
+          <TextLayerOverlay />
           <GradientVector gradientDrag={gradientDrag} />
-          <SelectionBox />
+          <MarchingAntsSelection />
           <PixelGrid showGrid={showGrid} zoom={zoom} />
         </div>
       )}

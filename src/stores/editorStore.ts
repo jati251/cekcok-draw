@@ -1,17 +1,12 @@
 import { create } from 'zustand';
-import { ToolType, BrushSettings } from '../types';
-
-interface SelectionBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  active: boolean;
-}
+import { ToolType, BrushSettings, ShapeSettings, TextSettings, SelectionArea } from '../types';
 
 interface EditorState {
   activeTool: ToolType;
   brushSettings: BrushSettings;
+  shapeSettings: ShapeSettings;
+  textSettings: TextSettings;
+  smudgeStrength: number;
   primaryColor: string; // Hex e.g. '#2563eb'
   secondaryColor: string; // Hex e.g. '#ffffff'
   zoom: number; // 0.05 to 32.0 (1.0 = 100%)
@@ -23,10 +18,14 @@ interface EditorState {
   showGrid: boolean;
   showRulers: boolean;
   activePanel: 'layers' | 'history' | 'color' | 'all';
-  selection: SelectionBox | null;
+  selection: SelectionArea | null;
+  activeTextNode: { x: number; y: number; text: string } | null;
 
   setActiveTool: (tool: ToolType) => void;
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
+  setShapeSettings: (settings: Partial<ShapeSettings>) => void;
+  setTextSettings: (settings: Partial<TextSettings>) => void;
+  setSmudgeStrength: (strength: number) => void;
   increaseBrushSize: (delta?: number) => void;
   decreaseBrushSize: (delta?: number) => void;
   setPrimaryColor: (hex: string) => void;
@@ -43,7 +42,8 @@ interface EditorState {
   setShowGrid: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setActivePanel: (panel: 'layers' | 'history' | 'color' | 'all') => void;
-  setSelection: (selection: SelectionBox | null) => void;
+  setSelection: (selection: SelectionArea | null) => void;
+  setActiveTextNode: (node: { x: number; y: number; text: string } | null) => void;
   resetView: () => void;
 }
 
@@ -63,8 +63,22 @@ export const useEditorStore = create<EditorState>((set) => ({
     opacity: 1.0,
     flow: 1.0,
     spacing: 0.15,
-    color: [37, 99, 235, 255], // Initial vibrant blue
+    color: [37, 99, 235, 255],
   },
+  shapeSettings: {
+    type: 'rectangle',
+    fill: true,
+    stroke: true,
+    strokeWidth: 4,
+    radius: 8,
+  },
+  textSettings: {
+    fontFamily: 'Inter, sans-serif',
+    fontSize: 36,
+    fontWeight: 'normal',
+    align: 'left',
+  },
+  smudgeStrength: 0.5,
   primaryColor: '#2563eb',
   secondaryColor: '#ffffff',
   zoom: 1.0,
@@ -77,12 +91,22 @@ export const useEditorStore = create<EditorState>((set) => ({
   showRulers: true,
   activePanel: 'all',
   selection: null,
+  activeTextNode: null,
 
   setActiveTool: (activeTool) => set({ activeTool }),
   setBrushSettings: (settings) =>
     set((state) => ({
       brushSettings: { ...state.brushSettings, ...settings },
     })),
+  setShapeSettings: (settings) =>
+    set((state) => ({
+      shapeSettings: { ...state.shapeSettings, ...settings },
+    })),
+  setTextSettings: (settings) =>
+    set((state) => ({
+      textSettings: { ...state.textSettings, ...settings },
+    })),
+  setSmudgeStrength: (smudgeStrength) => set({ smudgeStrength }),
   increaseBrushSize: (delta = 5) =>
     set((state) => ({
       brushSettings: {
@@ -138,5 +162,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   setShowRulers: (showRulers) => set({ showRulers }),
   setActivePanel: (activePanel) => set({ activePanel }),
   setSelection: (selection) => set({ selection }),
+  setActiveTextNode: (activeTextNode) => set({ activeTextNode }),
   resetView: () => set({ zoom: 1.0, pan: { x: 0, y: 0 } }),
 }));

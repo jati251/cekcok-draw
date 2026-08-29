@@ -55,3 +55,27 @@ body {
     8px -8px,
     -8px 0px;
 }
+
+/* Authentic Photoshop Marching Ants selection animation */
+@keyframes marchingAnts {
+  0% {
+    stroke-dashoffset: 0;
+    background-position:
+      0 0,
+      0 100%,
+      0 0,
+      100% 0;
+  }
+  100% {
+    stroke-dashoffset: 8;
+    background-position:
+      8px 0,
+      -8px 100%,
+      0 -8px,
+      100% 8px;
+  }
+}
+
+.animate-marching-ants {
+  animation: marchingAnts 0.6s linear infinite;
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { RotateCcw, RotateCw, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
+import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import * as filters from '../lib/filters';
 import * as bridge from '../lib/tauriBridge';
 
@@ -9,68 +9,95 @@ interface Props {
   onOpenNewDoc: () => void;
   onOpenExport: () => void;
   onOpenFilter: (type: 'brightness_contrast' | 'gaussian_blur') => void;
+  onOpenHueSaturation: () => void;
 }
 
-export const TopMenuBar: React.FC<Props> = ({ onOpenNewDoc, onOpenExport, onOpenFilter }) => {
+export const TopMenuBar: React.FC<Props> = ({
+  onOpenNewDoc,
+  onOpenExport,
+  onOpenFilter,
+  onOpenHueSaturation,
+}) => {
   const { doc, triggerUndo, triggerRedo, addNewLayer } = useDocumentStore();
   const {
     zoom,
     setZoom,
     resetView,
-    setActivePanel,
-    showRulers,
-    setShowRulers,
     showGrid,
     setShowGrid,
+    showRulers,
+    setShowRulers,
+    setActivePanel,
     setSelection,
   } = useEditorStore();
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
 
-  const applyCanvasFilter = (filterName: 'invert' | 'desaturate') => {
+  const handleFlip = (direction: 'horizontal' | 'vertical') => {
+    if (!doc) return;
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-    if (canvas && doc) {
+    if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        if (filterName === 'invert') {
-          filters.applyInvert(ctx, doc.width, doc.height);
-          bridge.commitStrokeHistory('Invert Colors');
-        } else if (filterName === 'desaturate') {
-          filters.applyDesaturate(ctx, doc.width, doc.height);
-          bridge.commitStrokeHistory('Desaturate (Grayscale)');
-        }
+        filters.applyFlip(ctx, doc.width, doc.height, direction);
+        bridge.commitStrokeHistory(
+          `Flip ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
+        );
       }
     }
   };
 
-  const menus: Record<
-    string,
-    { label: string; action: () => void; shortcut?: string; divider?: boolean }[]
-  > = {
+  const menus: Record<string, { label: string; action: () => void; shortcut?: string }[]> = {
     File: [
       { label: 'New Document...', action: onOpenNewDoc, shortcut: `${modKey}N` },
-      { label: 'Export As Image (PNG / JPEG)...', action: onOpenExport, shortcut: `${modKey}E` },
-      { label: 'Save As PXL Master Format...', action: () => {}, shortcut: `${modKey}S` },
+      { label: 'Export Image...', action: onOpenExport, shortcut: `${modKey}E` },
     ],
     Edit: [
       { label: 'Undo', action: () => triggerUndo(), shortcut: `${modKey}Z` },
       { label: 'Redo', action: () => triggerRedo(), shortcut: `${modKey}⇧Z` },
       {
         label: 'Select All',
-        action: () =>
-          doc && setSelection({ x: 0, y: 0, width: doc.width, height: doc.height, active: true }),
+        action: () => {
+          if (doc) setSelection({ x: 0, y: 0, width: doc.width, height: doc.height, active: true });
+        },
         shortcut: `${modKey}A`,
       },
       { label: 'Deselect', action: () => setSelection(null), shortcut: `${modKey}D` },
     ],
     Image: [
+      { label: 'Flip Canvas Horizontal', action: () => handleFlip('horizontal') },
+      { label: 'Flip Canvas Vertical', action: () => handleFlip('vertical') },
+      { label: 'Hue / Saturation...', action: onOpenHueSaturation, shortcut: `${modKey}U` },
       { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
-      { label: 'Invert Colors', action: () => applyCanvasFilter('invert'), shortcut: `${modKey}I` },
       {
-        label: 'Desaturate (Grayscale)',
-        action: () => applyCanvasFilter('desaturate'),
+        label: 'Invert Colors',
+        action: () => {
+          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+          if (canvas && doc) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              filters.applyInvert(ctx, doc.width, doc.height);
+              bridge.commitStrokeHistory('Invert Colors');
+            }
+          }
+        },
+        shortcut: `${modKey}I`,
+      },
+      {
+        label: 'Desaturate',
+        action: () => {
+          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+          if (canvas && doc) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              filters.applyDesaturate(ctx, doc.width, doc.height);
+              bridge.commitStrokeHistory('Desaturate');
+            }
+          }
+        },
         shortcut: `${modKey}⇧U`,
       },
     ],
@@ -82,10 +109,7 @@ export const TopMenuBar: React.FC<Props> = ({ onOpenNewDoc, onOpenExport, onOpen
         shortcut: `${modKey}J`,
       },
     ],
-    Filter: [
-      { label: 'Gaussian Blur...', action: () => onOpenFilter('gaussian_blur') },
-      { label: 'Soft Airbrush Shading...', action: () => onOpenFilter('gaussian_blur') },
-    ],
+    Filter: [{ label: 'Gaussian Blur...', action: () => onOpenFilter('gaussian_blur') }],
     View: [
       {
         label: 'Zoom In',

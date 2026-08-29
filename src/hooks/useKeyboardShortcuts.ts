@@ -7,9 +7,14 @@ import * as bridge from '../lib/tauriBridge';
 interface ShortcutActions {
   onOpenNewDoc: () => void;
   onOpenExport: () => void;
+  onOpenHueSaturation: () => void;
 }
 
-export const useKeyboardShortcuts = ({ onOpenNewDoc, onOpenExport }: ShortcutActions) => {
+export const useKeyboardShortcuts = ({
+  onOpenNewDoc,
+  onOpenExport,
+  onOpenHueSaturation,
+}: ShortcutActions) => {
   const { initDocument, triggerUndo, triggerRedo, addNewLayer, doc } = useDocumentStore();
   const {
     setActiveTool,
@@ -56,6 +61,9 @@ export const useKeyboardShortcuts = ({ onOpenNewDoc, onOpenExport }: ShortcutAct
         } else if (e.key.toLowerCase() === 'e') {
           e.preventDefault();
           onOpenExport();
+        } else if (e.key.toLowerCase() === 'u' && !e.shiftKey) {
+          e.preventDefault();
+          onOpenHueSaturation();
         } else if (e.key.toLowerCase() === 'r') {
           e.preventDefault();
           setShowRulers(!showRulers);
@@ -131,6 +139,10 @@ export const useKeyboardShortcuts = ({ onOpenNewDoc, onOpenExport }: ShortcutAct
       else if (e.key.toLowerCase() === 'e') setActiveTool('eraser');
       else if (e.key.toLowerCase() === 'v') setActiveTool('move');
       else if (e.key.toLowerCase() === 'm') setActiveTool('selection');
+      else if (e.key.toLowerCase() === 'l') setActiveTool('lasso');
+      else if (e.key.toLowerCase() === 'u') setActiveTool('shape');
+      else if (e.key.toLowerCase() === 't') setActiveTool('text');
+      else if (e.key.toLowerCase() === 'r') setActiveTool(e.shiftKey ? 'blur' : 'smudge');
       else if (e.key.toLowerCase() === 'o') setActiveTool(e.shiftKey ? 'burn' : 'dodge');
       else if (e.key.toLowerCase() === 'g') setActiveTool(e.shiftKey ? 'paint_bucket' : 'gradient');
       else if (e.key.toLowerCase() === 'i') setActiveTool('eyedropper');
@@ -162,5 +174,6 @@ export const useKeyboardShortcuts = ({ onOpenNewDoc, onOpenExport }: ShortcutAct
     setActiveTool,
     onOpenNewDoc,
     onOpenExport,
+    onOpenHueSaturation,
   ]);
 };
