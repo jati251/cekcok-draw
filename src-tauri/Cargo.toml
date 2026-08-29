@@ -1,0 +1,29 @@
+[package]
+name = "cekcok-draw-core"
+version = "0.1.0"
+description = "High-Performance Raster Graphics Engine (Photoshop Replica)"
+authors = ["Jati Suryo"]
+edition = "2021"
+
+[lib]
+name = "cekcok_draw_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+parking_lot = { version = "0.12", features = ["serde"] }
+memmap2 = "0.9"
+wgpu = "24.0"
+bytemuck = { version = "1.21", features = ["derive"] }
+pollster = "0.4"
+uuid = { version = "1.13", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.11"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
