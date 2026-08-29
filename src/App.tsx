@@ -15,6 +15,7 @@ import { ToastContainer } from './components/ui/ToastContainer';
 import { useEditorStore } from './stores/editorStore';
 import { useDocumentStore } from './stores/documentStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { checkForAppUpdate } from './lib/updaterService';
 
 export const App: React.FC = () => {
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
@@ -36,6 +37,22 @@ export const App: React.FC = () => {
     onOpenExport: () => setIsExportOpen(true),
     onOpenHueSaturation: () => setIsHueSatOpen(true),
   });
+
+  // Automatic silent check for app update on startup
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkForAppUpdate()
+        .then((info) => {
+          if (info.available) {
+            setIsUpdateOpen(true);
+          }
+        })
+        .catch(() => {
+          // Ignore offline / network check errors on startup
+        });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Listen to native macOS & Windows application menu actions
   useEffect(() => {

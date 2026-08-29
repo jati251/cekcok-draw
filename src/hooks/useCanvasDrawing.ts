@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '../types';
 import { getOrCreateStamp } from '../utils/stamp';
 import { applyLocalBlur, applyLocalSmudge } from '../utils/smudgeBlur';
+import { computeEffectiveAlpha, computeEffectiveRadius, StrokeStabilizer } from '../utils/tablet';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import * as bridge from '../lib/tauriBridge';
@@ -27,6 +28,7 @@ export const useCanvasDrawing = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
   const selection = useEditorStore((s) => s.selection);
+  const stabilizerRef = useRef<StrokeStabilizer>(new StrokeStabilizer());
 
   const getToolColor = useCallback((): [number, number, number, number] => {
     if (activeTool === 'eraser') return [0, 0, 0, 255];
@@ -57,7 +59,7 @@ export const useCanvasDrawing = ({
   const drawStrokeSegment = useCallback(
     (pPrev: BrushPoint, pCurr: BrushPoint) => {
       if (!doc) return;
-      const baseRadius = Math.max(1, brushSettings.size * 0.5);
+      const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
 
       // 1. Smudge Tool
       if (activeTool === 'smudge') {
@@ -74,7 +76,8 @@ export const useCanvasDrawing = ({
         ctx.save();
         applySelectionClip(ctx);
         const strength = useEditorStore.getState().smudgeStrength || 0.6;
-        applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, baseRadius, strength);
+        const effRadius = computeEffectiveRadius(baseRadius, pCurr.pressure, brushSettings);
+        applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, effRadius, strength);
         ctx.restore();
         return;
       }
@@ -96,22 +99,30 @@ export const useCanvasDrawing = ({
         const dx = pCurr.x - pPrev.x;
         const dy = pCurr.y - pPrev.y;
         const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(2.0, baseRadius * 0.25);
+        const effRadius = computeEffectiveRadius(baseRadius, pCurr.pressure, brushSettings);
+        const stepSize = Math.max(2.0, effRadius * 0.25);
         const steps = Math.max(1, Math.ceil(dist / stepSize));
 
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           const cx = pPrev.x + dx * t;
           const cy = pPrev.y + dy * t;
+          const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
+          const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+          const stepAlpha = computeEffectiveAlpha(
+            (brushSettings.opacity || 0.8) * 0.4,
+            interpPressure,
+            brushSettings
+          );
           applyLocalBlur(
             ctx,
             doc.width,
             doc.height,
             cx,
             cy,
-            baseRadius,
-            Math.max(2, baseRadius * 0.25),
-            (brushSettings.opacity || 0.8) * 0.4
+            stepRadius,
+            Math.max(2, stepRadius * 0.25),
+            stepAlpha
           );
         }
         ctx.restore();
@@ -133,24 +144,34 @@ export const useCanvasDrawing = ({
         ctx.save();
         applySelectionClip(ctx);
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.globalAlpha = brushSettings.opacity * brushSettings.flow;
 
         const dx = pCurr.x - pPrev.x;
         const dy = pCurr.y - pPrev.y;
         const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(0.75, baseRadius * 0.15);
+        const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
+        const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings);
+        const stepSize = Math.max(0.75, avgRadius * 0.15);
         const steps = Math.max(1, Math.ceil(dist / stepSize));
-        const stamp = getOrCreateStamp(baseRadius, brushSettings, [0, 0, 0, 255]);
 
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           let x = pPrev.x + dx * t;
           let y = pPrev.y + dy * t;
+          const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
+          const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+          const stepAlpha = computeEffectiveAlpha(
+            brushSettings.opacity * brushSettings.flow,
+            interpPressure,
+            brushSettings
+          );
+          ctx.globalAlpha = stepAlpha;
+
+          const stamp = getOrCreateStamp(stepRadius, brushSettings, [0, 0, 0, 255]);
           if (brushSettings.type === 'pixel') {
             x = Math.round(x);
             y = Math.round(y);
           }
-          ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+          ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
         }
         ctx.restore();
         return;
@@ -183,26 +204,36 @@ export const useCanvasDrawing = ({
           : brushSettings.type === 'spray'
             ? 0.35
             : 0.2;
-      const standardBrushStep = Math.max(0.75, baseRadius * spacingMultiplier);
+      const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
+      const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings);
+      const standardBrushStep = Math.max(0.75, avgRadius * spacingMultiplier);
       const stepSize = Math.max(
         standardBrushStep,
-        Math.min(minScreenPixelDocSize, baseRadius * 0.8)
+        Math.min(minScreenPixelDocSize, avgRadius * 0.8)
       );
       const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-      const stamp = getOrCreateStamp(baseRadius, brushSettings, color);
 
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
         let x = pPrev.x + dx * t;
         let y = pPrev.y + dy * t;
+        const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
+        const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+        const stepAlpha = computeEffectiveAlpha(
+          brushSettings.opacity * brushSettings.flow,
+          interpPressure,
+          brushSettings
+        );
+        ctx.globalAlpha = stepAlpha;
+
+        const stamp = getOrCreateStamp(stepRadius, brushSettings, color);
 
         if (brushSettings.type === 'pixel') {
           x = Math.round(x);
           y = Math.round(y);
         }
 
-        ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+        ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
       }
 
       ctx.restore();
@@ -221,7 +252,28 @@ export const useCanvasDrawing = ({
 
   const drawInitialDot = useCallback(
     (p: BrushPoint) => {
-      const baseRadius = Math.max(1, brushSettings.size * 0.5);
+      stabilizerRef.current.reset(p);
+      const actionName =
+        activeTool === 'eraser'
+          ? 'Eraser'
+          : activeTool === 'dodge'
+            ? 'Dodge Tool'
+            : activeTool === 'burn'
+              ? 'Burn Tool'
+              : activeTool === 'smudge'
+                ? 'Smudge Tool'
+                : activeTool === 'blur'
+                  ? 'Blur Tool'
+                  : `${brushSettings.type.replace('_', ' ')} Stroke`;
+      useDocumentStore.getState().pushCanvasSnapshot(actionName);
+
+      const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
+      const effRadius = computeEffectiveRadius(baseRadius, p.pressure, brushSettings);
+      const effAlpha = computeEffectiveAlpha(
+        brushSettings.opacity * brushSettings.flow,
+        p.pressure,
+        brushSettings
+      );
 
       if (activeTool === 'blur') {
         const activeCanvas = doc?.active_layer_id
@@ -235,7 +287,7 @@ export const useCanvasDrawing = ({
         if (ctx) {
           ctx.save();
           applySelectionClip(ctx);
-          applyLocalBlur(ctx, doc.width, doc.height, p.x, p.y, baseRadius, 2, 0.4);
+          applyLocalBlur(ctx, doc.width, doc.height, p.x, p.y, effRadius, 2, effAlpha * 0.4);
           ctx.restore();
         }
         return;
@@ -257,15 +309,15 @@ export const useCanvasDrawing = ({
         ctx.save();
         applySelectionClip(ctx);
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.globalAlpha = brushSettings.opacity * brushSettings.flow;
-        const stamp = getOrCreateStamp(baseRadius, brushSettings, [0, 0, 0, 255]);
+        ctx.globalAlpha = effAlpha;
+        const stamp = getOrCreateStamp(effRadius, brushSettings, [0, 0, 0, 255]);
         let x = p.x;
         let y = p.y;
         if (brushSettings.type === 'pixel') {
           x = Math.round(x);
           y = Math.round(y);
         }
-        ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+        ctx.drawImage(stamp, x - effRadius, y - effRadius);
         ctx.restore();
         return;
       }
@@ -285,7 +337,8 @@ export const useCanvasDrawing = ({
       else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
       else ctx.globalCompositeOperation = 'source-over';
 
-      const stamp = getOrCreateStamp(baseRadius, brushSettings, color);
+      ctx.globalAlpha = effAlpha;
+      const stamp = getOrCreateStamp(effRadius, brushSettings, color);
 
       let x = p.x;
       let y = p.y;
@@ -294,7 +347,7 @@ export const useCanvasDrawing = ({
         y = Math.round(y);
       }
 
-      ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
+      ctx.drawImage(stamp, x - effRadius, y - effRadius);
       ctx.restore();
     },
     [
@@ -306,6 +359,14 @@ export const useCanvasDrawing = ({
       layerCanvasesRef,
       liveStrokeCanvasRef,
     ]
+  );
+
+  const processSmoothPoint = useCallback(
+    (rawPoint: BrushPoint): BrushPoint => {
+      const smoothing = brushSettings.smoothing ?? 0.15;
+      return stabilizerRef.current.processPoint(rawPoint, smoothing);
+    },
+    [brushSettings.smoothing]
   );
 
   const bakeStrokeToLayer = useCallback(async () => {
@@ -324,7 +385,7 @@ export const useCanvasDrawing = ({
       if (mainCtx) {
         mainCtx.save();
         applySelectionClip(mainCtx);
-        mainCtx.globalAlpha = brushSettings.opacity * brushSettings.flow;
+        mainCtx.globalAlpha = 1.0;
         if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
         else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
         else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';
@@ -381,6 +442,7 @@ export const useCanvasDrawing = ({
     setIsDrawing,
     drawInitialDot,
     drawStrokeSegment,
+    processSmoothPoint,
     bakeStrokeToLayer,
   };
 };

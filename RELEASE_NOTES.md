@@ -1,8 +1,45 @@
-# CekcokDraw v0.1.0 — Official Release Notes 🐒🎨
+# CekcokDraw v0.2.4 — Official Release Notes 🐒🎨
 
 **CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.
 
 ---
+
+## 🌟 Highlights & New Features in v0.2.4
+
+### 🖊️ 1. Wacom & Drawing Tablet Hardware Support
+
+- **Dynamic Stylus Pressure**: Real-time modulation for brush Size (_Pressure for Size_) and Opacity (_Pressure for Opacity_).
+- **Custom Pressure Response Curves**: Choose between _Linear_, _Soft Touch_, _Firm Touch_, and _S-Curve_.
+- **High-Frequency Coalesced Events Sampling**: Full polling-rate sampling (up to 1000Hz) for silky smooth curves without angular jitter.
+- **Stroke Streamline / Stabilizer**: Real-time jitter filter for clean inking and precision linework.
+- **Physical Eraser Tip Detection**: Auto-switches to Eraser when using the physical eraser end of a Wacom stylus.
+- **Real-Time Stylus Telemetry**: Live pressure meter and tilt angle indicators in the status bar.
+
+### ⏪ 2. Full-Fidelity Canvas Undo & Redo Fix
+
+- **`CanvasHistoryManager`**: Bounded raster snapshot ring buffer restoring pixel state across all layers in < 2ms upon `⌘Z` (Undo) / `⌘⇧Z` (Redo).
+- Preserves full fidelity across brush strokes, eraser, flood fill, gradients, vector shapes, image filters, and moves.
+
+### 💾 3. Expanded Photoshop-Grade Export Suite (8 Formats)
+
+- **PNG** (`.png`): Lossless 24-bit with alpha transparency.
+- **JPEG** (`.jpg`): Photo compression with quality slider (10% - 100%).
+- **WebP** (`.webp`): High-compression modern web graphics with alpha channel.
+- **BMP** (`.bmp`): 24-bit uncompressed Windows bitmap.
+- **TIFF** (`.tiff`): Master print / pre-press format.
+- **SVG** (`.svg`): Vector container with embedded high-resolution raster.
+- **PDF** (`.pdf`): Single-page printable document.
+- **.cekcok Project Package**: Complete multi-layer archive saving layer stack, blend modes, individual opacities, and pixel data.
+
+### ⚡ 4. Native Rust Encoding & Startup Auto-Update Check
+
+- Native encoding in Rust backend for PNG, JPEG, WebP, BMP, and TIFF via `image` crate.
+- Silent background update check on first launch with direct update prompt.
+- Cleaned up repetitive toast notifications for a focused workspace experience.
+
+---
+
+# CekcokDraw v0.1.0 — Official Release Notes 🐒🎨
 
 ## 🌟 Highlights & Core Capabilities
 

@@ -343,7 +343,7 @@ pub fn render_viewport(
         .render_viewport_rgba(request.vx, request.vy, request.vw, request.vh)
 }
 
-/// Native image exporter encoding PNG or JPEG directly in Rust
+/// Native multi-format image exporter encoding PNG, JPEG, WebP, BMP, TIFF directly in Rust
 #[tauri::command]
 pub fn export_document_image(
     format: String,
@@ -358,18 +358,42 @@ pub fn export_document_image(
         .ok_or_else(|| "Failed to construct RGBA image buffer".to_string())?;
 
     let mut cursor = Cursor::new(Vec::new());
+    let fmt_lower = format.to_lowercase();
 
-    if format.to_lowercase() == "jpeg" || format.to_lowercase() == "jpg" {
-        let rgb_img = image::DynamicImage::ImageRgba8(img_buffer).to_rgb8();
-        let q = quality.unwrap_or(90).clamp(1, 100);
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, q);
-        encoder
-            .encode_image(&rgb_img)
-            .map_err(|e| format!("JPEG encode error: {}", e))?;
-    } else {
-        img_buffer
-            .write_to(&mut cursor, image::ImageFormat::Png)
-            .map_err(|e| format!("PNG encode error: {}", e))?;
+    match fmt_lower.as_str() {
+        "jpeg" | "jpg" => {
+            let rgb_img = image::DynamicImage::ImageRgba8(img_buffer).to_rgb8();
+            let q = quality.unwrap_or(92).clamp(1, 100);
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, q);
+            encoder
+                .encode_image(&rgb_img)
+                .map_err(|e| format!("JPEG encode error: {}", e))?;
+        }
+        "webp" => {
+            img_buffer
+                .write_to(&mut cursor, image::ImageFormat::WebP)
+                .map_err(|e| format!("WebP encode error: {}", e))?;
+        }
+        "bmp" => {
+            img_buffer
+                .write_to(&mut cursor, image::ImageFormat::Bmp)
+                .map_err(|e| format!("BMP encode error: {}", e))?;
+        }
+        "tiff" | "tif" => {
+            img_buffer
+                .write_to(&mut cursor, image::ImageFormat::Tiff)
+                .map_err(|e| format!("TIFF encode error: {}", e))?;
+        }
+        "ico" => {
+            img_buffer
+                .write_to(&mut cursor, image::ImageFormat::Ico)
+                .map_err(|e| format!("ICO encode error: {}", e))?;
+        }
+        _ => {
+            img_buffer
+                .write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| format!("PNG encode error: {}", e))?;
+        }
     }
 
     Ok(cursor.into_inner())

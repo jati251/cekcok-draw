@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { ToolType, BrushSettings, ShapeSettings, TextSettings, SelectionArea } from '../types';
+import {
+  ToolType,
+  BrushSettings,
+  ShapeSettings,
+  TextSettings,
+  SelectionArea,
+  TabletTelemetry,
+} from '../types';
 import { hexToRgba } from '../utils/color';
 
 interface EditorState {
@@ -21,6 +28,7 @@ interface EditorState {
   activePanel: 'layers' | 'history' | 'color' | 'all';
   selection: SelectionArea | null;
   activeTextNode: { x: number; y: number; text: string } | null;
+  tabletTelemetry: TabletTelemetry;
 
   setActiveTool: (tool: ToolType) => void;
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
@@ -45,6 +53,7 @@ interface EditorState {
   setActivePanel: (panel: 'layers' | 'history' | 'color' | 'all') => void;
   setSelection: (selection: SelectionArea | null) => void;
   setActiveTextNode: (node: { x: number; y: number; text: string } | null) => void;
+  setTabletTelemetry: (telemetry: Partial<TabletTelemetry>) => void;
   resetView: () => void;
 }
 
@@ -61,6 +70,12 @@ export const useEditorStore = create<EditorState>((set) => ({
     angle: 45,
     grain: 0.5,
     scatter: 0.5,
+    pressureSize: true,
+    pressureOpacity: true,
+    pressureFlow: false,
+    smoothing: 0.15,
+    pressureCurve: 'linear',
+    minPressureSize: 0.08,
   },
   shapeSettings: {
     type: 'rectangle',
@@ -89,6 +104,14 @@ export const useEditorStore = create<EditorState>((set) => ({
   activePanel: 'all',
   selection: null,
   activeTextNode: null,
+  tabletTelemetry: {
+    isStylus: false,
+    pointerType: 'none',
+    pressure: 0,
+    tiltX: 0,
+    tiltY: 0,
+    isEraser: false,
+  },
 
   setActiveTool: (activeTool) =>
     set({
@@ -165,5 +188,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   setActivePanel: (activePanel) => set({ activePanel }),
   setSelection: (selection) => set({ selection }),
   setActiveTextNode: (activeTextNode) => set({ activeTextNode }),
+  setTabletTelemetry: (telemetry) =>
+    set((state) => ({
+      tabletTelemetry: { ...state.tabletTelemetry, ...telemetry },
+    })),
   resetView: () => set({ zoom: 1.0, pan: { x: 0, y: 0 } }),
 }));

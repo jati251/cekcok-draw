@@ -25,6 +25,7 @@ export const HueSaturationModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        useDocumentStore.getState().pushCanvasSnapshot('Hue / Saturation Adjustment');
         filters.applyHueSaturation(ctx, doc.width, doc.height, hue, saturation, lightness);
         await bridge.applyLayerFilter({
           type: 'hue_saturation',

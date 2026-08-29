@@ -78,6 +78,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      useDocumentStore.getState().pushCanvasSnapshot('Paint Bucket Fill');
       const fillColor = hexToRgba(primaryColor, Math.round(brushSettings.opacity * 255));
       const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
 
@@ -111,6 +112,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      useDocumentStore.getState().pushCanvasSnapshot('Gradient Tool');
       ctx.save();
       const grad = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
       grad.addColorStop(0, primaryColor);
@@ -144,6 +146,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
       if (!canvas) return;
 
+      useDocumentStore.getState().pushCanvasSnapshot('Move Layer Content');
       moveStartRef.current = { x: pos.x, y: pos.y };
       setMoveDrag({ start: pos, current: pos });
 
@@ -197,6 +200,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    useDocumentStore.getState().pushCanvasSnapshot('Clear Selection (Delete)');
     ctx.save();
     if (selection.path && selection.path.length > 2) {
       ctx.beginPath();
@@ -223,6 +227,8 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+
+      useDocumentStore.getState().pushCanvasSnapshot(`Shape (${shapeSettings.type})`);
 
       const x = Math.min(start.x, end.x);
       const y = Math.min(start.y, end.y);

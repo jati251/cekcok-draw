@@ -23,6 +23,13 @@ export const FiltersModal: React.FC<Props> = ({ isOpen, filterType, onClose }) =
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        useDocumentStore
+          .getState()
+          .pushCanvasSnapshot(
+            filterType === 'brightness_contrast'
+              ? 'Brightness / Contrast Adjustment'
+              : `Gaussian Blur (${blurRadius}px)`
+          );
         if (filterType === 'brightness_contrast') {
           filters.applyBrightnessContrast(ctx, doc.width, doc.height, brightness, contrast);
           await bridge.applyLayerFilter({

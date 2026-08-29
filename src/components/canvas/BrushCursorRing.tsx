@@ -1,5 +1,7 @@
 import React from 'react';
 import { ToolType, BrushSettings } from '../../types';
+import { useEditorStore } from '../../stores/editorStore';
+import { computeEffectiveRadius } from '../../utils/tablet';
 
 interface Props {
   isHovering: boolean;
@@ -16,6 +18,9 @@ export const BrushCursorRing: React.FC<Props> = ({
   brushSettings,
   zoom,
 }) => {
+  const isDrawing = useEditorStore((s) => s.isDrawing);
+  const tabletTelemetry = useEditorStore((s) => s.tabletTelemetry);
+
   if (
     !isHovering ||
     !mousePos ||
@@ -29,7 +34,13 @@ export const BrushCursorRing: React.FC<Props> = ({
     return null;
   }
 
-  const brushScreenRadius = brushSettings.size * 0.5 * zoom;
+  const baseRadius = brushSettings.size * 0.5;
+  const currentRadius =
+    isDrawing && tabletTelemetry.pressure > 0
+      ? computeEffectiveRadius(baseRadius, tabletTelemetry.pressure, brushSettings)
+      : baseRadius;
+
+  const brushScreenRadius = currentRadius * zoom;
   const brushInnerRadius = brushScreenRadius * brushSettings.hardness;
   const brushType = brushSettings.type || 'round_soft';
   const angle = brushSettings.angle ?? 45;

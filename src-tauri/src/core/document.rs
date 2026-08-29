@@ -196,7 +196,7 @@ impl Document {
                             BlendMode::Screen => (
                                 1.0 - (1.0 - bot_r) * (1.0 - top_r),
                                 1.0 - (1.0 - bot_g) * (1.0 - top_g),
-                                1.0 - (1.0 - bot_b) * (1.0 - top_r),
+                                1.0 - (1.0 - bot_b) * (1.0 - top_b),
                             ),
                             BlendMode::Overlay => (
                                 if bot_r < 0.5 {

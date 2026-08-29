@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BlendMode, DocumentInfo, HistoryAction } from '../types';
 import * as bridge from '../lib/tauriBridge';
+import { canvasHistoryManager } from '../utils/history';
 import { toast } from './toastStore';
 
 interface DocumentState {
@@ -22,6 +23,7 @@ interface DocumentState {
   mergeDown: (id: string) => Promise<void>;
   reorderLayer: (id: string, newIndex: number) => Promise<void>;
   clearLayer: (id: string) => Promise<void>;
+  pushCanvasSnapshot: (description: string) => void;
   triggerUndo: () => Promise<void>;
   triggerRedo: () => Promise<void>;
   refreshHistory: () => Promise<void>;
@@ -39,12 +41,24 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set((state) => ({ canvasRevision: state.canvasRevision + 1 }));
   },
 
+  pushCanvasSnapshot: (description: string) => {
+    const currentDoc = get().doc;
+    if (currentDoc) {
+      canvasHistoryManager.pushState(currentDoc, description);
+    }
+  },
+
   initDocument: async (title = 'Untitled-1', width = 1920, height = 1080) => {
     set({ isLoading: true, error: null });
+    canvasHistoryManager.clear();
     try {
       const doc = await bridge.createDocument(title, width, height);
       const history = await bridge.getHistory();
       set({ doc, history, isLoading: false, canvasRevision: get().canvasRevision + 1 });
+      // Record initial blank state snapshot
+      setTimeout(() => {
+        canvasHistoryManager.pushState(doc, 'Initialize Document');
+      }, 50);
       toast.success('Document Created', `${title} (${width}×${height}px)`);
     } catch (err) {
       set({ error: String(err), isLoading: false });
@@ -60,7 +74,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const doc = await bridge.addLayer(layerName);
       const history = await bridge.getHistory();
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
-      toast.info('Layer Added', `Created '${layerName}'`);
     } catch (err) {
       set({ error: String(err) });
       toast.error('Could not create layer', String(err));
@@ -74,12 +87,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       toast.warning('Cannot Delete Layer', 'Document must have at least one layer.');
       return;
     }
-    const target = currentDoc.layers.find((l) => l.id === id);
     try {
       const doc = await bridge.removeLayer(id);
       const history = await bridge.getHistory();
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
-      toast.info('Layer Deleted', `Removed '${target?.name || 'Layer'}'`);
     } catch (err) {
       set({ error: String(err) });
       toast.error('Failed to delete layer', String(err));
@@ -125,11 +136,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.setLayerLock(id, !target.locked);
       set({ doc, canvasRevision: get().canvasRevision + 1 });
-      if (!target.locked) {
-        toast.info('Layer Locked', `'${target.name}' is now protected from editing`);
-      } else {
-        toast.info('Layer Unlocked', `'${target.name}' is now editable`);
-      }
     } catch (err) {
       set({ error: String(err) });
     }
@@ -187,7 +193,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const doc = await bridge.removeLayer(upperLayer.id);
       const history = await bridge.getHistory();
       set({ doc, history, canvasRevision: get().canvasRevision + 1 });
-      toast.success('Merged Down', `Merged '${upperLayer.name}' into '${lowerLayer.name}'`);
     } catch (err) {
       set({ error: String(err) });
     }
@@ -218,28 +223,48 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        get().pushCanvasSnapshot(`Clear Layer '${target?.name || 'Layer'}'`);
         ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
         get().bumpCanvasRevision();
-        toast.info('Layer Cleared', `Cleared all pixels on '${target?.name || 'Layer'}'`);
       }
     }
   },
 
   triggerUndo: async () => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
     try {
-      const doc = await bridge.undo();
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      const restoredState = canvasHistoryManager.undo(currentDoc);
+      if (restoredState) {
+        set({ doc: restoredState.doc, canvasRevision: get().canvasRevision + 1 });
+      }
+      const bridgeDoc = await bridge.undo().catch(() => null);
+      const history = await bridge.getHistory().catch(() => []);
+      if (bridgeDoc) {
+        set({ doc: bridgeDoc, history, canvasRevision: get().canvasRevision + 1 });
+      } else if (history.length > 0) {
+        set({ history });
+      }
     } catch (err) {
       set({ error: String(err) });
     }
   },
 
   triggerRedo: async () => {
+    const currentDoc = get().doc;
+    if (!currentDoc) return;
     try {
-      const doc = await bridge.redo();
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      const restoredState = canvasHistoryManager.redo(currentDoc);
+      if (restoredState) {
+        set({ doc: restoredState.doc, canvasRevision: get().canvasRevision + 1 });
+      }
+      const bridgeDoc = await bridge.redo().catch(() => null);
+      const history = await bridge.getHistory().catch(() => []);
+      if (bridgeDoc) {
+        set({ doc: bridgeDoc, history, canvasRevision: get().canvasRevision + 1 });
+      } else if (history.length > 0) {
+        set({ history });
+      }
     } catch (err) {
       set({ error: String(err) });
     }

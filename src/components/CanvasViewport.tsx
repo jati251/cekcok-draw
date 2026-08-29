@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useEditorStore } from '../stores/editorStore';
 import { useDocumentStore } from '../stores/documentStore';
 import { toast } from '../stores/toastStore';
-import { BrushPoint } from '../types';
+import { BrushPoint, ToolType } from '../types';
 import { LayerStack } from './canvas/LayerStack';
 import { PixelGrid } from './canvas/PixelGrid';
 import { MarchingAntsSelection } from './canvas/MarchingAntsSelection';
@@ -15,6 +15,7 @@ import { RulersOverlay } from './RulersOverlay';
 import { useCanvasDrawing } from '../hooks/useCanvasDrawing';
 import { useCanvasViewport } from '../hooks/useCanvasViewport';
 import { useVectorInteractions } from '../hooks/useVectorInteractions';
+import { extractPointerDetails } from '../utils/tablet';
 
 export const CanvasViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -22,10 +23,12 @@ export const CanvasViewport: React.FC = () => {
   const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const previousToolBeforeEraserRef = useRef<ToolType | null>(null);
 
   const { doc } = useDocumentStore();
   const {
     activeTool,
+    setActiveTool,
     brushSettings,
     shapeSettings,
     primaryColor,
@@ -34,6 +37,7 @@ export const CanvasViewport: React.FC = () => {
     showGrid,
     selection,
     setSelection,
+    setTabletTelemetry,
   } = useEditorStore();
 
   const {
@@ -78,6 +82,7 @@ export const CanvasViewport: React.FC = () => {
     setStrokePoints,
     drawInitialDot,
     drawStrokeSegment,
+    processSmoothPoint,
     bakeStrokeToLayer,
   } = useCanvasDrawing({
     doc,
@@ -94,6 +99,15 @@ export const CanvasViewport: React.FC = () => {
 
     // Right-click opens Photoshop Context Menu instead of drawing
     if (e.button === 2) return;
+
+    const { point: rawPointData, telemetry } = extractPointerDetails(e);
+    setTabletTelemetry(telemetry);
+
+    // Stylus Physical Eraser Tip Auto-Switching
+    if (telemetry.isEraser && activeTool !== 'eraser') {
+      previousToolBeforeEraserRef.current = activeTool;
+      setActiveTool('eraser');
+    }
 
     if (activeTool !== 'text') {
       try {
@@ -191,9 +205,18 @@ export const CanvasViewport: React.FC = () => {
 
     if (['brush', 'eraser', 'dodge', 'burn', 'smudge', 'blur'].includes(activeTool)) {
       setIsDrawing(true);
-      const point: BrushPoint = { x: pos.x, y: pos.y, pressure: e.pressure || 0.5 };
-      setStrokePoints([point]);
-      drawInitialDot(point);
+      const rawBrushPoint: BrushPoint = {
+        x: pos.x,
+        y: pos.y,
+        pressure: rawPointData.pressure,
+        tiltX: rawPointData.tiltX,
+        tiltY: rawPointData.tiltY,
+        twist: rawPointData.twist,
+        pointerType: rawPointData.pointerType,
+      };
+      const initialPoint = processSmoothPoint(rawBrushPoint);
+      setStrokePoints([initialPoint]);
+      drawInitialDot(initialPoint);
     }
   };
 
@@ -204,6 +227,9 @@ export const CanvasViewport: React.FC = () => {
       updatePanning(e.clientX, e.clientY);
       return;
     }
+
+    const { telemetry } = extractPointerDetails(e);
+    setTabletTelemetry(telemetry);
 
     const pos = screenToCanvas(e.clientX, e.clientY);
     setCursorPos({ x: Math.round(pos.x), y: Math.round(pos.y) });
@@ -246,12 +272,38 @@ export const CanvasViewport: React.FC = () => {
     }
 
     if (isDrawing) {
-      const point: BrushPoint = { x: pos.x, y: pos.y, pressure: e.pressure || 0.5 };
+      // Extract high-frequency sub-frame coalesced tablet events if available
+      const coalescedEvents =
+        typeof e.nativeEvent.getCoalescedEvents === 'function'
+          ? e.nativeEvent.getCoalescedEvents()
+          : [e.nativeEvent];
+
       setStrokePoints((prev) => {
-        if (prev.length > 0) {
-          drawStrokeSegment(prev[prev.length - 1], point);
+        let lastPt = prev.length > 0 ? prev[prev.length - 1] : null;
+        const newPoints: BrushPoint[] = [];
+
+        for (const rawEv of coalescedEvents) {
+          const subDetails = extractPointerDetails(rawEv);
+          const subCanvasPos = screenToCanvas(subDetails.point.x, subDetails.point.y);
+          const rawSubPt: BrushPoint = {
+            x: subCanvasPos.x,
+            y: subCanvasPos.y,
+            pressure: subDetails.point.pressure,
+            tiltX: subDetails.point.tiltX,
+            tiltY: subDetails.point.tiltY,
+            twist: subDetails.point.twist,
+            pointerType: subDetails.point.pointerType,
+          };
+          const smoothed = processSmoothPoint(rawSubPt);
+
+          if (lastPt) {
+            drawStrokeSegment(lastPt, smoothed);
+          }
+          lastPt = smoothed;
+          newPoints.push(smoothed);
         }
-        return [...prev, point];
+
+        return [...prev, ...newPoints];
       });
     }
   };
@@ -259,6 +311,14 @@ export const CanvasViewport: React.FC = () => {
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+
+    setTabletTelemetry({ pressure: 0 });
+
+    // Restore previous tool if we auto-switched to physical eraser
+    if (previousToolBeforeEraserRef.current) {
+      setActiveTool(previousToolBeforeEraserRef.current);
+      previousToolBeforeEraserRef.current = null;
     }
 
     if (isPanningRef.current) {

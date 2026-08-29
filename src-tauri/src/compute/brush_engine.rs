@@ -23,11 +23,21 @@ impl Default for BrushType {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BrushPoint {
     pub x: f32,
     pub y: f32,
     pub pressure: f32, // 0.0 to 1.0
+    #[serde(default)]
+    pub tilt_x: Option<f32>,
+    #[serde(default)]
+    pub tilt_y: Option<f32>,
+    #[serde(default)]
+    pub twist: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,9 +50,20 @@ pub struct BrushSettings {
     pub flow: f32,      // 0.0 to 1.0
     pub spacing: f32,   // percentage of radius, e.g. 0.15
     pub color: [u8; 4], // RGBA
+    #[serde(default)]
     pub angle: Option<f32>,
+    #[serde(default)]
     pub grain: Option<f32>,
+    #[serde(default)]
     pub scatter: Option<f32>,
+    #[serde(default = "default_true")]
+    pub pressure_size: bool,
+    #[serde(default = "default_true")]
+    pub pressure_opacity: bool,
+    #[serde(default)]
+    pub pressure_flow: bool,
+    #[serde(default)]
+    pub smoothing: Option<f32>,
 }
 
 impl Default for BrushSettings {
@@ -58,6 +79,10 @@ impl Default for BrushSettings {
             angle: Some(45.0),
             grain: Some(0.5),
             scatter: Some(0.5),
+            pressure_size: true,
+            pressure_opacity: true,
+            pressure_flow: false,
+            smoothing: Some(0.15),
         }
     }
 }
@@ -203,7 +228,12 @@ impl BrushEngine {
         pressure: f32,
         settings: &BrushSettings,
     ) {
-        let eff_radius = (settings.size * 0.5 * pressure.max(0.05)).max(1.0);
+        let p_clamped = pressure.clamp(0.0, 1.0);
+        let eff_radius = if settings.pressure_size {
+            (settings.size * 0.5 * (0.08 + 0.92 * p_clamped)).max(0.75)
+        } else {
+            (settings.size * 0.5).max(0.75)
+        };
         let eff_radius_sq = eff_radius * eff_radius;
         let hardness = settings.hardness.clamp(0.0, 0.999);
         let inner_radius = eff_radius * hardness;
@@ -213,7 +243,12 @@ impl BrushEngine {
         let min_y = (center_y - eff_radius).floor() as i32;
         let max_y = (center_y + eff_radius).ceil() as i32;
 
-        let flow = settings.flow.clamp(0.01, 1.0);
+        let base_flow = settings.flow.clamp(0.01, 1.0);
+        let flow = if settings.pressure_opacity {
+            base_flow * (0.05 + 0.95 * p_clamped)
+        } else {
+            base_flow
+        };
         let angle_rad = settings.angle.unwrap_or(45.0).to_radians();
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();

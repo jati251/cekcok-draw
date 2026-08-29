@@ -60,6 +60,11 @@ export const TopMenuBar: React.FC<Props> = ({
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        useDocumentStore
+          .getState()
+          .pushCanvasSnapshot(
+            `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
+          );
         filters.applyFlip(ctx, doc.width, doc.height, direction);
         if (direction === 'horizontal') {
           await bridge.applyLayerFilter({ type: 'flip_horizontal', width: doc.width });
@@ -116,6 +121,7 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
+              useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
               filters.applyInvert(ctx, doc.width, doc.height);
               await bridge.applyLayerFilter({ type: 'invert' });
             }
@@ -130,6 +136,7 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
+              useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
               filters.applyDesaturate(ctx, doc.width, doc.height);
               await bridge.applyLayerFilter({ type: 'desaturate' });
             }
