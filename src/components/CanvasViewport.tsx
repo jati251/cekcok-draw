@@ -1,16 +1,18 @@
 import React, { useRef } from 'react';
-import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
+import { useDocumentStore } from '../stores/documentStore';
 import { BrushPoint } from '../types';
-import { RulersOverlay } from './RulersOverlay';
 import { LayerStack } from './canvas/LayerStack';
-import { BrushCursorRing } from './canvas/BrushCursorRing';
 import { PixelGrid } from './canvas/PixelGrid';
 import { MarchingAntsSelection } from './canvas/MarchingAntsSelection';
 import { GradientVector } from './canvas/GradientVector';
 import { ShapeOverlay } from './canvas/ShapeOverlay';
 import { TextLayerOverlay } from './canvas/TextLayerOverlay';
-import { useCanvasDrawing, useCanvasViewport, useVectorInteractions } from '../hooks';
+import { BrushCursorRing } from './canvas/BrushCursorRing';
+import { RulersOverlay } from './RulersOverlay';
+import { useCanvasDrawing } from '../hooks/useCanvasDrawing';
+import { useCanvasViewport } from '../hooks/useCanvasViewport';
+import { useVectorInteractions } from '../hooks/useVectorInteractions';
 
 export const CanvasViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,12 +56,16 @@ export const CanvasViewport: React.FC = () => {
     setGradientDrag,
     shapeDrag,
     setShapeDrag,
+    moveDrag,
     selectionStartRef,
     gradientStartRef,
     shapeStartRef,
     sampleColorAt,
     handlePaintBucket,
     applyGradient,
+    startMove,
+    updateMove,
+    endMove,
     bakeShapeToCanvas,
     setActiveTextNode,
   } = useVectorInteractions({ doc, layerCanvasesRef });
@@ -84,12 +90,17 @@ export const CanvasViewport: React.FC = () => {
     if (!doc) return;
     e.currentTarget.setPointerCapture(e.pointerId);
 
-    if (e.button === 1 || activeTool === 'hand' || e.buttons === 4 || activeTool === 'move') {
+    if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
       startPanning(e.clientX, e.clientY);
       return;
     }
 
     const pos = screenToCanvas(e.clientX, e.clientY);
+
+    if (activeTool === 'move') {
+      startMove(pos);
+      return;
+    }
 
     if (activeTool === 'zoom') {
       const factor = e.altKey ? 0.7 : 1.4;
@@ -172,6 +183,11 @@ export const CanvasViewport: React.FC = () => {
     setCursorPos({ x: Math.round(pos.x), y: Math.round(pos.y) });
     setMouseClientPos({ clientX: e.clientX, clientY: e.clientY });
 
+    if (activeTool === 'move' && moveDrag) {
+      updateMove(pos);
+      return;
+    }
+
     if (gradientStartRef.current && activeTool === 'gradient') {
       setGradientDrag({ start: gradientStartRef.current, current: pos });
       return;
@@ -224,6 +240,11 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'move' && moveDrag) {
+      endMove();
+      return;
+    }
+
     if (gradientDrag && activeTool === 'gradient') {
       applyGradient(gradientDrag.start, gradientDrag.current);
       setGradientDrag(null);
@@ -265,19 +286,18 @@ export const CanvasViewport: React.FC = () => {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onMouseEnter={() => setIsHoveringCanvas(true)}
-      onMouseLeave={() => {
-        setIsHoveringCanvas(false);
-        setMouseClientPos(null);
-      }}
+      onPointerEnter={() => setIsHoveringCanvas(true)}
+      onPointerLeave={() => setIsHoveringCanvas(false)}
       className={`flex-1 relative overflow-hidden bg-[#18181b] select-none touch-none ${
         isPanning
           ? 'cursor-grabbing'
           : activeTool === 'hand'
             ? 'cursor-grab'
-            : activeTool === 'zoom'
-              ? 'cursor-zoom-in'
-              : 'cursor-crosshair'
+            : activeTool === 'move'
+              ? 'cursor-move'
+              : activeTool === 'zoom'
+                ? 'cursor-zoom-in'
+                : 'cursor-crosshair'
       }`}
     >
       <RulersOverlay />

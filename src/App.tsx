@@ -58,16 +58,16 @@ export const App: React.FC = () => {
         <ToolBar />
         <CanvasViewport />
 
-        {/* Right Studio Panels */}
+        {/* Right Studio Panels with Smooth Custom Scrollbar */}
         {(activePanel === 'all' ||
           activePanel === 'layers' ||
           activePanel === 'history' ||
           activePanel === 'color') && (
-          <aside className="w-72 bg-ps-panel border-l border-ps-border flex flex-col z-20 shadow-xl">
+          <aside className="w-72 bg-ps-panel border-l border-ps-border flex flex-col z-20 shadow-xl overflow-y-auto overflow-x-hidden select-none">
             {(activePanel === 'all' || activePanel === 'color') && <ColorPicker />}
             {(activePanel === 'all' || activePanel === 'history') && <HistoryPanel />}
             {(activePanel === 'all' || activePanel === 'layers') && (
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-[220px]">
                 <LayerPanel />
               </div>
             )}

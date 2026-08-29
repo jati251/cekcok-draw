@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '../stores/editorStore';
+import { useDocumentStore } from '../stores/documentStore';
 import { DocumentInfo } from '../types';
 import { floodFill } from '../utils/floodFill';
 import { hexToRgba } from '../utils/color';
@@ -23,6 +24,8 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     setActiveTextNode,
   } = useEditorStore();
 
+  const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
+
   const [gradientDrag, setGradientDrag] = useState<{
     start: { x: number; y: number };
     current: { x: number; y: number };
@@ -33,9 +36,16 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     current: { x: number; y: number };
   } | null>(null);
 
+  const [moveDrag, setMoveDrag] = useState<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
+
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const gradientStartRef = useRef<{ x: number; y: number } | null>(null);
   const shapeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const moveStartRef = useRef<{ x: number; y: number } | null>(null);
+  const moveBufferRef = useRef<HTMLCanvasElement | null>(null);
 
   const sampleColorAt = useCallback(
     (pos: { x: number; y: number }) => {
@@ -72,6 +82,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
 
       if (filled) {
+        bumpCanvasRevision();
         bridge.applyFloodFill(
           pos.x,
           pos.y,
@@ -89,7 +100,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         );
       }
     },
-    [brushSettings.opacity, doc, layerCanvasesRef, primaryColor, selection]
+    [brushSettings.opacity, bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, selection]
   );
 
   const applyGradient = useCallback(
@@ -113,10 +124,97 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         ctx.fillRect(0, 0, doc.width, doc.height);
       }
       ctx.restore();
+      bumpCanvasRevision();
       bridge.commitStrokeHistory('Gradient Tool');
     },
-    [brushSettings.opacity, doc, layerCanvasesRef, primaryColor, secondaryColor, selection]
+    [
+      brushSettings.opacity,
+      bumpCanvasRevision,
+      doc,
+      layerCanvasesRef,
+      primaryColor,
+      secondaryColor,
+      selection,
+    ]
   );
+
+  const startMove = useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!doc || !doc.active_layer_id) return;
+      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
+      if (!canvas) return;
+
+      moveStartRef.current = { x: pos.x, y: pos.y };
+      setMoveDrag({ start: pos, current: pos });
+
+      if (!moveBufferRef.current) {
+        moveBufferRef.current = document.createElement('canvas');
+      }
+      const buf = moveBufferRef.current;
+      buf.width = canvas.width;
+      buf.height = canvas.height;
+      const bCtx = buf.getContext('2d');
+      if (bCtx) {
+        bCtx.clearRect(0, 0, buf.width, buf.height);
+        bCtx.drawImage(canvas, 0, 0);
+      }
+    },
+    [doc, layerCanvasesRef]
+  );
+
+  const updateMove = useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!doc || !doc.active_layer_id || !moveStartRef.current || !moveBufferRef.current) return;
+      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dx = Math.round(pos.x - moveStartRef.current.x);
+      const dy = Math.round(pos.y - moveStartRef.current.y);
+
+      setMoveDrag({ start: moveStartRef.current, current: pos });
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(moveBufferRef.current, dx, dy);
+    },
+    [doc, layerCanvasesRef]
+  );
+
+  const endMove = useCallback(() => {
+    if (moveStartRef.current) {
+      moveStartRef.current = null;
+      setMoveDrag(null);
+      bumpCanvasRevision();
+      bridge.commitStrokeHistory('Move Layer Content');
+    }
+  }, [bumpCanvasRevision]);
+
+  const clearSelectionContent = useCallback(() => {
+    if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
+    const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.save();
+    if (selection.path && selection.path.length > 2) {
+      ctx.beginPath();
+      ctx.moveTo(selection.path[0].x, selection.path[0].y);
+      for (let i = 1; i < selection.path.length; i++) {
+        ctx.lineTo(selection.path[i].x, selection.path[i].y);
+      }
+      ctx.closePath();
+      ctx.clip();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else if (selection.width > 0 && selection.height > 0) {
+      ctx.clearRect(selection.x, selection.y, selection.width, selection.height);
+    }
+    ctx.restore();
+
+    bumpCanvasRevision();
+    bridge.commitStrokeHistory('Clear Selection (Delete)');
+  }, [bumpCanvasRevision, doc, layerCanvasesRef, selection]);
 
   const bakeShapeToCanvas = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {
@@ -158,6 +256,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         if (shapeSettings.stroke) ctx.stroke();
       }
       ctx.restore();
+      bumpCanvasRevision();
 
       const strokeRgba = hexToRgba(secondaryColor, 255);
       const fillRgba = hexToRgba(primaryColor, 255);
@@ -177,7 +276,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         doc.active_layer_id
       );
     },
-    [doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
+    [bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
   );
 
   return {
@@ -185,12 +284,17 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     setGradientDrag,
     shapeDrag,
     setShapeDrag,
+    moveDrag,
     selectionStartRef,
     gradientStartRef,
     shapeStartRef,
     sampleColorAt,
     handlePaintBucket,
     applyGradient,
+    startMove,
+    updateMove,
+    endMove,
+    clearSelectionContent,
     bakeShapeToCanvas,
     activeTool,
     shapeSettings,

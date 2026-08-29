@@ -7,48 +7,38 @@ interface Props {
 
 export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { doc, history } = useDocumentStore();
+  const { doc, canvasRevision } = useDocumentStore();
 
   useEffect(() => {
-    const renderThumbnail = () => {
-      const thumbCanvas = canvasRef.current;
-      if (!thumbCanvas) return;
-      const thumbCtx = thumbCanvas.getContext('2d');
-      if (!thumbCtx) return;
+    const thumbCanvas = canvasRef.current;
+    if (!thumbCanvas) return;
+    const thumbCtx = thumbCanvas.getContext('2d');
+    if (!thumbCtx) return;
 
-      const sourceCanvas = document.getElementById(
-        `layer-canvas-${layerId}`
-      ) as HTMLCanvasElement | null;
+    const sourceCanvas = document.getElementById(
+      `layer-canvas-${layerId}`
+    ) as HTMLCanvasElement | null;
 
-      thumbCtx.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+    thumbCtx.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
 
-      if (sourceCanvas && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
-        try {
-          thumbCtx.drawImage(
-            sourceCanvas,
-            0,
-            0,
-            sourceCanvas.width,
-            sourceCanvas.height,
-            0,
-            0,
-            thumbCanvas.width,
-            thumbCanvas.height
-          );
-        } catch {
-          // ignore transient render frame
-        }
+    if (sourceCanvas && sourceCanvas.width > 0 && sourceCanvas.height > 0) {
+      try {
+        thumbCtx.drawImage(
+          sourceCanvas,
+          0,
+          0,
+          sourceCanvas.width,
+          sourceCanvas.height,
+          0,
+          0,
+          thumbCanvas.width,
+          thumbCanvas.height
+        );
+      } catch {
+        // ignore transient error
       }
-    };
-
-    renderThumbnail();
-    // Re-render thumbnail smoothly
-    const animationFrameId = requestAnimationFrame(renderThumbnail);
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [layerId, doc, history]);
+    }
+  }, [layerId, doc, canvasRevision]);
 
   return (
     <div

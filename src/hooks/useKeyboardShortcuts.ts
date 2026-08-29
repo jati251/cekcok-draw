@@ -86,6 +86,7 @@ export const useKeyboardShortcuts = ({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               filters.applyInvert(ctx, doc.width, doc.height);
+              useDocumentStore.getState().bumpCanvasRevision();
               bridge.commitStrokeHistory('Invert Colors');
             }
           }
@@ -96,6 +97,7 @@ export const useKeyboardShortcuts = ({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               filters.applyDesaturate(ctx, doc.width, doc.height);
+              useDocumentStore.getState().bumpCanvasRevision();
               bridge.commitStrokeHistory('Desaturate');
             }
           }
@@ -111,6 +113,40 @@ export const useKeyboardShortcuts = ({
         } else if (e.key === '-') {
           e.preventDefault();
           setZoom((z) => Math.max(0.05, z / 1.25));
+        }
+        return;
+      }
+
+      // Delete / Backspace clears current active selection
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const sel = useEditorStore.getState().selection;
+        const currentDoc = useDocumentStore.getState().doc;
+        if (sel && sel.active && currentDoc && currentDoc.active_layer_id) {
+          e.preventDefault();
+          const canvas = document.getElementById(
+            `layer-canvas-${currentDoc.active_layer_id}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.save();
+              if (sel.path && sel.path.length > 2) {
+                ctx.beginPath();
+                ctx.moveTo(sel.path[0].x, sel.path[0].y);
+                for (let i = 1; i < sel.path.length; i++) {
+                  ctx.lineTo(sel.path[i].x, sel.path[i].y);
+                }
+                ctx.closePath();
+                ctx.clip();
+                ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+              } else if (sel.width > 0 && sel.height > 0) {
+                ctx.clearRect(sel.x, sel.y, sel.width, sel.height);
+              }
+              ctx.restore();
+              useDocumentStore.getState().bumpCanvasRevision();
+              bridge.commitStrokeHistory('Clear Selection (Delete)');
+            }
+          }
         }
         return;
       }
@@ -135,11 +171,11 @@ export const useKeyboardShortcuts = ({
       else if (e.key.toLowerCase() === 'd') {
         setPrimaryColor('#000000');
         setSecondaryColor('#ffffff');
-      } else if (e.key.toLowerCase() === 'b') setActiveTool('brush');
-      else if (e.key.toLowerCase() === 'e') setActiveTool('eraser');
-      else if (e.key.toLowerCase() === 'v') setActiveTool('move');
+      } else if (e.key.toLowerCase() === 'v') setActiveTool('move');
       else if (e.key.toLowerCase() === 'm') setActiveTool('selection');
       else if (e.key.toLowerCase() === 'l') setActiveTool('lasso');
+      else if (e.key.toLowerCase() === 'b') setActiveTool('brush');
+      else if (e.key.toLowerCase() === 'e') setActiveTool('eraser');
       else if (e.key.toLowerCase() === 'u') setActiveTool('shape');
       else if (e.key.toLowerCase() === 't') setActiveTool('text');
       else if (e.key.toLowerCase() === 'r') setActiveTool(e.shiftKey ? 'blur' : 'smudge');

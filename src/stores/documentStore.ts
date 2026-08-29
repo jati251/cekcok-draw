@@ -7,6 +7,7 @@ interface DocumentState {
   history: HistoryAction[];
   isLoading: boolean;
   error: string | null;
+  canvasRevision: number;
 
   initDocument: (title?: string, width?: number, height?: number) => Promise<void>;
   addNewLayer: (name?: string) => Promise<void>;
@@ -18,6 +19,7 @@ interface DocumentState {
   triggerUndo: () => Promise<void>;
   triggerRedo: () => Promise<void>;
   refreshHistory: () => Promise<void>;
+  bumpCanvasRevision: () => void;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -25,13 +27,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   history: [],
   isLoading: false,
   error: null,
+  canvasRevision: 0,
+
+  bumpCanvasRevision: () => {
+    set((state) => ({ canvasRevision: state.canvasRevision + 1 }));
+  },
 
   initDocument: async (title = 'Untitled-1', width = 1920, height = 1080) => {
     set({ isLoading: true, error: null });
     try {
       const doc = await bridge.createDocument(title, width, height);
       const history = await bridge.getHistory();
-      set({ doc, history, isLoading: false });
+      set({ doc, history, isLoading: false, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err), isLoading: false });
     }
@@ -44,7 +51,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.addLayer(layerName);
       const history = await bridge.getHistory();
-      set({ doc, history });
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -54,7 +61,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.removeLayer(id);
       const history = await bridge.getHistory();
-      set({ doc, history });
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -63,7 +70,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   selectLayer: async (id: string) => {
     try {
       const doc = await bridge.setActiveLayer(id);
-      set({ doc });
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -72,7 +79,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   changeLayerOpacity: async (id: string, opacity: number) => {
     try {
       const doc = await bridge.setLayerOpacity(id, opacity);
-      set({ doc });
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -85,7 +92,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (!target) return;
     try {
       const doc = await bridge.setLayerVisibility(id, !target.visible);
-      set({ doc });
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -95,7 +102,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.setLayerBlendMode(id, blendMode);
       const history = await bridge.getHistory();
-      set({ doc, history });
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -105,7 +112,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.undo();
       const history = await bridge.getHistory();
-      set({ doc, history });
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -115,7 +122,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const doc = await bridge.redo();
       const history = await bridge.getHistory();
-      set({ doc, history });
+      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -124,7 +131,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   refreshHistory: async () => {
     try {
       const history = await bridge.getHistory();
-      set({ history });
+      set({ history, canvasRevision: get().canvasRevision + 1 });
     } catch (err) {
       set({ error: String(err) });
     }

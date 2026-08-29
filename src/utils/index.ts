@@ -4,3 +4,4 @@ export * from './color';
 export * from './export';
 export * from './filters';
 export * from './floodFill';
+export * from './smudgeBlur';

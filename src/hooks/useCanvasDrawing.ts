@@ -1,6 +1,8 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '../types';
-import { getOrCreateStamp, getOrCreateAlphaMask } from '../utils/stamp';
+import { getOrCreateStamp } from '../utils/stamp';
+import { applyLocalBlur, applyLocalSmudge } from '../utils/smudgeBlur';
+import { useDocumentStore } from '../stores/documentStore';
 import * as bridge from '../lib/tauriBridge';
 
 interface UseCanvasDrawingProps {
@@ -22,7 +24,7 @@ export const useCanvasDrawing = ({
 }: UseCanvasDrawingProps) => {
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
-  const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
 
   const getToolColor = useCallback((): [number, number, number, number] => {
     if (activeTool === 'eraser') return [0, 0, 0, 255];
@@ -36,67 +38,30 @@ export const useCanvasDrawing = ({
       if (!doc) return;
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
 
-      // 1. Smudge Tool: Organic Sub-pixel Smear with Circular Soft Mask
+      // 1. Smudge Tool: Alpha-weighted smooth pixel smudge
       if (activeTool === 'smudge') {
         const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
           : null;
         if (!activeCanvas) return;
         const ctx = activeCanvas.getContext('2d');
         if (!ctx) return;
 
-        const dx = pCurr.x - pPrev.x;
-        const dy = pCurr.y - pPrev.y;
-        const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(1.0, baseRadius * 0.12);
-        const steps = Math.max(1, Math.ceil(dist / stepSize));
-        const size = Math.ceil(baseRadius * 2);
-        const mask = getOrCreateAlphaMask(baseRadius, brushSettings.hardness);
-
-        if (!scratchCanvasRef.current) {
-          scratchCanvasRef.current = document.createElement('canvas');
-        }
-        const scratch = scratchCanvasRef.current;
-        if (scratch.width !== size || scratch.height !== size) {
-          scratch.width = size;
-          scratch.height = size;
-        }
-        const sCtx = scratch.getContext('2d');
-        if (!sCtx) return;
-
-        for (let i = 1; i <= steps; i++) {
-          const tPrev = (i - 1) / steps;
-          const tCurr = i / steps;
-          const sx = pPrev.x + dx * tPrev - baseRadius;
-          const sy = pPrev.y + dy * tPrev - baseRadius;
-          const tx = pPrev.x + dx * tCurr - baseRadius;
-          const ty = pPrev.y + dy * tCurr - baseRadius;
-
-          sCtx.clearRect(0, 0, size, size);
-          try {
-            sCtx.drawImage(activeCanvas, sx, sy, size, size, 0, 0, size, size);
-            sCtx.globalCompositeOperation = 'destination-in';
-            sCtx.drawImage(mask, 0, 0, size, size);
-            sCtx.globalCompositeOperation = 'source-over';
-
-            ctx.save();
-            ctx.globalAlpha = Math.min(
-              1.0,
-              (brushSettings.opacity || 0.8) * (brushSettings.flow || 0.8) * 0.7
-            );
-            ctx.drawImage(scratch, tx, ty);
-            ctx.restore();
-          } catch {
-            // ignore boundary clamp
-          }
-        }
+        const strength = Math.min(1.0, (brushSettings.opacity || 0.8) * 0.6);
+        applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, baseRadius, strength);
         return;
       }
 
-      // 2. Blur Tool: Localized Gaussian Soft Blurring with Circular Alpha Mask
+      // 2. Blur Tool: Alpha-weighted Gaussian blur without black borders
       if (activeTool === 'blur') {
         const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
           : null;
         if (!activeCanvas) return;
         const ctx = activeCanvas.getContext('2d');
@@ -105,60 +70,23 @@ export const useCanvasDrawing = ({
         const dx = pCurr.x - pPrev.x;
         const dy = pCurr.y - pPrev.y;
         const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(1.5, baseRadius * 0.18);
+        const stepSize = Math.max(2.0, baseRadius * 0.25);
         const steps = Math.max(1, Math.ceil(dist / stepSize));
-        const size = Math.ceil(baseRadius * 2);
-        const blurPadding = Math.ceil(baseRadius * 0.5);
-        const fullSize = size + blurPadding * 2;
-        const mask = getOrCreateAlphaMask(baseRadius, brushSettings.hardness);
-
-        if (!scratchCanvasRef.current) {
-          scratchCanvasRef.current = document.createElement('canvas');
-        }
-        const scratch = scratchCanvasRef.current;
-        if (scratch.width !== fullSize || scratch.height !== fullSize) {
-          scratch.width = fullSize;
-          scratch.height = fullSize;
-        }
-        const sCtx = scratch.getContext('2d');
-        if (!sCtx) return;
-
-        const blurRadius = Math.max(2, baseRadius * 0.3);
 
         for (let i = 1; i <= steps; i++) {
           const t = i / steps;
           const cx = pPrev.x + dx * t;
           const cy = pPrev.y + dy * t;
-          const sx = cx - baseRadius - blurPadding;
-          const sy = cy - baseRadius - blurPadding;
-
-          sCtx.clearRect(0, 0, fullSize, fullSize);
-          try {
-            sCtx.filter = `blur(${blurRadius}px)`;
-            sCtx.drawImage(activeCanvas, sx, sy, fullSize, fullSize, 0, 0, fullSize, fullSize);
-            sCtx.filter = 'none';
-
-            sCtx.globalCompositeOperation = 'destination-in';
-            sCtx.drawImage(mask, blurPadding, blurPadding, size, size);
-            sCtx.globalCompositeOperation = 'source-over';
-
-            ctx.save();
-            ctx.globalAlpha = Math.min(1.0, (brushSettings.opacity || 0.8) * 0.5);
-            ctx.drawImage(
-              scratch,
-              blurPadding,
-              blurPadding,
-              size,
-              size,
-              cx - baseRadius,
-              cy - baseRadius,
-              size,
-              size
-            );
-            ctx.restore();
-          } catch {
-            // ignore boundary clamp
-          }
+          applyLocalBlur(
+            ctx,
+            doc.width,
+            doc.height,
+            cx,
+            cy,
+            baseRadius,
+            Math.max(2, baseRadius * 0.25),
+            (brushSettings.opacity || 0.8) * 0.4
+          );
         }
         return;
       }
@@ -166,7 +94,10 @@ export const useCanvasDrawing = ({
       // 3. Live Eraser: Immediate zero-latency erasing on active layer canvas
       if (activeTool === 'eraser') {
         const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
           : null;
         if (!activeCanvas) return;
         const ctx = activeCanvas.getContext('2d');
@@ -251,13 +182,31 @@ export const useCanvasDrawing = ({
 
   const drawInitialDot = useCallback(
     (p: BrushPoint) => {
-      if (activeTool === 'smudge' || activeTool === 'blur') return;
-
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
+
+      if (activeTool === 'blur') {
+        const activeCanvas = doc?.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
+          : null;
+        if (!activeCanvas || !doc) return;
+        const ctx = activeCanvas.getContext('2d');
+        if (ctx) {
+          applyLocalBlur(ctx, doc.width, doc.height, p.x, p.y, baseRadius, 2, 0.4);
+        }
+        return;
+      }
+
+      if (activeTool === 'smudge') return;
 
       if (activeTool === 'eraser') {
         const activeCanvas = doc?.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
           : null;
         if (!activeCanvas) return;
         const ctx = activeCanvas.getContext('2d');
@@ -337,6 +286,9 @@ export const useCanvasDrawing = ({
       if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
     }
 
+    // Trigger instant reactive thumbnail refresh
+    bumpCanvasRevision();
+
     if (strokePoints.length > 0) {
       let color = brushSettings.color;
       if (activeTool === 'eraser') color = [0, 0, 0, 0];
@@ -359,7 +311,15 @@ export const useCanvasDrawing = ({
       await bridge.commitStrokeHistory(actionName);
       setStrokePoints([]);
     }
-  }, [activeTool, brushSettings, doc, layerCanvasesRef, liveStrokeCanvasRef, strokePoints]);
+  }, [
+    activeTool,
+    brushSettings,
+    bumpCanvasRevision,
+    doc,
+    layerCanvasesRef,
+    liveStrokeCanvasRef,
+    strokePoints,
+  ]);
 
   return {
     strokePoints,
