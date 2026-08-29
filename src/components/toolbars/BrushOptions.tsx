@@ -76,11 +76,12 @@ export const BrushOptions: React.FC<Props> = ({
       <div className="relative" ref={typeMenuRef}>
         <button
           type="button"
-          onClick={() => {
-            setIsTypeDropdownOpen(!isTypeDropdownOpen);
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsTypeDropdownOpen((prev) => !prev);
             setIsCurveDropdownOpen(false);
           }}
-          className="bg-ps-panel border border-ps-border rounded px-2.5 py-1 text-zinc-200 text-[11px] font-medium flex items-center space-x-1.5 hover:bg-ps-hover hover:border-zinc-600 transition-colors shadow-sm"
+          className="bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1 text-zinc-200 text-[11px] font-medium flex items-center space-x-1.5 hover:bg-zinc-700 hover:border-zinc-600 transition-colors shadow-sm"
         >
           <span className="text-zinc-400 text-[10px]">Type:</span>
           <span className="font-semibold text-white">{selectedBrushObj.label}</span>
@@ -88,7 +89,10 @@ export const BrushOptions: React.FC<Props> = ({
         </button>
 
         {isTypeDropdownOpen && (
-          <div className="absolute top-full left-0 mt-1 w-56 bg-ps-panel border border-ps-border rounded-lg shadow-2xl z-50 py-1 max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-full left-0 mt-1 w-56 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 py-1 max-h-72 overflow-y-auto"
+          >
             {BRUSH_TYPES.map((b) => {
               const isSelected = b.id === currentBrushType;
               return (
@@ -99,7 +103,7 @@ export const BrushOptions: React.FC<Props> = ({
                   className={`w-full text-left px-3 py-1.5 flex items-center justify-between transition-colors ${
                     isSelected
                       ? 'bg-blue-600 text-white font-medium'
-                      : 'text-zinc-300 hover:bg-ps-hover hover:text-white'
+                      : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                   }`}
                 >
                   <div className="flex flex-col">
@@ -199,11 +203,12 @@ export const BrushOptions: React.FC<Props> = ({
       <div className="relative" ref={curveMenuRef}>
         <button
           type="button"
-          onClick={() => {
-            setIsCurveDropdownOpen(!isCurveDropdownOpen);
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsCurveDropdownOpen((prev) => !prev);
             setIsTypeDropdownOpen(false);
           }}
-          className="bg-ps-panel border border-ps-border rounded px-2 py-0.5 text-zinc-300 text-[10px] flex items-center space-x-1 hover:bg-ps-hover transition-colors"
+          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-zinc-300 text-[10px] flex items-center space-x-1 hover:bg-zinc-700 transition-colors"
           title="Tablet Pressure Response Curve"
         >
           <Sparkles size={11} className="text-zinc-400" />
@@ -212,7 +217,10 @@ export const BrushOptions: React.FC<Props> = ({
         </button>
 
         {isCurveDropdownOpen && (
-          <div className="absolute top-full left-0 mt-1 w-32 bg-ps-panel border border-ps-border rounded-lg shadow-2xl z-50 py-1 animate-in fade-in zoom-in-95 duration-100">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-full left-0 mt-1 w-32 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 py-1"
+          >
             {CURVE_OPTIONS.map((c) => {
               const isSelected = c.id === pressureCurve;
               return (
@@ -223,7 +231,7 @@ export const BrushOptions: React.FC<Props> = ({
                   className={`w-full text-left px-2.5 py-1 text-[11px] flex items-center justify-between transition-colors ${
                     isSelected
                       ? 'bg-blue-600 text-white font-medium'
-                      : 'text-zinc-300 hover:bg-ps-hover hover:text-white'
+                      : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                   }`}
                 >
                   <span>{c.label}</span>

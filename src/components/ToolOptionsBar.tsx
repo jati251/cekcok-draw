@@ -29,7 +29,7 @@ export const ToolOptionsBar: React.FC = () => {
   const modKey = isMac ? '⌘' : 'Ctrl+';
 
   return (
-    <div className="h-9 bg-ps-surface border-b border-ps-border flex items-center px-4 space-x-5 text-xs text-zinc-300 select-none z-20 overflow-x-auto">
+    <div className="h-9 bg-ps-surface border-b border-ps-border flex items-center px-4 space-x-5 text-xs text-zinc-300 select-none z-30 relative overflow-visible">
       {/* Active Tool Label */}
       <div className="flex items-center space-x-1.5 font-medium text-zinc-200 border-r border-ps-border pr-4 flex-shrink-0">
         <span className="capitalize">{activeTool.replace('_', ' ')} Tool</span>
