@@ -14,7 +14,36 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
-import { ToolType } from '../types';
+import { TOOLS } from '../constants/tools';
+
+const getToolIcon = (iconName: string) => {
+  switch (iconName) {
+    case 'Move':
+      return <Move size={17} />;
+    case 'Scan':
+      return <Scan size={17} />;
+    case 'Paintbrush':
+      return <Paintbrush size={17} />;
+    case 'Eraser':
+      return <Eraser size={17} />;
+    case 'Sun':
+      return <Sun size={17} />;
+    case 'Moon':
+      return <Moon size={17} />;
+    case 'Sparkles':
+      return <Sparkles size={17} />;
+    case 'PaintBucket':
+      return <PaintBucket size={17} />;
+    case 'Pipette':
+      return <Pipette size={17} />;
+    case 'Hand':
+      return <Hand size={17} />;
+    case 'ZoomIn':
+      return <ZoomIn size={17} />;
+    default:
+      return <Move size={17} />;
+  }
+};
 
 export const ToolBar: React.FC = () => {
   const {
@@ -27,40 +56,11 @@ export const ToolBar: React.FC = () => {
     swapColors,
   } = useEditorStore();
 
-  const tools: { type: ToolType; label: string; icon: React.ReactNode; shortcut: string }[] = [
-    { type: 'move', label: 'Move Tool', icon: <Move size={17} />, shortcut: 'V' },
-    {
-      type: 'selection',
-      label: 'Rectangular Marquee Tool',
-      icon: <Scan size={17} />,
-      shortcut: 'M',
-    },
-    { type: 'brush', label: 'Brush Tool', icon: <Paintbrush size={17} />, shortcut: 'B' },
-    { type: 'eraser', label: 'Eraser Tool', icon: <Eraser size={17} />, shortcut: 'E' },
-    {
-      type: 'dodge',
-      label: 'Dodge Tool (Highlight Shading)',
-      icon: <Sun size={17} />,
-      shortcut: 'O',
-    },
-    { type: 'burn', label: 'Burn Tool (Shadow Shading)', icon: <Moon size={17} />, shortcut: '⇧O' },
-    { type: 'gradient', label: 'Gradient Tool', icon: <Sparkles size={17} />, shortcut: 'G' },
-    {
-      type: 'paint_bucket',
-      label: 'Paint Bucket Tool',
-      icon: <PaintBucket size={17} />,
-      shortcut: '⇧G',
-    },
-    { type: 'eyedropper', label: 'Eyedropper Tool', icon: <Pipette size={17} />, shortcut: 'I' },
-    { type: 'hand', label: 'Hand Tool (Pan)', icon: <Hand size={17} />, shortcut: 'H / Space' },
-    { type: 'zoom', label: 'Zoom Tool', icon: <ZoomIn size={17} />, shortcut: 'Z' },
-  ];
-
   return (
     <aside className="w-12 bg-ps-panel border-r border-ps-border flex flex-col items-center py-2 justify-between select-none z-30">
       {/* Tool buttons */}
       <div className="flex flex-col items-center space-y-1 w-full px-1 overflow-y-auto">
-        {tools.map((tool) => {
+        {TOOLS.map((tool) => {
           const isActive = activeTool === tool.type;
           return (
             <button
@@ -73,7 +73,7 @@ export const ToolBar: React.FC = () => {
                   : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover'
               }`}
             >
-              {tool.icon}
+              {getToolIcon(tool.iconName)}
             </button>
           );
         })}

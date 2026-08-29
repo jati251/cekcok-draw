@@ -1,47 +1,7 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
+import { DOCUMENT_PRESETS } from '../constants/presets';
 import { X, Sparkles, Monitor, Smartphone, Printer, Image } from 'lucide-react';
-
-interface Preset {
-  name: string;
-  category: string;
-  width: number;
-  height: number;
-  icon: React.ReactNode;
-}
-
-const presets: Preset[] = [
-  {
-    name: 'Full HD 1080p',
-    category: 'Web',
-    width: 1920,
-    height: 1080,
-    icon: <Monitor size={16} />,
-  },
-  {
-    name: '4K UHD Canvas',
-    category: 'Web',
-    width: 3840,
-    height: 2160,
-    icon: <Monitor size={16} />,
-  },
-  { name: 'Square Art 2K', category: 'Art', width: 2048, height: 2048, icon: <Image size={16} /> },
-  {
-    name: 'Mobile Wallpaper',
-    category: 'Mobile',
-    width: 1080,
-    height: 1920,
-    icon: <Smartphone size={16} />,
-  },
-  {
-    name: 'Print A4 300DPI',
-    category: 'Print',
-    width: 2480,
-    height: 3508,
-    icon: <Printer size={16} />,
-  },
-  { name: 'Social Post', category: 'Web', width: 1080, height: 1080, icon: <Image size={16} /> },
-];
 
 interface Props {
   isOpen: boolean;
@@ -53,13 +13,28 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [title, setTitle] = useState('Untitled-1');
   const [width, setWidth] = useState(1920);
   const [height, setHeight] = useState(1080);
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   if (!isOpen) return null;
 
   const categories = ['All', 'Web', 'Art', 'Mobile', 'Print'];
   const filteredPresets =
-    selectedCategory === 'All' ? presets : presets.filter((p) => p.category === selectedCategory);
+    selectedCategory === 'All'
+      ? DOCUMENT_PRESETS
+      : DOCUMENT_PRESETS.filter((p) => p.category === selectedCategory);
+
+  const getPresetIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Smartphone':
+        return <Smartphone size={16} />;
+      case 'Printer':
+        return <Printer size={16} />;
+      case 'Image':
+        return <Image size={16} />;
+      default:
+        return <Monitor size={16} />;
+    }
+  };
 
   const handleCreate = () => {
     initDocument(title, width, height);
@@ -115,7 +90,7 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   }`}
                 >
                   <div className="flex items-center space-x-2 mb-1 text-blue-400">
-                    {preset.icon}
+                    {getPresetIcon(preset.iconName)}
                     <span className="font-medium text-xs text-zinc-200">{preset.name}</span>
                   </div>
                   <div className="text-[11px] font-mono text-zinc-400">

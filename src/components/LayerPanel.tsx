@@ -1,28 +1,8 @@
 import React from 'react';
 import { useDocumentStore } from '../stores/documentStore';
+import { BLEND_MODES } from '../constants/blendModes';
 import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, Layers, Copy, ArrowDown } from 'lucide-react';
 import { BlendMode } from '../types';
-
-const blendModes: { value: BlendMode; label: string; group: string }[] = [
-  { value: 'normal', label: 'Normal', group: 'Normal' },
-  { value: 'darken', label: 'Darken', group: 'Darken' },
-  { value: 'multiply', label: 'Multiply', group: 'Darken' },
-  { value: 'color_burn', label: 'Color Burn', group: 'Darken' },
-  { value: 'lighten', label: 'Lighten', group: 'Lighten' },
-  { value: 'screen', label: 'Screen', group: 'Lighten' },
-  { value: 'color_dodge', label: 'Color Dodge', group: 'Lighten' },
-  { value: 'linear_dodge', label: 'Linear Dodge (Add)', group: 'Lighten' },
-  { value: 'overlay', label: 'Overlay', group: 'Contrast' },
-  { value: 'soft_light', label: 'Soft Light', group: 'Contrast' },
-  { value: 'hard_light', label: 'Hard Light', group: 'Contrast' },
-  { value: 'vivid_light', label: 'Vivid Light', group: 'Contrast' },
-  { value: 'difference', label: 'Difference', group: 'Inversion' },
-  { value: 'exclusion', label: 'Exclusion', group: 'Inversion' },
-  { value: 'hue', label: 'Hue', group: 'Component' },
-  { value: 'saturation', label: 'Saturation', group: 'Component' },
-  { value: 'color', label: 'Color', group: 'Component' },
-  { value: 'luminosity', label: 'Luminosity', group: 'Component' },
-];
 
 export const LayerPanel: React.FC = () => {
   const {
@@ -62,7 +42,7 @@ export const LayerPanel: React.FC = () => {
             disabled={!activeLayer}
             className="flex-1 bg-ps-surface border border-ps-border rounded px-2 py-1 text-zinc-200 focus:outline-none focus:border-blue-500 text-[11px]"
           >
-            {blendModes.map((mode) => (
+            {BLEND_MODES.map((mode) => (
               <option key={mode.value} value={mode.value}>
                 {mode.label}
               </option>
