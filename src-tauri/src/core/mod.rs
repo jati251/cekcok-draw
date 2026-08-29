@@ -1,11 +1,11 @@
-pub mod tile;
-pub mod sparse_grid;
-pub mod layer;
 pub mod document;
 pub mod history;
+pub mod layer;
+pub mod sparse_grid;
+pub mod tile;
 
-pub use tile::{Tile, TileCoord, TILE_SIZE, TILE_BYTES};
-pub use sparse_grid::SparseTileGrid;
-pub use layer::{Layer, BlendMode};
 pub use document::Document;
-pub use history::{HistoryEngine, HistoryAction};
+pub use history::{HistoryAction, HistoryEngine};
+pub use layer::{BlendMode, Layer};
+pub use sparse_grid::SparseTileGrid;
+pub use tile::{Tile, TileCoord, TILE_BYTES, TILE_SIZE};

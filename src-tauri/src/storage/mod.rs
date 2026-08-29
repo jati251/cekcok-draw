@@ -1,5 +1,5 @@
-pub mod scratch_disk;
 pub mod lru_pool;
+pub mod scratch_disk;
 
-pub use scratch_disk::ScratchDisk;
 pub use lru_pool::LRUTilePool;
+pub use scratch_disk::ScratchDisk;

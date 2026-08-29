@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::core::layer::BlendMode;
+use std::sync::Arc;
 
 pub struct BlendPipeline {
     pub pipeline: wgpu::ComputePipeline,

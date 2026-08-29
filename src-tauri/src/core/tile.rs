@@ -125,10 +125,14 @@ impl Tile {
                 let p01 = self.get_pixel(x0, y0 + 1);
                 let p11 = self.get_pixel(x0 + 1, y0 + 1);
 
-                let avg_r = ((p00[0] as u32 + p10[0] as u32 + p01[0] as u32 + p11[0] as u32) / 4) as u8;
-                let avg_g = ((p00[1] as u32 + p10[1] as u32 + p01[1] as u32 + p11[1] as u32) / 4) as u8;
-                let avg_b = ((p00[2] as u32 + p10[2] as u32 + p01[2] as u32 + p11[2] as u32) / 4) as u8;
-                let avg_a = ((p00[3] as u32 + p10[3] as u32 + p01[3] as u32 + p11[3] as u32) / 4) as u8;
+                let avg_r =
+                    ((p00[0] as u32 + p10[0] as u32 + p01[0] as u32 + p11[0] as u32) / 4) as u8;
+                let avg_g =
+                    ((p00[1] as u32 + p10[1] as u32 + p01[1] as u32 + p11[1] as u32) / 4) as u8;
+                let avg_b =
+                    ((p00[2] as u32 + p10[2] as u32 + p01[2] as u32 + p11[2] as u32) / 4) as u8;
+                let avg_a =
+                    ((p00[3] as u32 + p10[3] as u32 + p01[3] as u32 + p11[3] as u32) / 4) as u8;
 
                 let offset = ((hy * TILE_SIZE + hx) * 4) as usize;
                 half_data[offset] = avg_r;

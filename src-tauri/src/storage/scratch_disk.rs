@@ -51,12 +51,12 @@ impl ScratchDisk {
             let new_slot = self.capacity_slots;
             self.capacity_slots += 16;
             let total_bytes = (self.capacity_slots * TILE_BYTES) as u64;
-            
+
             // Drop current mmap before resizing
             self.mmap = None;
             self.file.set_len(total_bytes)?;
             self.mmap = unsafe { Some(MmapMut::map_mut(&self.file)?) };
-            
+
             for s in (new_slot + 1..self.capacity_slots).rev() {
                 self.free_slots.push(s);
             }
@@ -77,7 +77,7 @@ impl ScratchDisk {
         let &slot = self.coord_to_slot.get(&coord)?;
         let mmap = self.mmap.as_ref()?;
         let offset = slot * TILE_BYTES;
-        
+
         let mut data = Box::new([0u8; TILE_BYTES]);
         data.copy_from_slice(&mmap[offset..offset + TILE_BYTES]);
 
