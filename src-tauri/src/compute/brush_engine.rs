@@ -1,5 +1,6 @@
 use crate::core::sparse_grid::SparseTileGrid;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BrushPoint {
@@ -11,10 +12,10 @@ pub struct BrushPoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrushSettings {
     pub size: f32,
-    pub hardness: f32, // 0.0 (soft) to 1.0 (hard)
-    pub opacity: f32,  // 0.0 to 1.0
-    pub flow: f32,     // 0.0 to 1.0
-    pub spacing: f32,  // percentage of radius, e.g. 0.15
+    pub hardness: f32,  // 0.0 (soft) to 1.0 (hard)
+    pub opacity: f32,   // 0.0 to 1.0
+    pub flow: f32,      // 0.0 to 1.0
+    pub spacing: f32,   // percentage of radius, e.g. 0.15
     pub color: [u8; 4], // RGBA
 }
 
@@ -34,7 +35,8 @@ impl Default for BrushSettings {
 pub struct BrushEngine;
 
 impl BrushEngine {
-    /// Interpolates stroke points and stamps circles into the layer's SparseTileGrid
+    /// Applies a smooth stroke using a stroke scratch buffer with max-alpha clamping
+    /// to avoid overlapping dark circles when drawing with less opacity.
     pub fn apply_stroke(
         grid: &mut SparseTileGrid,
         points: &[BrushPoint],
@@ -44,54 +46,122 @@ impl BrushEngine {
             return;
         }
 
+        // Single stroke scratch buffer: maps (x, y) -> max alpha [0..255]
+        let mut stroke_alpha_map: HashMap<(i32, i32), u8> = HashMap::new();
+
         if points.len() == 1 {
             let p = points[0];
-            Self::stamp(grid, p.x, p.y, p.pressure, settings);
-            return;
+            Self::stamp_to_buffer(&mut stroke_alpha_map, p.x, p.y, p.pressure, settings);
+        } else if points.len() == 2 {
+            let p0 = points[0];
+            let p1 = points[1];
+            Self::interpolate_segment(&mut stroke_alpha_map, p0, p1, settings);
+        } else {
+            // Smooth quadratic Bezier spline interpolation across consecutive points
+            for i in 0..points.len() - 1 {
+                let p0 = if i > 0 { points[i - 1] } else { points[i] };
+                let p1 = points[i];
+                let p2 = points[i + 1];
+                let p3 = if i + 2 < points.len() {
+                    points[i + 2]
+                } else {
+                    p2
+                };
+
+                // Catmull-Rom sub-stepping
+                let dist = ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt();
+                let radius = (settings.size * 0.5).max(1.0);
+                let step_size = (radius * settings.spacing * 0.5).max(0.5);
+                let steps = ((dist / step_size).ceil() as usize).max(2);
+
+                for step in 0..steps {
+                    let t = step as f32 / steps as f32;
+                    let (x, y) = Self::catmull_rom_point(p0, p1, p2, p3, t);
+                    let pressure = p1.pressure + (p2.pressure - p1.pressure) * t;
+                    Self::stamp_to_buffer(&mut stroke_alpha_map, x, y, pressure, settings);
+                }
+            }
         }
 
-        let radius = (settings.size * 0.5).max(1.0);
-        let min_step = (radius * 2.0 * settings.spacing).max(1.0);
+        // Composite the entire stroke buffer into the SparseTileGrid with stroke opacity & color
+        let stroke_opacity = settings.opacity.clamp(0.0, 1.0);
+        let color = settings.color;
 
-        for window in points.windows(2) {
-            let p0 = window[0];
-            let p1 = window[1];
-
-            let dx = p1.x - p0.x;
-            let dy = p1.y - p0.y;
-            let dist = (dx * dx + dy * dy).sqrt();
-
-            let steps = (dist / min_step).ceil() as usize;
-            let steps = steps.max(1);
-
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let cur_x = p0.x + dx * t;
-                let cur_y = p0.y + dy * t;
-                let cur_pressure = p0.pressure + (p1.pressure - p0.pressure) * t;
-
-                Self::stamp(grid, cur_x, cur_y, cur_pressure, settings);
+        for ((px, py), alpha) in stroke_alpha_map {
+            let final_a =
+                ((alpha as f32 / 255.0) * stroke_opacity * (color[3] as f32 / 255.0) * 255.0)
+                    .clamp(0.0, 255.0) as u8;
+            if final_a > 0 {
+                grid.blend_pixel_cow(px, py, color[0], color[1], color[2], final_a);
             }
         }
     }
 
-    fn stamp(
-        grid: &mut SparseTileGrid,
+    fn catmull_rom_point(
+        p0: BrushPoint,
+        p1: BrushPoint,
+        p2: BrushPoint,
+        p3: BrushPoint,
+        t: f32,
+    ) -> (f32, f32) {
+        let t2 = t * t;
+        let t3 = t2 * t;
+
+        let x = 0.5
+            * ((2.0 * p1.x)
+                + (-p0.x + p2.x) * t
+                + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2
+                + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3);
+
+        let y = 0.5
+            * ((2.0 * p1.y)
+                + (-p0.y + p2.y) * t
+                + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2
+                + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3);
+
+        (x, y)
+    }
+
+    fn interpolate_segment(
+        buffer: &mut HashMap<(i32, i32), u8>,
+        p0: BrushPoint,
+        p1: BrushPoint,
+        settings: &BrushSettings,
+    ) {
+        let dx = p1.x - p0.x;
+        let dy = p1.y - p0.y;
+        let dist = (dx * dx + dy * dy).sqrt();
+        let radius = (settings.size * 0.5).max(1.0);
+        let min_step = (radius * settings.spacing * 0.5).max(0.5);
+        let steps = ((dist / min_step).ceil() as usize).max(1);
+
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let cur_x = p0.x + dx * t;
+            let cur_y = p0.y + dy * t;
+            let cur_pressure = p0.pressure + (p1.pressure - p0.pressure) * t;
+            Self::stamp_to_buffer(buffer, cur_x, cur_y, cur_pressure, settings);
+        }
+    }
+
+    fn stamp_to_buffer(
+        buffer: &mut HashMap<(i32, i32), u8>,
         center_x: f32,
         center_y: f32,
         pressure: f32,
         settings: &BrushSettings,
     ) {
-        let eff_radius = (settings.size * 0.5 * pressure).max(1.0);
+        let eff_radius = (settings.size * 0.5 * pressure.max(0.05)).max(1.0);
         let eff_radius_sq = eff_radius * eff_radius;
-        let inner_radius = eff_radius * settings.hardness;
+        let hardness = settings.hardness.clamp(0.0, 0.999);
+        let inner_radius = eff_radius * hardness;
 
         let min_x = (center_x - eff_radius).floor() as i32;
         let max_x = (center_x + eff_radius).ceil() as i32;
         let min_y = (center_y - eff_radius).floor() as i32;
         let max_y = (center_y + eff_radius).ceil() as i32;
 
-        let base_alpha = (settings.color[3] as f32 / 255.0) * settings.opacity * settings.flow;
+        let flow = settings.flow.clamp(0.01, 1.0);
 
         for py in min_y..=max_y {
             for px in min_x..=max_x {
@@ -105,19 +175,15 @@ impl BrushEngine {
                         1.0
                     } else {
                         let t = (dist - inner_radius) / (eff_radius - inner_radius).max(0.001);
-                        1.0 - (t * t * (3.0 - 2.0 * t)) // Smoothstep falloff
+                        (1.0 - t * t * (3.0 - 2.0 * t)).clamp(0.0, 1.0)
                     };
 
-                    let final_a = (base_alpha * alpha_factor * 255.0).clamp(0.0, 255.0) as u8;
-                    if final_a > 0 {
-                        grid.blend_pixel_cow(
-                            px,
-                            py,
-                            settings.color[0],
-                            settings.color[1],
-                            settings.color[2],
-                            final_a,
-                        );
+                    let stamp_a = (alpha_factor * flow * 255.0).clamp(0.0, 255.0) as u8;
+                    if stamp_a > 0 {
+                        buffer
+                            .entry((px, py))
+                            .and_modify(|existing| *existing = (*existing).max(stamp_a))
+                            .or_insert(stamp_a);
                     }
                 }
             }

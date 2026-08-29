@@ -7,6 +7,7 @@ import * as bridge from '../lib/tauriBridge';
 export const CanvasViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const { doc } = useDocumentStore();
   const {
@@ -63,6 +64,16 @@ export const CanvasViewport: React.FC = () => {
       canvas.height = doc.height;
     }
 
+    if (liveStrokeCanvasRef.current) {
+      if (
+        liveStrokeCanvasRef.current.width !== doc.width ||
+        liveStrokeCanvasRef.current.height !== doc.height
+      ) {
+        liveStrokeCanvasRef.current.width = doc.width;
+        liveStrokeCanvasRef.current.height = doc.height;
+      }
+    }
+
     ctx.clearRect(0, 0, doc.width, doc.height);
 
     // Render layers
@@ -94,43 +105,107 @@ export const CanvasViewport: React.FC = () => {
     redrawCanvas();
   }, [redrawCanvas]);
 
-  const drawStrokeLive = (points: BrushPoint[], isStart = false) => {
-    const canvas = canvasRef.current;
-    if (!canvas || points.length === 0) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Create high-precision radial gradient brush stamp with hardness
+  const createStamp = useCallback(
+    (radius: number, hardness: number, color: [number, number, number, number]) => {
+      const stamp = document.createElement('canvas');
+      const d = Math.max(2, Math.ceil(radius * 2));
+      stamp.width = d;
+      stamp.height = d;
+      const sCtx = stamp.getContext('2d');
+      if (!sCtx) return stamp;
 
-    ctx.save();
-    if (activeTool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = `rgba(0,0,0,${brushSettings.opacity * brushSettings.flow})`;
-    } else {
+      const center = d / 2;
+      const innerRadius = radius * Math.min(0.99, Math.max(0, hardness));
+
+      const grad = sCtx.createRadialGradient(center, center, innerRadius, center, center, radius);
+      grad.addColorStop(0, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 1)`);
+      grad.addColorStop(1, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0)`);
+
+      sCtx.fillStyle = grad;
+      sCtx.beginPath();
+      sCtx.arc(center, center, radius, 0, Math.PI * 2);
+      sCtx.fill();
+
+      return stamp;
+    },
+    []
+  );
+
+  // Render live stroke with Catmull-Rom / Bezier curve smoothing into liveStrokeCanvas
+  const drawStrokeLive = useCallback(
+    (points: BrushPoint[]) => {
+      const strokeCanvas = liveStrokeCanvasRef.current;
+      if (!strokeCanvas || points.length === 0) return;
+      const ctx = strokeCanvas.getContext('2d');
+      if (!ctx) return;
+
+      const color =
+        activeTool === 'eraser'
+          ? ([0, 0, 0, 255] as [number, number, number, number])
+          : brushSettings.color;
+
+      ctx.save();
       ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = `rgba(${brushSettings.color[0]}, ${brushSettings.color[1]}, ${brushSettings.color[2]}, ${
-        brushSettings.opacity * brushSettings.flow
-      })`;
-    }
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+      const baseRadius = Math.max(1, brushSettings.size * 0.5);
 
-    if (isStart || points.length === 1) {
-      const p = points[0];
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(1, brushSettings.size * 0.5 * p.pressure), 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      const p0 = points[points.length - 2];
-      const p1 = points[points.length - 1];
-      ctx.lineWidth = Math.max(1, brushSettings.size * ((p0.pressure + p1.pressure) * 0.5));
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  };
+      if (points.length === 1) {
+        const p = points[0];
+        const rad = Math.max(1, baseRadius * p.pressure);
+        const stamp = createStamp(rad, brushSettings.hardness, color);
+        ctx.drawImage(stamp, p.x - rad, p.y - rad);
+      } else if (points.length === 2) {
+        const p0 = points[0];
+        const p1 = points[1];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const dist = Math.hypot(dx, dy);
+        const stepSize = Math.max(1, baseRadius * 0.2);
+        const steps = Math.max(2, Math.ceil(dist / stepSize));
+
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const x = p0.x + dx * t;
+          const y = p0.y + dy * t;
+          const p = p0.pressure + (p1.pressure - p0.pressure) * t;
+          const rad = Math.max(1, baseRadius * p);
+          const stamp = createStamp(rad, brushSettings.hardness, color);
+          ctx.drawImage(stamp, x - rad, y - rad);
+        }
+      } else {
+        // Draw the latest smooth quadratic curve segment between midpoints
+        const p0 = points[points.length - 3] || points[points.length - 2];
+        const p1 = points[points.length - 2];
+        const p2 = points[points.length - 1];
+
+        const mid1X = (p0.x + p1.x) / 2;
+        const mid1Y = (p0.y + p1.y) / 2;
+        const mid2X = (p1.x + p2.x) / 2;
+        const mid2Y = (p1.y + p2.y) / 2;
+
+        const dist = Math.hypot(mid2X - mid1X, mid2Y - mid1Y);
+        const stepSize = Math.max(1, baseRadius * 0.2);
+        const steps = Math.max(3, Math.ceil(dist / stepSize));
+
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const invT = 1 - t;
+          // Quadratic Bezier interpolation for ultra-smooth rounded curves
+          const x = invT * invT * mid1X + 2 * invT * t * p1.x + t * t * mid2X;
+          const y = invT * invT * mid1Y + 2 * invT * t * p1.y + t * t * mid2Y;
+          const p =
+            (1 - t) * ((p0.pressure + p1.pressure) / 2) + t * ((p1.pressure + p2.pressure) / 2);
+          const rad = Math.max(1, baseRadius * p);
+          const stamp = createStamp(rad, brushSettings.hardness, color);
+          ctx.drawImage(stamp, x - rad, y - rad);
+        }
+      }
+
+      ctx.restore();
+    },
+    [activeTool, brushSettings, createStamp]
+  );
 
   // Eyedropper sampling
   const sampleColorAt = (clientX: number, clientY: number) => {
@@ -230,7 +305,13 @@ export const CanvasViewport: React.FC = () => {
       const initialPoints: BrushPoint[] = [{ x: pos.x, y: pos.y, pressure }];
       setStrokePoints(initialPoints);
 
-      drawStrokeLive(initialPoints, true);
+      // Clear live stroke canvas buffer
+      if (liveStrokeCanvasRef.current) {
+        const sCtx = liveStrokeCanvasRef.current.getContext('2d');
+        if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
+      }
+
+      drawStrokeLive(initialPoints);
     }
   };
 
@@ -314,6 +395,28 @@ export const CanvasViewport: React.FC = () => {
 
     if (isDrawing) {
       setIsDrawing(false);
+
+      // Bake the live stroke canvas into the permanent canvas with uniform stroke opacity
+      const mainCanvas = canvasRef.current;
+      const strokeCanvas = liveStrokeCanvasRef.current;
+      if (mainCanvas && strokeCanvas && doc) {
+        const mainCtx = mainCanvas.getContext('2d');
+        if (mainCtx) {
+          mainCtx.save();
+          mainCtx.globalAlpha = brushSettings.opacity * brushSettings.flow;
+          if (activeTool === 'eraser') {
+            mainCtx.globalCompositeOperation = 'destination-out';
+          } else {
+            mainCtx.globalCompositeOperation = 'source-over';
+          }
+          mainCtx.drawImage(strokeCanvas, 0, 0);
+          mainCtx.restore();
+        }
+
+        const sCtx = strokeCanvas.getContext('2d');
+        if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
+      }
+
       if (strokePoints.length > 0) {
         const settingsToApply = {
           ...brushSettings,
@@ -382,7 +485,7 @@ export const CanvasViewport: React.FC = () => {
           }}
           className="relative shadow-2xl select-none bg-white will-change-transform"
         >
-          {/* Main Rendering Surface */}
+          {/* 1. Main Permanent Layers Canvas Surface */}
           <canvas
             ref={canvasRef}
             width={doc.width}
@@ -390,7 +493,18 @@ export const CanvasViewport: React.FC = () => {
             className="w-full h-full block"
           />
 
-          {/* Marquee Selection Box Overlay */}
+          {/* 2. Live Stroke Overlay Canvas (Isolated stroke buffer with uniform opacity) */}
+          <canvas
+            ref={liveStrokeCanvasRef}
+            width={doc.width}
+            height={doc.height}
+            style={{
+              opacity: isDrawing ? brushSettings.opacity * brushSettings.flow : 0,
+            }}
+            className="absolute inset-0 pointer-events-none block z-10"
+          />
+
+          {/* 3. Marquee Selection Box Overlay */}
           {selection && selection.active && selection.width > 0 && (
             <div
               style={{
@@ -399,14 +513,14 @@ export const CanvasViewport: React.FC = () => {
                 width: selection.width,
                 height: selection.height,
               }}
-              className="absolute border border-dashed border-black bg-blue-500/10 pointer-events-none ring-1 ring-white/70"
+              className="absolute border border-dashed border-black bg-blue-500/10 pointer-events-none ring-1 ring-white/70 z-20"
             />
           )}
 
-          {/* Grid Overlay for Pixel Art / Ultra Zoom */}
+          {/* 4. Grid Overlay for Pixel Art / Ultra Zoom */}
           {showGrid && zoom >= 4 && (
             <div
-              className="absolute inset-0 pointer-events-none opacity-25"
+              className="absolute inset-0 pointer-events-none opacity-25 z-20"
               style={{
                 backgroundImage:
                   'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)',
