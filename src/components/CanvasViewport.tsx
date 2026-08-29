@@ -177,11 +177,11 @@ export const CanvasViewport: React.FC = () => {
     []
   );
 
-  // Render live stroke into liveStrokeCanvas with smooth Bezier midpoint interpolation
-  const drawStrokeLive = useCallback(
-    (points: BrushPoint[]) => {
+  // Render live stroke with exact pointer alignment
+  const drawStrokeSegment = useCallback(
+    (pPrev: BrushPoint, pCurr: BrushPoint) => {
       const strokeCanvas = liveStrokeCanvasRef.current;
-      if (!strokeCanvas || points.length === 0 || !doc) return;
+      if (!strokeCanvas || !doc) return;
 
       const ctx = strokeCanvas.getContext('2d');
       if (!ctx) return;
@@ -205,57 +205,57 @@ export const CanvasViewport: React.FC = () => {
       }
 
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
+      const dx = pCurr.x - pPrev.x;
+      const dy = pCurr.y - pPrev.y;
+      const dist = Math.hypot(dx, dy);
+      const stepSize = Math.max(1, baseRadius * 0.15);
+      const steps = Math.max(1, Math.ceil(dist / stepSize));
 
-      if (points.length === 1) {
-        const p = points[0];
-        const rad = Math.max(1, baseRadius * p.pressure);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const x = pPrev.x + dx * t;
+        const y = pPrev.y + dy * t;
+        const p = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
+        const rad = Math.max(1, baseRadius * p);
         const stamp = createSoftStamp(rad, brushSettings.hardness, color);
-        ctx.drawImage(stamp, p.x - rad, p.y - rad);
-      } else if (points.length === 2) {
-        const p0 = points[0];
-        const p1 = points[1];
-        const dx = p1.x - p0.x;
-        const dy = p1.y - p0.y;
-        const dist = Math.hypot(dx, dy);
-        const stepSize = Math.max(1, baseRadius * 0.15);
-        const steps = Math.max(2, Math.ceil(dist / stepSize));
-
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          const x = p0.x + dx * t;
-          const y = p0.y + dy * t;
-          const p = p0.pressure + (p1.pressure - p0.pressure) * t;
-          const rad = Math.max(1, baseRadius * p);
-          const stamp = createSoftStamp(rad, brushSettings.hardness, color);
-          ctx.drawImage(stamp, x - rad, y - rad);
-        }
-      } else {
-        const p0 = points[points.length - 3] || points[points.length - 2];
-        const p1 = points[points.length - 2];
-        const p2 = points[points.length - 1];
-
-        const mid1X = (p0.x + p1.x) / 2;
-        const mid1Y = (p0.y + p1.y) / 2;
-        const mid2X = (p1.x + p2.x) / 2;
-        const mid2Y = (p1.y + p2.y) / 2;
-
-        const dist = Math.hypot(mid2X - mid1X, mid2Y - mid1Y);
-        const stepSize = Math.max(1, baseRadius * 0.15);
-        const steps = Math.max(3, Math.ceil(dist / stepSize));
-
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          const invT = 1 - t;
-          const x = invT * invT * mid1X + 2 * invT * t * p1.x + t * t * mid2X;
-          const y = invT * invT * mid1Y + 2 * invT * t * p1.y + t * t * mid2Y;
-          const p =
-            (1 - t) * ((p0.pressure + p1.pressure) / 2) + t * ((p1.pressure + p2.pressure) / 2);
-          const rad = Math.max(1, baseRadius * p);
-          const stamp = createSoftStamp(rad, brushSettings.hardness, color);
-          ctx.drawImage(stamp, x - rad, y - rad);
-        }
+        ctx.drawImage(stamp, x - rad, y - rad);
       }
 
+      ctx.restore();
+    },
+    [activeTool, brushSettings, createSoftStamp, doc]
+  );
+
+  const drawInitialDot = useCallback(
+    (p: BrushPoint) => {
+      const strokeCanvas = liveStrokeCanvasRef.current;
+      if (!strokeCanvas || !doc) return;
+
+      const ctx = strokeCanvas.getContext('2d');
+      if (!ctx) return;
+
+      let color = brushSettings.color;
+      if (activeTool === 'eraser') {
+        color = [0, 0, 0, 255];
+      } else if (activeTool === 'dodge') {
+        color = [255, 255, 255, 255];
+      } else if (activeTool === 'burn') {
+        color = [0, 0, 0, 255];
+      }
+
+      ctx.save();
+      if (activeTool === 'dodge') {
+        ctx.globalCompositeOperation = 'screen';
+      } else if (activeTool === 'burn') {
+        ctx.globalCompositeOperation = 'multiply';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      const baseRadius = Math.max(1, brushSettings.size * 0.5);
+      const rad = Math.max(1, baseRadius * p.pressure);
+      const stamp = createSoftStamp(rad, brushSettings.hardness, color);
+      ctx.drawImage(stamp, p.x - rad, p.y - rad);
       ctx.restore();
     },
     [activeTool, brushSettings, createSoftStamp, doc]
@@ -396,15 +396,15 @@ export const CanvasViewport: React.FC = () => {
       setIsDrawing(true);
       const pos = screenToCanvas(e.clientX, e.clientY);
       const pressure = e.pressure && e.pressure > 0 ? e.pressure : 1.0;
-      const initialPoints: BrushPoint[] = [{ x: pos.x, y: pos.y, pressure }];
-      setStrokePoints(initialPoints);
+      const initialPoint: BrushPoint = { x: pos.x, y: pos.y, pressure };
+      setStrokePoints([initialPoint]);
 
       if (liveStrokeCanvasRef.current) {
         const sCtx = liveStrokeCanvasRef.current.getContext('2d');
         if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
       }
 
-      drawStrokeLive(initialPoints);
+      drawInitialDot(initialPoint);
     }
   };
 
@@ -463,17 +463,21 @@ export const CanvasViewport: React.FC = () => {
         typeof nativeEv.getCoalescedEvents === 'function'
           ? nativeEv.getCoalescedEvents()
           : [nativeEv];
-      const newPoints: BrushPoint[] = [];
-
-      for (const ev of coalesced) {
-        const p = screenToCanvas(ev.clientX, ev.clientY);
-        const pressure = ev.pressure && ev.pressure > 0 ? ev.pressure : 1.0;
-        newPoints.push({ x: p.x, y: p.y, pressure });
-      }
 
       setStrokePoints((prev) => {
-        const next = [...prev, ...newPoints];
-        drawStrokeLive(next);
+        if (prev.length === 0) return prev;
+        let lastPt = prev[prev.length - 1];
+        const next = [...prev];
+
+        for (const ev of coalesced) {
+          const p = screenToCanvas(ev.clientX, ev.clientY);
+          const pressure = ev.pressure && ev.pressure > 0 ? ev.pressure : 1.0;
+          const currPt: BrushPoint = { x: p.x, y: p.y, pressure };
+          drawStrokeSegment(lastPt, currPt);
+          next.push(currPt);
+          lastPt = currPt;
+        }
+
         return next;
       });
     }
@@ -737,7 +741,7 @@ export const CanvasViewport: React.FC = () => {
                 height: `${brushScreenRadius * 2}px`,
                 transform: 'translate(-50%, -50%)',
               }}
-              className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${
+              className={`absolute top-0 left-0 rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${
                 activeTool === 'dodge'
                   ? 'border-amber-300'
                   : activeTool === 'burn'

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RotateCcw, RotateCw, Maximize2, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
+import { RotateCcw, RotateCw, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import * as filters from '../lib/filters';
@@ -119,7 +119,7 @@ export const TopMenuBar: React.FC<Props> = ({ onOpenNewDoc, onOpenExport, onOpen
       {/* Left brand & menu items */}
       <div className="flex items-center space-x-1">
         <div className="flex items-center space-x-2 mr-3 font-bold text-sm tracking-wide text-blue-400 bg-blue-950/40 border border-blue-800/40 px-2 py-0.5 rounded">
-          <Sparkles size={14} className="text-blue-400" />
+          <img src="/app-logo.png" alt="Cekcok Draw" className="w-5 h-5 rounded object-cover" />
           <span>
             CEKCOK<span className="text-white font-extralight ml-0.5">DRAW</span>
           </span>
