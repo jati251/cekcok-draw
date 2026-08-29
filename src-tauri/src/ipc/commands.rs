@@ -1,56 +1,13 @@
-use crate::compute::brush_engine::{BrushEngine, BrushPoint, BrushSettings};
-use crate::compute::filters::{FilterEngine, LayerFilter};
+use super::payloads::*;
+use crate::compute::brush_engine::BrushEngine;
+use crate::compute::filters::FilterEngine;
+use crate::compute::flood_fill::FloodFillEngine;
+use crate::compute::shapes::ShapeRasterizer;
 use crate::core::document::{Document, DocumentInfo};
 use crate::core::history::{HistoryAction, HistoryEngine};
 use crate::core::layer::BlendMode;
-use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use std::sync::Arc;
 use tauri::State;
-
-pub struct AppEngineState {
-    pub document: Document,
-    pub history: HistoryEngine,
-}
-
-impl AppEngineState {
-    pub fn push_history(&mut self, description: impl Into<String>) {
-        let doc_clone = self.document.clone();
-        self.history.push_state(description, &doc_clone);
-    }
-}
-
-pub type SharedEngineState = Arc<Mutex<AppEngineState>>;
-
-#[derive(Serialize, Deserialize)]
-pub struct ViewportRenderRequest {
-    pub vx: i32,
-    pub vy: i32,
-    pub vw: u32,
-    pub vh: u32,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct StrokePayload {
-    pub layer_id: Option<String>,
-    pub points: Vec<BrushPoint>,
-    pub settings: BrushSettings,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct LayerFilterPayload {
-    pub layer_id: Option<String>,
-    pub filter: LayerFilter,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EngineStats {
-    pub total_tiles: usize,
-    pub allocated_memory_mb: f32,
-    pub history_nodes: usize,
-    pub gpu_available: bool,
-}
 
 #[tauri::command]
 pub fn create_document(
@@ -181,6 +138,88 @@ pub fn apply_brush_stroke(
 }
 
 #[tauri::command]
+pub fn apply_flood_fill(
+    payload: FloodFillPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<String, String> {
+    let mut guard = state.lock();
+    guard.push_history("Paint Bucket Fill");
+
+    let doc = &mut guard.document;
+    let doc_w = doc.width;
+    let doc_h = doc.height;
+
+    let layer = match payload
+        .layer_id
+        .as_deref()
+        .or(doc.active_layer_id.as_deref())
+    {
+        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
+        None => doc.layers.last_mut(),
+    }
+    .ok_or_else(|| "No active layer for fill".to_string())?;
+
+    if layer.locked {
+        return Err("Layer is locked".to_string());
+    }
+
+    let bounds = payload.bounds.map(|b| (b[0], b[1], b[2], b[3]));
+    FloodFillEngine::fill(
+        &mut layer.grid,
+        doc_w,
+        doc_h,
+        payload.start_x,
+        payload.start_y,
+        payload.color,
+        payload.tolerance,
+        bounds,
+    );
+
+    Ok("Flood fill completed".into())
+}
+
+#[tauri::command]
+pub fn apply_shape(
+    payload: ShapePayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<String, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Shape: {:?}", payload.shape_type));
+
+    let doc = &mut guard.document;
+    let layer = match payload
+        .layer_id
+        .as_deref()
+        .or(doc.active_layer_id.as_deref())
+    {
+        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
+        None => doc.layers.last_mut(),
+    }
+    .ok_or_else(|| "No active layer for shape".to_string())?;
+
+    if layer.locked {
+        return Err("Layer is locked".to_string());
+    }
+
+    ShapeRasterizer::rasterize(
+        &mut layer.grid,
+        payload.shape_type,
+        payload.start_x,
+        payload.start_y,
+        payload.end_x,
+        payload.end_y,
+        payload.stroke_color,
+        payload.fill_color,
+        payload.stroke_width,
+        payload.radius,
+        payload.has_fill,
+        payload.has_stroke,
+    );
+
+    Ok("Shape rasterized".into())
+}
+
+#[tauri::command]
 pub fn apply_layer_filter(
     payload: LayerFilterPayload,
     state: State<'_, SharedEngineState>,
@@ -205,6 +244,24 @@ pub fn apply_layer_filter(
 
     FilterEngine::apply_filter(&mut layer.grid, &payload.filter);
     Ok(guard.document.get_info())
+}
+
+#[tauri::command]
+pub fn get_layer_histogram(
+    layer_id: Option<String>,
+    state: State<'_, SharedEngineState>,
+) -> Result<Vec<u32>, String> {
+    let guard = state.lock();
+    let doc = &guard.document;
+
+    let layer = match layer_id.as_deref().or(doc.active_layer_id.as_deref()) {
+        Some(id) => doc.layers.iter().find(|l| l.id == id),
+        None => doc.layers.last(),
+    }
+    .ok_or_else(|| "No active layer for histogram".to_string())?;
+
+    let hist = FilterEngine::calculate_histogram(&layer.grid);
+    Ok(hist.to_vec())
 }
 
 #[tauri::command]

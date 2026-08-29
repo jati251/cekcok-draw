@@ -226,6 +226,73 @@ export async function exportDocumentImage(
   return null;
 }
 
+export async function applyFloodFill(
+  startX: number,
+  startY: number,
+  color: [number, number, number, number],
+  tolerance = 32,
+  bounds?: [number, number, number, number],
+  layerId?: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('apply_flood_fill', {
+      payload: {
+        layer_id: layerId || null,
+        start_x: Math.round(startX),
+        start_y: Math.round(startY),
+        color,
+        tolerance,
+        bounds: bounds || null,
+      },
+    });
+  }
+  return 'Mock flood fill';
+}
+
+export async function applyShape(
+  shapeType: 'rectangle' | 'ellipse' | 'line' | 'arrow',
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  strokeColor: [number, number, number, number],
+  fillColor: [number, number, number, number],
+  strokeWidth = 2,
+  radius = 0,
+  hasFill = true,
+  hasStroke = true,
+  layerId?: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('apply_shape', {
+      payload: {
+        layer_id: layerId || null,
+        shape_type: shapeType,
+        start_x: startX,
+        start_y: startY,
+        end_x: endX,
+        end_y: endY,
+        stroke_color: strokeColor,
+        fill_color: fillColor,
+        stroke_width: strokeWidth,
+        radius,
+        has_fill: hasFill,
+        has_stroke: hasStroke,
+      },
+    });
+  }
+  return 'Mock shape rasterized';
+}
+
+export async function getLayerHistogram(layerId?: string): Promise<number[]> {
+  if (isTauriEnvironment()) {
+    return await invoke<number[]>('get_layer_histogram', {
+      layer_id: layerId || null,
+    });
+  }
+  return new Array(256).fill(0);
+}
+
 export async function getEngineStats(): Promise<{
   total_tiles: number;
   allocated_memory_mb: number;

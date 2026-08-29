@@ -72,7 +72,21 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
 
       if (filled) {
-        bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
+        bridge.applyFloodFill(
+          pos.x,
+          pos.y,
+          fillColor,
+          32,
+          selection && selection.active
+            ? [
+                Math.floor(selection.x),
+                Math.floor(selection.y),
+                Math.ceil(selection.x + selection.width),
+                Math.ceil(selection.y + selection.height),
+              ]
+            : undefined,
+          doc.active_layer_id
+        );
       }
     },
     [brushSettings.opacity, doc, layerCanvasesRef, primaryColor, selection]
@@ -139,17 +153,29 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         if (shapeSettings.stroke) ctx.stroke();
       } else {
         ctx.beginPath();
-        if (shapeSettings.radius > 0 && typeof ctx.roundRect === 'function') {
-          ctx.roundRect(x, y, w, h, shapeSettings.radius);
-        } else {
-          ctx.rect(x, y, w, h);
-        }
+        ctx.roundRect(x, y, w, h, shapeSettings.radius);
         if (shapeSettings.fill) ctx.fill();
         if (shapeSettings.stroke) ctx.stroke();
       }
-
       ctx.restore();
-      bridge.commitStrokeHistory(`Shape: ${shapeSettings.type}`);
+
+      const strokeRgba = hexToRgba(secondaryColor, 255);
+      const fillRgba = hexToRgba(primaryColor, 255);
+
+      bridge.applyShape(
+        shapeSettings.type,
+        start.x,
+        start.y,
+        end.x,
+        end.y,
+        strokeRgba,
+        fillRgba,
+        shapeSettings.strokeWidth,
+        shapeSettings.radius,
+        shapeSettings.fill,
+        shapeSettings.stroke,
+        doc.active_layer_id
+      );
     },
     [doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
   );

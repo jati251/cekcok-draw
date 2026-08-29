@@ -5,7 +5,7 @@ pub mod storage;
 
 use core::document::Document;
 use core::history::HistoryEngine;
-use ipc::commands::*;
+use ipc::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -35,8 +35,11 @@ pub fn run() {
             set_layer_visibility,
             set_layer_blend_mode,
             apply_brush_stroke,
+            apply_flood_fill,
+            apply_shape,
             commit_stroke_history,
             apply_layer_filter,
+            get_layer_histogram,
             export_document_image,
             get_engine_stats,
             undo,

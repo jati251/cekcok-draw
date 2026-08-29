@@ -15,6 +15,13 @@ pub enum LayerFilter {
         saturation: f32,
         lightness: f32,
     },
+    Levels {
+        in_black: u8,
+        in_gamma: f32,
+        in_white: u8,
+        out_black: u8,
+        out_white: u8,
+    },
     FlipHorizontal {
         width: u32,
     },
@@ -68,6 +75,29 @@ impl FilterEngine {
                     (new_r, new_g, new_b, a)
                 });
             }
+            LayerFilter::Levels {
+                in_black,
+                in_gamma,
+                in_white,
+                out_black,
+                out_white,
+            } => {
+                let in_diff = (*in_white as f32 - *in_black as f32).max(1.0);
+                let out_diff = *out_white as f32 - *out_black as f32;
+                let inv_gamma = 1.0 / in_gamma.max(0.01);
+
+                let mut lut = [0u8; 256];
+                for i in 0..256 {
+                    let norm = ((i as f32 - *in_black as f32) / in_diff).clamp(0.0, 1.0);
+                    let gamma_adj = norm.powf(inv_gamma);
+                    let res = *out_black as f32 + gamma_adj * out_diff;
+                    lut[i] = res.clamp(0.0, 255.0).round() as u8;
+                }
+
+                Self::map_pixels(grid, |r, g, b, a| {
+                    (lut[r as usize], lut[g as usize], lut[b as usize], a)
+                });
+            }
             LayerFilter::FlipHorizontal { width } => {
                 Self::flip_horizontal(grid, *width);
             }
@@ -75,6 +105,29 @@ impl FilterEngine {
                 Self::flip_vertical(grid, *height);
             }
         }
+    }
+
+    /// Parallel 256-bin luminance histogram computation across all allocated tiles
+    pub fn calculate_histogram(grid: &SparseTileGrid) -> [u32; 256] {
+        let mut histogram = [0u32; 256];
+        let coords = grid.get_allocated_coords();
+
+        for coord in coords {
+            if let Some(tile) = grid.get_tile(&coord) {
+                for y in 0..512 {
+                    for x in 0..512 {
+                        let [r, g, b, a] = tile.get_pixel(x, y);
+                        if a > 0 {
+                            let gray = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32)
+                                .round() as usize;
+                            histogram[gray.min(255)] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        histogram
     }
 
     fn map_pixels<F>(grid: &mut SparseTileGrid, op: F)
