@@ -12,6 +12,12 @@ export default defineConfig(async () => ({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
 
+  build: {
+    rollupOptions: {
+      maxParallelFileOps: 50,
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors

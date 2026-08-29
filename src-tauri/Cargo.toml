@@ -1,6 +1,6 @@
 [package]
 name = "cekcok-draw-core"
-version = "0.2.1"
+version = "0.2.2"
 description = "High-Performance Raster Graphics Engine (Photoshop Replica)"
 authors = ["Jati Suryo"]
 edition = "2021"

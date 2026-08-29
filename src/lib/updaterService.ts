@@ -1,5 +1,6 @@
 import { isTauriEnvironment } from './tauriBridge';
-import type { Update } from '@tauri-apps/plugin-updater';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export interface AppUpdateInfo {
   available: boolean;
@@ -12,7 +13,7 @@ export interface AppUpdateInfo {
 
 let activeUpdateInstance: Update | null = null;
 
-export const checkForAppUpdate = async (currentVersion = '0.2.1'): Promise<AppUpdateInfo> => {
+export const checkForAppUpdate = async (currentVersion = '0.2.2'): Promise<AppUpdateInfo> => {
   if (!isTauriEnvironment()) {
     // Browser fallback simulation
     return {
@@ -26,7 +27,6 @@ export const checkForAppUpdate = async (currentVersion = '0.2.1'): Promise<AppUp
   }
 
   try {
-    const { check } = await import('@tauri-apps/plugin-updater');
     const update = await check();
 
     if (update && update.available) {
@@ -122,7 +122,6 @@ export const relaunchApp = async (): Promise<void> => {
   }
 
   try {
-    const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
   } catch {
     window.location.reload();

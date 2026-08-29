@@ -73,7 +73,7 @@ export const useCanvasDrawing = ({
 
         ctx.save();
         applySelectionClip(ctx);
-        const strength = Math.min(1.0, (brushSettings.opacity || 0.8) * 0.6);
+        const strength = useEditorStore.getState().smudgeStrength || 0.6;
         applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, baseRadius, strength);
         ctx.restore();
         return;
