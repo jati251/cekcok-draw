@@ -5,17 +5,19 @@ import { Check, X } from 'lucide-react';
 import * as bridge from '../../lib/tauriBridge';
 
 export const TextLayerOverlay: React.FC = () => {
-  const { activeTextNode, setActiveTextNode, textSettings, primaryColor } = useEditorStore();
+  const { activeTool, activeTextNode, setActiveTextNode, textSettings, primaryColor } =
+    useEditorStore();
   const { doc, bumpCanvasRevision } = useDocumentStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (activeTextNode && textareaRef.current) {
+    if (activeTextNode && activeTool === 'text' && textareaRef.current) {
       textareaRef.current.focus();
     }
-  }, [activeTextNode]);
+  }, [activeTextNode, activeTool]);
 
-  if (!activeTextNode || !doc) return null;
+  // Only render overlay when in text tool and node is open
+  if (!activeTextNode || !doc || activeTool !== 'text') return null;
 
   const commitTextToCanvas = () => {
     if (!activeTextNode.text.trim()) {

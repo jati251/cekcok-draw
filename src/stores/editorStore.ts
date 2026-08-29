@@ -90,7 +90,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   selection: null,
   activeTextNode: null,
 
-  setActiveTool: (activeTool) => set({ activeTool }),
+  setActiveTool: (activeTool) =>
+    set({
+      activeTool,
+      activeTextNode: null,
+      isDrawing: false,
+    }),
   setBrushSettings: (settings) =>
     set((state) => ({
       brushSettings: { ...state.brushSettings, ...settings },

@@ -265,6 +265,16 @@ export const CanvasViewport: React.FC = () => {
 
     if (selectionStartRef.current && activeTool === 'selection') {
       selectionStartRef.current = null;
+      if (selection && selection.active && selection.width < 5 && selection.height < 5) {
+        setSelection(null);
+      }
+      return;
+    }
+
+    if (activeTool === 'lasso' && selection && selection.path) {
+      if (selection.path.length < 5) {
+        setSelection(null);
+      }
       return;
     }
 
