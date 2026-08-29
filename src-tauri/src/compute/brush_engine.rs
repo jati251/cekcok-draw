@@ -46,6 +46,24 @@ impl BrushEngine {
             return;
         }
 
+        // Deduplicate micro-points that are too close (< 0.75px) to optimize performance
+        let mut clean_points: Vec<BrushPoint> = Vec::with_capacity(points.len());
+        for p in points {
+            if let Some(last) = clean_points.last() {
+                let dx = p.x - last.x;
+                let dy = p.y - last.y;
+                if dx * dx + dy * dy >= 0.5 {
+                    clean_points.push(*p);
+                }
+            } else {
+                clean_points.push(*p);
+            }
+        }
+        let points = &clean_points;
+        if points.is_empty() {
+            return;
+        }
+
         // Single stroke scratch buffer: maps (x, y) -> max alpha [0..255]
         let mut stroke_alpha_map: HashMap<(i32, i32), u8> = HashMap::new();
 

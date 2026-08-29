@@ -1,6 +1,9 @@
 /**
- * Creates high-precision radial gradient brush stamp with Cosine Bell curve (Photoshop Airbrush falloff)
+ * High-performance cached radial gradient brush stamp generator (Photoshop Airbrush falloff)
  */
+
+const stampCache = new Map<string, HTMLCanvasElement>();
+
 export const createSoftStamp = (
   radius: number,
   hardness: number,
@@ -45,5 +48,27 @@ export const createSoftStamp = (
   }
 
   ctx.putImageData(imgData, 0, 0);
+  return stamp;
+};
+
+export const getOrCreateSoftStamp = (
+  radius: number,
+  hardness: number,
+  color: [number, number, number, number]
+): HTMLCanvasElement => {
+  const roundedRadius = Math.max(1, Math.round(radius * 2) / 2);
+  const roundedHardness = Math.round(hardness * 20) / 20;
+  const key = `${roundedRadius}_${roundedHardness}_${color[0]}_${color[1]}_${color[2]}_${color[3]}`;
+
+  const cached = stampCache.get(key);
+  if (cached) return cached;
+
+  if (stampCache.size > 80) {
+    const firstKey = stampCache.keys().next().value;
+    if (firstKey) stampCache.delete(firstKey);
+  }
+
+  const stamp = createSoftStamp(roundedRadius, roundedHardness, color);
+  stampCache.set(key, stamp);
   return stamp;
 };

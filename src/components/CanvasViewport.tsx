@@ -61,6 +61,7 @@ export const CanvasViewport: React.FC = () => {
     doc,
     activeTool,
     brushSettings,
+    zoom,
     liveStrokeCanvasRef,
     layerCanvasesRef,
   });
