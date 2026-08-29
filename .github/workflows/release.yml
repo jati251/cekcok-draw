@@ -25,7 +25,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
       AWS_DEFAULT_REGION: us-east-1
-      AWS_EC2_METADATA_DISABLED: 'true'
+      AWS_EC2_METADATA_DISABLED: "true"
       MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
 
     steps:
@@ -49,10 +49,10 @@ jobs:
       - name: Build Web Frontend
         run: npm run build
 
-      - name: Build Tauri Desktop App & Sign
+      - name: Build Tauri Desktop App
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: npx tauri build
 
       - name: Upload Artifacts (macOS)
@@ -61,11 +61,17 @@ jobs:
         env:
           RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
+          if [ -z "$MINIO_ENDPOINT" ]; then
+            echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
+            echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
           VERSION=$(node -p "require('./package.json').version")
           BUNDLE_DIR="src-tauri/target/release/bundle"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          echo "🚀 Uploading macOS Artifacts for CekcokDraw v${VERSION}..."
+          echo "🚀 Uploading macOS Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
 
           # 1. Upload Static DMG & versioned DMG
           DMG_FILE=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -n 1)
@@ -79,32 +85,34 @@ jobs:
           # 2. Upload Updater Archive (.tar.gz & .sig)
           MACOS_TAR=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz" 2>/dev/null | head -n 1)
           MACOS_SIG=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz.sig" 2>/dev/null | head -n 1)
-          if [ -n "$MACOS_TAR" ] && [ -f "$MACOS_TAR" ] && [ -n "$MACOS_SIG" ] && [ -f "$MACOS_SIG" ]; then
+          if [ -n "$MACOS_TAR" ] && [ -f "$MACOS_TAR" ]; then
             TAR_NAME=$(basename "$MACOS_TAR")
-            SIG_CONTENT=$(cat "$MACOS_SIG")
-
             aws s3 cp "$MACOS_TAR" "s3://cekcok-releases/$TAR_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$MACOS_SIG" "s3://cekcok-releases/${TAR_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
 
-            # Download current draw-latest.json, patch platform key, and upload back
-            aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
+            if [ -n "$MACOS_SIG" ] && [ -f "$MACOS_SIG" ]; then
+              SIG_CONTENT=$(cat "$MACOS_SIG")
+              aws s3 cp "$MACOS_SIG" "s3://cekcok-releases/${TAR_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
 
-            node -e "
-              const fs = require('fs');
-              let data = {};
-              try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-              data.version = '$VERSION';
-              data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
-              data.pub_date = '$PUB_DATE';
-              data.platforms = data.platforms || {};
-              data.platforms['darwin-aarch64'] = {
-                signature: '$SIG_CONTENT',
-                url: 'https://releases.cekcok.my.id/cekcok-releases/$TAR_NAME'
-              };
-              fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-            "
+              # Download current draw-latest.json, patch platform key, and upload back
+              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
 
-            aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+              node -e "
+                const fs = require('fs');
+                let data = {};
+                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
+                data.version = '$VERSION';
+                data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
+                data.pub_date = '$PUB_DATE';
+                data.platforms = data.platforms || {};
+                data.platforms['darwin-aarch64'] = {
+                  signature: '$SIG_CONTENT',
+                  url: 'https://releases.cekcok.my.id/cekcok-releases/$TAR_NAME'
+                };
+                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
+              "
+
+              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+            fi
           fi
 
       - name: Upload Artifacts (Windows)
@@ -113,11 +121,17 @@ jobs:
         env:
           RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
+          if [ -z "$MINIO_ENDPOINT" ]; then
+            echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
+            echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
           VERSION=$(node -p "require('./package.json').version")
           BUNDLE_DIR="src-tauri/target/release/bundle"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          echo "🚀 Uploading Windows Artifacts for CekcokDraw v${VERSION}..."
+          echo "🚀 Uploading Windows Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
 
           # 1. Upload Static EXE
           EXE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*.exe" 2>/dev/null | head -n 1)
@@ -139,30 +153,32 @@ jobs:
           # 3. Upload Updater Zip (.nsis.zip & .sig)
           WIN_ZIP=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip" 2>/dev/null | head -n 1)
           WIN_SIG=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip.sig" 2>/dev/null | head -n 1)
-          if [ -n "$WIN_ZIP" ] && [ -f "$WIN_ZIP" ] && [ -n "$WIN_SIG" ] && [ -f "$WIN_SIG" ]; then
+          if [ -n "$WIN_ZIP" ] && [ -f "$WIN_ZIP" ]; then
             ZIP_NAME=$(basename "$WIN_ZIP")
-            WIN_SIG_CONTENT=$(cat "$WIN_SIG")
-
             aws s3 cp "$WIN_ZIP" "s3://cekcok-releases/$ZIP_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$WIN_SIG" "s3://cekcok-releases/${ZIP_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
 
-            # Download current draw-latest.json, patch platform key, and upload back
-            aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
+            if [ -n "$WIN_SIG" ] && [ -f "$WIN_SIG" ]; then
+              WIN_SIG_CONTENT=$(cat "$WIN_SIG")
+              aws s3 cp "$WIN_SIG" "s3://cekcok-releases/${ZIP_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
 
-            node -e "
-              const fs = require('fs');
-              let data = {};
-              try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-              data.version = '$VERSION';
-              data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
-              data.pub_date = '$PUB_DATE';
-              data.platforms = data.platforms || {};
-              data.platforms['windows-x86_64'] = {
-                signature: '$WIN_SIG_CONTENT',
-                url: 'https://releases.cekcok.my.id/cekcok-releases/$ZIP_NAME'
-              };
-              fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-            "
+              # Download current draw-latest.json, patch platform key, and upload back
+              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
 
-            aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+              node -e "
+                const fs = require('fs');
+                let data = {};
+                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
+                data.version = '$VERSION';
+                data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
+                data.pub_date = '$PUB_DATE';
+                data.platforms = data.platforms || {};
+                data.platforms['windows-x86_64'] = {
+                  signature: '$WIN_SIG_CONTENT',
+                  url: 'https://releases.cekcok.my.id/cekcok-releases/$ZIP_NAME'
+                };
+                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
+              "
+
+              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+            fi
           fi
