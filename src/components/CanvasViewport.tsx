@@ -72,7 +72,9 @@ export const CanvasViewport: React.FC = () => {
 
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
   const [isPanning, setIsPanning] = useState(false);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [mouseClientPos, setMouseClientPos] = useState<{ clientX: number; clientY: number } | null>(
+    null
+  );
   const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
   const [gradientDrag, setGradientDrag] = useState<{
     start: { x: number; y: number };
@@ -84,7 +86,7 @@ export const CanvasViewport: React.FC = () => {
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const gradientStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Exact, pixel-perfect conversion from client viewport coordinates to Canvas coordinates
+  // Pixel-perfect conversion from client viewport coordinates to Canvas coordinates
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
       const box = viewportBoxRef.current;
@@ -92,12 +94,12 @@ export const CanvasViewport: React.FC = () => {
       const rect = box.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
 
-      const docX = (clientX - rect.left) * (doc.width / rect.width);
-      const docY = (clientY - rect.top) * (doc.height / rect.height);
+      const docX = (clientX - rect.left) / zoom;
+      const docY = (clientY - rect.top) / zoom;
 
       return { x: docX, y: docY };
     },
-    [doc]
+    [doc, zoom]
   );
 
   // Initialize Background Layer with solid white upon document creation
@@ -409,13 +411,7 @@ export const CanvasViewport: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    if (containerRect) {
-      setMousePos({
-        x: e.clientX - containerRect.left,
-        y: e.clientY - containerRect.top,
-      });
-    }
+    setMouseClientPos({ clientX: e.clientX, clientY: e.clientY });
 
     if (isPanningRef.current) {
       const dx = e.clientX - lastMousePosRef.current.x;
@@ -609,7 +605,7 @@ export const CanvasViewport: React.FC = () => {
       onPointerEnter={() => setIsHoveringCanvas(true)}
       onPointerLeave={() => {
         setIsHoveringCanvas(false);
-        setMousePos(null);
+        setMouseClientPos(null);
       }}
       className={`relative flex-1 h-full overflow-hidden bg-zinc-900 bg-transparency-grid flex items-center justify-center ${getCursorClass()}`}
     >
@@ -620,12 +616,16 @@ export const CanvasViewport: React.FC = () => {
         <div
           ref={viewportBoxRef}
           style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
             width: `${doc.width}px`,
             height: `${doc.height}px`,
+            flexShrink: 0,
           }}
-          className="relative shadow-2xl select-none bg-white will-change-transform"
+          className="shadow-2xl select-none bg-white will-change-transform pointer-events-auto"
         >
           {/* 1. Multi-Layer Canvas Stack (Preserves pixels permanently per layer) */}
           {doc.layers.map((layer) => (
@@ -719,29 +719,31 @@ export const CanvasViewport: React.FC = () => {
         </div>
       )}
 
-      {/* 🎯 Interactive Photoshop Brush Cursor Ring Overlay */}
+      {/* 🎯 Interactive Photoshop Brush Cursor Ring Overlay (Fixed Client Coordinate System) */}
       {isHoveringCanvas &&
-        mousePos &&
+        mouseClientPos &&
         (activeTool === 'brush' ||
           activeTool === 'eraser' ||
           activeTool === 'dodge' ||
           activeTool === 'burn') && (
           <div
             style={{
-              transform: `translate(${mousePos.x}px, ${mousePos.y}px)`,
-              left: 0,
-              top: 0,
+              position: 'fixed',
+              left: `${mouseClientPos.clientX}px`,
+              top: `${mouseClientPos.clientY}px`,
+              transform: 'translate(-50%, -50%)',
+              width: `${brushScreenRadius * 2}px`,
+              height: `${brushScreenRadius * 2}px`,
             }}
-            className="absolute pointer-events-none z-50 transition-none"
+            className="pointer-events-none z-50 transition-none flex items-center justify-center"
           >
             {/* Outer Brush Boundary Circle */}
             <div
               style={{
                 width: `${brushScreenRadius * 2}px`,
                 height: `${brushScreenRadius * 2}px`,
-                transform: 'translate(-50%, -50%)',
               }}
-              className={`absolute top-0 left-0 rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${
+              className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${
                 activeTool === 'dodge'
                   ? 'border-amber-300'
                   : activeTool === 'burn'
@@ -754,16 +756,19 @@ export const CanvasViewport: React.FC = () => {
             {brushSettings.hardness < 0.95 && (
               <div
                 style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
                   width: `${brushInnerRadius * 2}px`,
                   height: `${brushInnerRadius * 2}px`,
                   transform: 'translate(-50%, -50%)',
                 }}
-                className="absolute top-0 left-0 rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                className="rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
               />
             )}
 
             {/* Center Precision Crosshair Dot */}
-            <div className="absolute top-0 left-0 w-1 h-1 bg-white border border-black transform -translate-x-1/2 -translate-y-1/2 rounded-full" />
+            <div className="absolute left-1/2 top-1/2 w-1 h-1 bg-white border border-black transform -translate-x-1/2 -translate-y-1/2 rounded-full" />
           </div>
         )}
     </div>
