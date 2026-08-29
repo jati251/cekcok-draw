@@ -12,7 +12,14 @@ import { useEditorStore } from './stores/editorStore';
 
 export const App: React.FC = () => {
   const { initDocument, triggerUndo, triggerRedo } = useDocumentStore();
-  const { activePanel, setActiveTool } = useEditorStore();
+  const {
+    activePanel,
+    setActiveTool,
+    increaseBrushSize,
+    decreaseBrushSize,
+    setBrushSettings,
+    brushSettings,
+  } = useEditorStore();
 
   useEffect(() => {
     initDocument('Untitled-1', 1920, 1080);
@@ -33,12 +40,22 @@ export const App: React.FC = () => {
         } else {
           triggerUndo();
         }
+      } else if (e.key === '[') {
+        decreaseBrushSize(5);
+      } else if (e.key === ']') {
+        increaseBrushSize(5);
+      } else if (e.key === '{') {
+        setBrushSettings({ hardness: Math.max(0, brushSettings.hardness - 0.1) });
+      } else if (e.key === '}') {
+        setBrushSettings({ hardness: Math.min(1, brushSettings.hardness + 0.1) });
       } else if (e.key.toLowerCase() === 'b') {
         setActiveTool('brush');
       } else if (e.key.toLowerCase() === 'e') {
         setActiveTool('eraser');
       } else if (e.key.toLowerCase() === 'v') {
         setActiveTool('move');
+      } else if (e.key.toLowerCase() === 'm') {
+        setActiveTool('selection');
       } else if (e.key.toLowerCase() === 'h') {
         setActiveTool('hand');
       } else if (e.key.toLowerCase() === 'z') {
@@ -52,7 +69,15 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [triggerUndo, triggerRedo, setActiveTool]);
+  }, [
+    triggerUndo,
+    triggerRedo,
+    setActiveTool,
+    increaseBrushSize,
+    decreaseBrushSize,
+    setBrushSettings,
+    brushSettings.hardness,
+  ]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-ps-bg text-ps-text select-none">

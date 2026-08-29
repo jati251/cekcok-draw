@@ -8,6 +8,7 @@ import {
   ZoomIn,
   PaintBucket,
   ArrowLeftRight,
+  Scan,
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { ToolType } from '../types';
@@ -25,6 +26,12 @@ export const ToolBar: React.FC = () => {
 
   const tools: { type: ToolType; label: string; icon: React.ReactNode; shortcut: string }[] = [
     { type: 'move', label: 'Move Tool', icon: <Move size={18} />, shortcut: 'V' },
+    {
+      type: 'selection',
+      label: 'Rectangular Marquee Tool',
+      icon: <Scan size={18} />,
+      shortcut: 'M',
+    },
     { type: 'brush', label: 'Brush Tool', icon: <Paintbrush size={18} />, shortcut: 'B' },
     { type: 'eraser', label: 'Eraser Tool', icon: <Eraser size={18} />, shortcut: 'E' },
     { type: 'eyedropper', label: 'Eyedropper Tool', icon: <Pipette size={18} />, shortcut: 'I' },

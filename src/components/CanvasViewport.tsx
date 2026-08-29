@@ -12,6 +12,8 @@ export const CanvasViewport: React.FC = () => {
   const {
     activeTool,
     brushSettings,
+    primaryColor,
+    setPrimaryColor,
     zoom,
     pan,
     setPan,
@@ -20,33 +22,33 @@ export const CanvasViewport: React.FC = () => {
     isDrawing,
     setIsDrawing,
     showGrid,
+    selection,
+    setSelection,
   } = useEditorStore();
 
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
   const [isPanning, setIsPanning] = useState(false);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [isHoveringCanvas, setIsHoveringCanvas] = useState(false);
+
   const isPanningRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Convert client viewport coordinates to Canvas/Document coordinates
+  // Exact, pixel-perfect conversion from client viewport coordinates to Canvas coordinates
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
-      if (!containerRef.current || !doc) return { x: 0, y: 0 };
-      const rect = containerRef.current.getBoundingClientRect();
-      const viewCenterX = rect.width / 2;
-      const viewCenterY = rect.height / 2;
+      const canvas = canvasRef.current;
+      if (!canvas || !doc) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
 
-      const docCenterX = doc.width / 2;
-      const docCenterY = doc.height / 2;
-
-      const offsetX = clientX - rect.left - viewCenterX - pan.x;
-      const offsetY = clientY - rect.top - viewCenterY - pan.y;
-
-      const docX = docCenterX + offsetX / zoom;
-      const docY = docCenterY + offsetY / zoom;
+      const docX = (clientX - rect.left) * (doc.width / rect.width);
+      const docY = (clientY - rect.top) * (doc.height / rect.height);
 
       return { x: docX, y: docY };
     },
-    [doc, pan, zoom]
+    [doc]
   );
 
   // Redraw document canvas
@@ -61,7 +63,6 @@ export const CanvasViewport: React.FC = () => {
       canvas.height = doc.height;
     }
 
-    // Default clear
     ctx.clearRect(0, 0, doc.width, doc.height);
 
     // Render layers
@@ -71,7 +72,6 @@ export const CanvasViewport: React.FC = () => {
       ctx.save();
       ctx.globalAlpha = layer.opacity;
 
-      // Blend mode mapping
       if (layer.blend_mode === 'multiply') ctx.globalCompositeOperation = 'multiply';
       else if (layer.blend_mode === 'screen') ctx.globalCompositeOperation = 'screen';
       else if (layer.blend_mode === 'overlay') ctx.globalCompositeOperation = 'overlay';
@@ -118,12 +118,12 @@ export const CanvasViewport: React.FC = () => {
       const p = points[0];
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, brushSettings.size * 0.5 * p.pressure || 1, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, Math.max(1, brushSettings.size * 0.5 * p.pressure), 0, Math.PI * 2);
       ctx.fill();
     } else {
       const p0 = points[points.length - 2];
       const p1 = points[points.length - 1];
-      ctx.lineWidth = brushSettings.size * ((p0.pressure + p1.pressure) * 0.5);
+      ctx.lineWidth = Math.max(1, brushSettings.size * ((p0.pressure + p1.pressure) * 0.5));
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
@@ -132,12 +132,53 @@ export const CanvasViewport: React.FC = () => {
     ctx.restore();
   };
 
-  // Pointer Handlers (Stylus pressure + coalesced events)
+  // Eyedropper sampling
+  const sampleColorAt = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const pos = screenToCanvas(clientX, clientY);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const px = Math.floor(pos.x);
+    const py = Math.floor(pos.y);
+    if (px < 0 || px >= canvas.width || py < 0 || py >= canvas.height) return;
+
+    try {
+      const pixel = ctx.getImageData(px, py, 1, 1).data;
+      const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
+      setPrimaryColor(hex);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Paint Bucket flood fill
+  const handlePaintBucket = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !doc) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.fillStyle = primaryColor;
+    ctx.globalAlpha = brushSettings.opacity;
+    if (selection && selection.active) {
+      ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
+    } else {
+      ctx.fillRect(0, 0, doc.width, doc.height);
+    }
+    ctx.restore();
+
+    bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
+  };
+
+  // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
     e.currentTarget.setPointerCapture(e.pointerId);
 
-    // Space or middle mouse or Hand tool -> Pan
+    // 1. Hand tool, Space drag, or Middle mouse -> Pan
     if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
       isPanningRef.current = true;
       setIsPanning(true);
@@ -145,6 +186,43 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    // 2. Zoom tool click
+    if (activeTool === 'zoom') {
+      const isZoomOut = e.altKey;
+      const factor = isZoomOut ? 0.7 : 1.4;
+      setZoom((z) => (isZoomOut ? Math.max(0.05, z * factor) : Math.min(32, z * factor)));
+      return;
+    }
+
+    // 3. Eyedropper tool
+    if (activeTool === 'eyedropper') {
+      sampleColorAt(e.clientX, e.clientY);
+      return;
+    }
+
+    // 4. Paint Bucket tool
+    if (activeTool === 'paint_bucket') {
+      handlePaintBucket();
+      return;
+    }
+
+    // 5. Move tool -> Pan / Drag canvas
+    if (activeTool === 'move') {
+      isPanningRef.current = true;
+      setIsPanning(true);
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    // 6. Selection / Marquee tool
+    if (activeTool === 'selection') {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      selectionStartRef.current = { x: pos.x, y: pos.y };
+      setSelection({ x: pos.x, y: pos.y, width: 0, height: 0, active: true });
+      return;
+    }
+
+    // 7. Brush & Eraser tools
     if (activeTool === 'brush' || activeTool === 'eraser') {
       setIsDrawing(true);
       const pos = screenToCanvas(e.clientX, e.clientY);
@@ -152,12 +230,20 @@ export const CanvasViewport: React.FC = () => {
       const initialPoints: BrushPoint[] = [{ x: pos.x, y: pos.y, pressure }];
       setStrokePoints(initialPoints);
 
-      // Draw immediate stroke feedback on canvas
       drawStrokeLive(initialPoints, true);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Update screen coordinates for the Photoshop brush cursor ring
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (containerRect) {
+      setMousePos({
+        x: e.clientX - containerRect.left,
+        y: e.clientY - containerRect.top,
+      });
+    }
+
     if (isPanningRef.current) {
       const dx = e.clientX - lastMousePosRef.current.x;
       const dy = e.clientY - lastMousePosRef.current.y;
@@ -168,6 +254,23 @@ export const CanvasViewport: React.FC = () => {
 
     const pos = screenToCanvas(e.clientX, e.clientY);
     setCursorPos({ x: Math.round(pos.x), y: Math.round(pos.y) });
+
+    // Live Eyedropper dragging
+    if (activeTool === 'eyedropper' && e.buttons === 1) {
+      sampleColorAt(e.clientX, e.clientY);
+      return;
+    }
+
+    // Live Marquee Selection dragging
+    if (activeTool === 'selection' && selectionStartRef.current && e.buttons === 1) {
+      const start = selectionStartRef.current;
+      const minX = Math.min(start.x, pos.x);
+      const minY = Math.min(start.y, pos.y);
+      const width = Math.abs(pos.x - start.x);
+      const height = Math.abs(pos.y - start.y);
+      setSelection({ x: minX, y: minY, width, height, active: true });
+      return;
+    }
 
     if (isDrawing && (activeTool === 'brush' || activeTool === 'eraser')) {
       const nativeEv = e.nativeEvent as PointerEvent;
@@ -204,6 +307,11 @@ export const CanvasViewport: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'selection') {
+      selectionStartRef.current = null;
+      return;
+    }
+
     if (isDrawing) {
       setIsDrawing(false);
       if (strokePoints.length > 0) {
@@ -214,7 +322,6 @@ export const CanvasViewport: React.FC = () => {
               ? ([0, 0, 0, 0] as [number, number, number, number])
               : brushSettings.color,
         };
-        // Commit stroke to Rust Core Engine
         await bridge.applyBrushStroke(strokePoints, settingsToApply);
         await bridge.commitStrokeHistory(activeTool === 'eraser' ? 'Eraser' : 'Brush Stroke');
         setStrokePoints([]);
@@ -226,17 +333,30 @@ export const CanvasViewport: React.FC = () => {
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
-      // Zoom
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoom((z) => z * zoomFactor);
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      setZoom((z) => Math.min(32, Math.max(0.05, z * zoomFactor)));
     } else {
-      // Pan
       setPan((prev) => ({
         x: prev.x - e.deltaX,
         y: prev.y - e.deltaY,
       }));
     }
   };
+
+  // Cursor style calculation
+  const getCursorClass = () => {
+    if (activeTool === 'hand') return isPanning ? 'cursor-grabbing' : 'cursor-grab';
+    if (activeTool === 'move') return 'cursor-move';
+    if (activeTool === 'zoom') return 'cursor-zoom-in';
+    if (activeTool === 'eyedropper') return 'cursor-cell';
+    if (activeTool === 'paint_bucket') return 'cursor-copy';
+    if (activeTool === 'selection') return 'cursor-crosshair';
+    if (activeTool === 'brush' || activeTool === 'eraser') return 'cursor-none';
+    return 'cursor-default';
+  };
+
+  const brushScreenRadius = brushSettings.size * 0.5 * zoom;
+  const brushInnerRadius = brushScreenRadius * brushSettings.hardness;
 
   return (
     <div
@@ -245,9 +365,12 @@ export const CanvasViewport: React.FC = () => {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onWheel={handleWheel}
-      className={`relative flex-1 h-full overflow-hidden bg-zinc-900 bg-transparency-grid flex items-center justify-center cursor-${
-        activeTool === 'hand' ? (isPanning ? 'grabbing' : 'grab') : 'crosshair'
-      }`}
+      onPointerEnter={() => setIsHoveringCanvas(true)}
+      onPointerLeave={() => {
+        setIsHoveringCanvas(false);
+        setMousePos(null);
+      }}
+      className={`relative flex-1 h-full overflow-hidden bg-zinc-900 bg-transparency-grid flex items-center justify-center ${getCursorClass()}`}
     >
       {doc && (
         <div
@@ -257,7 +380,7 @@ export const CanvasViewport: React.FC = () => {
             width: doc.width,
             height: doc.height,
           }}
-          className="relative shadow-2xl transition-transform duration-75 select-none bg-white"
+          className="relative shadow-2xl select-none bg-white will-change-transform"
         >
           {/* Main Rendering Surface */}
           <canvas
@@ -266,6 +389,19 @@ export const CanvasViewport: React.FC = () => {
             height={doc.height}
             className="w-full h-full block"
           />
+
+          {/* Marquee Selection Box Overlay */}
+          {selection && selection.active && selection.width > 0 && (
+            <div
+              style={{
+                left: selection.x,
+                top: selection.y,
+                width: selection.width,
+                height: selection.height,
+              }}
+              className="absolute border border-dashed border-black bg-blue-500/10 pointer-events-none ring-1 ring-white/70"
+            />
+          )}
 
           {/* Grid Overlay for Pixel Art / Ultra Zoom */}
           {showGrid && zoom >= 4 && (
@@ -278,6 +414,43 @@ export const CanvasViewport: React.FC = () => {
               }}
             />
           )}
+        </div>
+      )}
+
+      {/* 🎯 Interactive Photoshop Brush Cursor Ring Overlay */}
+      {isHoveringCanvas && mousePos && (activeTool === 'brush' || activeTool === 'eraser') && (
+        <div
+          style={{
+            transform: `translate(${mousePos.x}px, ${mousePos.y}px)`,
+            left: 0,
+            top: 0,
+          }}
+          className="absolute pointer-events-none z-50 transition-none"
+        >
+          {/* Outer Brush Boundary Circle */}
+          <div
+            style={{
+              width: `${brushScreenRadius * 2}px`,
+              height: `${brushScreenRadius * 2}px`,
+              transform: 'translate(-50%, -50%)',
+            }}
+            className="rounded-full border border-white shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
+          />
+
+          {/* Inner Hardness Indicator Circle */}
+          {brushSettings.hardness < 0.95 && (
+            <div
+              style={{
+                width: `${brushInnerRadius * 2}px`,
+                height: `${brushInnerRadius * 2}px`,
+                transform: 'translate(-50%, -50%)',
+              }}
+              className="absolute top-0 left-0 rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+            />
+          )}
+
+          {/* Center Precision Crosshair Dot */}
+          <div className="absolute top-0 left-0 w-1 h-1 bg-white border border-black transform -translate-x-1/2 -translate-y-1/2 rounded-full" />
         </div>
       )}
     </div>
