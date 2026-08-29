@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '../types';
-import { getOrCreateSoftStamp } from '../utils/stamp';
+import { getOrCreateStamp } from '../utils/stamp';
 import * as bridge from '../lib/tauriBridge';
 
 interface UseCanvasDrawingProps {
@@ -109,6 +109,7 @@ export const useCanvasDrawing = ({
       ctx.save();
       if (activeTool === 'dodge') ctx.globalCompositeOperation = 'screen';
       else if (activeTool === 'burn') ctx.globalCompositeOperation = 'multiply';
+      else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
       else ctx.globalCompositeOperation = 'source-over';
 
       const dx = pCurr.x - pPrev.x;
@@ -116,34 +117,37 @@ export const useCanvasDrawing = ({
       const dist = Math.hypot(dx, dy);
 
       const minScreenPixelDocSize = 1.0 / Math.max(0.01, zoom);
-      const standardBrushStep = Math.max(1, baseRadius * 0.25);
+      const spacingMultiplier =
+        brushSettings.type === 'calligraphy' || brushSettings.type === 'pixel'
+          ? 0.1
+          : brushSettings.type === 'spray'
+            ? 0.35
+            : 0.2;
+      const standardBrushStep = Math.max(0.75, baseRadius * spacingMultiplier);
       const stepSize = Math.max(
         standardBrushStep,
         Math.min(minScreenPixelDocSize, baseRadius * 0.8)
       );
       const steps = Math.max(1, Math.ceil(dist / stepSize));
 
-      const stamp = getOrCreateSoftStamp(baseRadius, brushSettings.hardness, color);
+      const stamp = getOrCreateStamp(baseRadius, brushSettings, color);
 
       for (let i = 1; i <= steps; i++) {
         const t = i / steps;
-        const x = pPrev.x + dx * t;
-        const y = pPrev.y + dy * t;
+        let x = pPrev.x + dx * t;
+        let y = pPrev.y + dy * t;
+
+        if (brushSettings.type === 'pixel') {
+          x = Math.round(x);
+          y = Math.round(y);
+        }
+
         ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
       }
 
       ctx.restore();
     },
-    [
-      activeTool,
-      brushSettings.hardness,
-      brushSettings.size,
-      doc,
-      getToolColor,
-      layerCanvasesRef,
-      liveStrokeCanvasRef,
-      zoom,
-    ]
+    [activeTool, brushSettings, doc, getToolColor, layerCanvasesRef, liveStrokeCanvasRef, zoom]
   );
 
   const drawInitialDot = useCallback(
@@ -161,14 +165,23 @@ export const useCanvasDrawing = ({
       ctx.save();
       if (activeTool === 'dodge') ctx.globalCompositeOperation = 'screen';
       else if (activeTool === 'burn') ctx.globalCompositeOperation = 'multiply';
+      else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
       else ctx.globalCompositeOperation = 'source-over';
 
       const baseRadius = Math.max(1, brushSettings.size * 0.5);
-      const stamp = getOrCreateSoftStamp(baseRadius, brushSettings.hardness, color);
-      ctx.drawImage(stamp, p.x - baseRadius, p.y - baseRadius);
+      const stamp = getOrCreateStamp(baseRadius, brushSettings, color);
+
+      let x = p.x;
+      let y = p.y;
+      if (brushSettings.type === 'pixel') {
+        x = Math.round(x);
+        y = Math.round(y);
+      }
+
+      ctx.drawImage(stamp, x - baseRadius, y - baseRadius);
       ctx.restore();
     },
-    [activeTool, brushSettings.hardness, brushSettings.size, doc, getToolColor, liveStrokeCanvasRef]
+    [activeTool, brushSettings, doc, getToolColor, liveStrokeCanvasRef]
   );
 
   const bakeStrokeToLayer = useCallback(async () => {
@@ -184,6 +197,7 @@ export const useCanvasDrawing = ({
         if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
         else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
         else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';
+        else if (brushSettings.type === 'marker') mainCtx.globalCompositeOperation = 'multiply';
         else mainCtx.globalCompositeOperation = 'source-over';
 
         mainCtx.drawImage(strokeCanvas, 0, 0);
@@ -212,7 +226,7 @@ export const useCanvasDrawing = ({
                 ? 'Smudge Tool'
                 : activeTool === 'blur'
                   ? 'Blur Tool'
-                  : 'Brush Stroke';
+                  : `${brushSettings.type.replace('_', ' ')} Stroke`;
       await bridge.commitStrokeHistory(actionName);
       setStrokePoints([]);
     }

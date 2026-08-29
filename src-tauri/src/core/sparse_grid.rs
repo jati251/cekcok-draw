@@ -31,8 +31,21 @@ impl SparseTileGrid {
 
     pub fn get_or_create_mut(&mut self, coord: TileCoord) -> &mut Tile {
         self.dirty_coords.push(coord);
-        let shared = self.tiles.entry(coord).or_insert_with(|| Arc::new(Tile::new_empty(coord)));
+        let shared = self
+            .tiles
+            .entry(coord)
+            .or_insert_with(|| Arc::new(Tile::new_empty(coord)));
         Arc::make_mut(shared)
+    }
+
+    pub fn get_allocated_coords(&self) -> Vec<TileCoord> {
+        self.tiles.keys().copied().collect()
+    }
+
+    pub fn get_tile_mut(&mut self, coord: &TileCoord) -> Option<&mut Tile> {
+        self.dirty_coords.push(*coord);
+        let shared = self.tiles.get_mut(coord)?;
+        Some(Arc::make_mut(shared))
     }
 
     pub fn set_pixel_cow(&mut self, global_x: i32, global_y: i32, color: [u8; 4]) {

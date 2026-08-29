@@ -1,9 +1,13 @@
 import React from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
-import { Cpu, HardDrive, MousePointer } from 'lucide-react';
+import { Cpu, HardDrive, MousePointer, Sparkles } from 'lucide-react';
 
-export const StatusBar: React.FC = () => {
+interface Props {
+  onOpenUpdateModal?: () => void;
+}
+
+export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
   const { doc } = useDocumentStore();
   const { zoom, cursorPos } = useEditorStore();
 
@@ -14,7 +18,7 @@ export const StatusBar: React.FC = () => {
 
   return (
     <footer className="h-6 bg-ps-header border-t border-ps-border flex items-center justify-between px-3 text-[11px] text-zinc-400 select-none z-30">
-      {/* Left zoom control */}
+      {/* Left zoom control & cursor position */}
       <div className="flex items-center space-x-3">
         <div className="flex items-center space-x-1">
           <span>Zoom:</span>
@@ -29,7 +33,7 @@ export const StatusBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Engine Status (Sparse Tiles & Memory Pool) */}
+      {/* Right Engine Status & App Version Update Badge */}
       <div className="flex items-center space-x-4 font-mono text-[10px] text-zinc-400">
         <div className="flex items-center space-x-1">
           <HardDrive size={11} className="text-emerald-400" />
@@ -41,6 +45,16 @@ export const StatusBar: React.FC = () => {
           <Cpu size={11} className="text-blue-400" />
           <span className="text-emerald-400">GPU Compute: Active</span>
         </div>
+        {onOpenUpdateModal && (
+          <button
+            onClick={onOpenUpdateModal}
+            className="flex items-center space-x-1 border-l border-ps-border/70 pl-3 text-zinc-300 hover:text-blue-400 transition-colors cursor-pointer"
+            title="Check for updates"
+          >
+            <Sparkles size={10} className="text-blue-400" />
+            <span>v0.1.0</span>
+          </button>
+        )}
       </div>
     </footer>
   );

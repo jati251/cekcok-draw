@@ -199,3 +199,53 @@ export async function renderViewport(
   }
   return null;
 }
+
+export async function applyLayerFilter(filter: unknown, layerId?: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('apply_layer_filter', {
+      payload: {
+        filter,
+        layer_id: layerId || null,
+      },
+    });
+  }
+  return { ...mockDoc };
+}
+
+export async function exportDocumentImage(
+  format = 'png',
+  quality = 90
+): Promise<Uint8Array | null> {
+  if (isTauriEnvironment()) {
+    const raw = await invoke<number[]>('export_document_image', {
+      format,
+      quality,
+    });
+    return new Uint8Array(raw);
+  }
+  return null;
+}
+
+export async function getEngineStats(): Promise<{
+  total_tiles: number;
+  allocated_memory_mb: number;
+  history_nodes: number;
+  gpu_available: boolean;
+}> {
+  if (isTauriEnvironment()) {
+    return await invoke<{
+      total_tiles: number;
+      allocated_memory_mb: number;
+      history_nodes: number;
+      gpu_available: boolean;
+    }>('get_engine_stats');
+  }
+  const totalTiles =
+    Math.ceil(mockDoc.width / 512) * Math.ceil(mockDoc.height / 512) * mockDoc.layers.length;
+  return {
+    total_tiles: totalTiles,
+    allocated_memory_mb: totalTiles * 1.0,
+    history_nodes: mockHistory.length,
+    gpu_available: false,
+  };
+}

@@ -31,6 +31,8 @@ export const BrushCursorRing: React.FC<Props> = ({
 
   const brushScreenRadius = brushSettings.size * 0.5 * zoom;
   const brushInnerRadius = brushScreenRadius * brushSettings.hardness;
+  const brushType = brushSettings.type || 'round_soft';
+  const angle = brushSettings.angle ?? 45;
 
   const borderColor =
     activeTool === 'dodge'
@@ -55,28 +57,70 @@ export const BrushCursorRing: React.FC<Props> = ({
       }}
       className="pointer-events-none z-50 transition-none flex items-center justify-center"
     >
-      {/* Outer Brush Boundary Circle */}
-      <div
-        style={{
-          width: `${brushScreenRadius * 2}px`,
-          height: `${brushScreenRadius * 2}px`,
-        }}
-        className={`rounded-full border shadow-[0_0_0:1px_rgba(0,0,0,0.8)] ${borderColor}`}
-      />
-
-      {/* Inner Hardness Indicator Circle */}
-      {brushSettings.hardness < 0.95 && activeTool !== 'smudge' && (
+      {/* 1. Pixel Art: Square Cursor */}
+      {brushType === 'pixel' && activeTool === 'brush' ? (
         <div
           style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: `${brushInnerRadius * 2}px`,
-            height: `${brushInnerRadius * 2}px`,
-            transform: 'translate(-50%, -50%)',
+            width: `${brushScreenRadius * 2}px`,
+            height: `${brushScreenRadius * 2}px`,
           }}
-          className="rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+          className={`border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
         />
+      ) : brushType === 'calligraphy' && activeTool === 'brush' ? (
+        /* 2. Calligraphy: Angled Flat Ellipse Nib */
+        <div
+          style={{
+            width: `${brushScreenRadius * 2}px`,
+            height: `${brushScreenRadius * 0.5}px`,
+            transform: `rotate(${angle}deg)`,
+          }}
+          className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
+        />
+      ) : brushType === 'marker' && activeTool === 'brush' ? (
+        /* 3. Marker: Angled Flat Chisel Rectangle */
+        <div
+          style={{
+            width: `${brushScreenRadius * 2}px`,
+            height: `${brushScreenRadius * 0.7}px`,
+            transform: `rotate(${angle}deg)`,
+          }}
+          className={`rounded-sm border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
+        />
+      ) : brushType === 'spray' && activeTool === 'brush' ? (
+        /* 4. Spray: Dashed dispersion perimeter */
+        <div
+          style={{
+            width: `${brushScreenRadius * 2}px`,
+            height: `${brushScreenRadius * 2}px`,
+          }}
+          className={`rounded-full border border-dashed shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
+        />
+      ) : (
+        /* 5. Standard Round / Natural Texture Brushes */
+        <>
+          <div
+            style={{
+              width: `${brushScreenRadius * 2}px`,
+              height: `${brushScreenRadius * 2}px`,
+            }}
+            className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
+          />
+
+          {/* Inner Hardness Indicator Circle */}
+          {brushSettings.hardness < 0.95 && activeTool !== 'smudge' && (
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: `${brushInnerRadius * 2}px`,
+                height: `${brushInnerRadius * 2}px`,
+                transform: 'translate(-50%, -50%)',
+              }}
+              className="rounded-full border border-dashed border-white/60 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+            />
+          )}
+        </>
       )}
 
       {/* Center Precision Crosshair Dot */}

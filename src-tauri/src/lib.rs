@@ -1,7 +1,7 @@
-pub mod core;
-pub mod storage;
 pub mod compute;
+pub mod core;
 pub mod ipc;
+pub mod storage;
 
 use core::document::Document;
 use core::history::HistoryEngine;
@@ -22,6 +22,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine_state)
         .invoke_handler(tauri::generate_handler![
             create_document,
@@ -34,6 +36,9 @@ pub fn run() {
             set_layer_blend_mode,
             apply_brush_stroke,
             commit_stroke_history,
+            apply_layer_filter,
+            export_document_image,
+            get_engine_stats,
             undo,
             redo,
             get_history,

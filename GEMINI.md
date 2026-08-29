@@ -49,30 +49,30 @@
 
 ```bash
 # Web preview mode (Vite dev server)
-npm run dev
+pnpm dev
 
 # Native desktop app mode (Tauri v2 + Rust Core)
-npm run tauri dev
+pnpm tauri dev
 ```
 
 ### 2. Code Quality & Verification
 
 ```bash
 # Linting (ESLint 9 Flat Config)
-npm run lint
+pnpm lint
 
 # Code formatting (Prettier)
-npm run format
+pnpm format
 
 # TypeScript Strict Typechecking
-npm run typecheck
+pnpm typecheck
 
 # Rust Core Engine Check & Tests
-npm run rust:check
-npm run rust:test
+pnpm rust:check
+pnpm rust:test
 
 # Production Web Build
-npm run build
+pnpm build
 ```
 
 ---

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
-import * as filters from '../lib/filters';
+import * as filters from '../utils/filters';
 import * as bridge from '../lib/tauriBridge';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   onOpenExport: () => void;
   onOpenFilter: (type: 'brightness_contrast' | 'gaussian_blur') => void;
   onOpenHueSaturation: () => void;
+  onOpenUpdateModal: () => void;
 }
 
 export const TopMenuBar: React.FC<Props> = ({
@@ -17,6 +18,7 @@ export const TopMenuBar: React.FC<Props> = ({
   onOpenExport,
   onOpenFilter,
   onOpenHueSaturation,
+  onOpenUpdateModal,
 }) => {
   const { doc, triggerUndo, triggerRedo, addNewLayer } = useDocumentStore();
   const {
@@ -36,16 +38,18 @@ export const TopMenuBar: React.FC<Props> = ({
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
 
-  const handleFlip = (direction: 'horizontal' | 'vertical') => {
+  const handleFlip = async (direction: 'horizontal' | 'vertical') => {
     if (!doc) return;
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         filters.applyFlip(ctx, doc.width, doc.height, direction);
-        bridge.commitStrokeHistory(
-          `Flip ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
-        );
+        if (direction === 'horizontal') {
+          await bridge.applyLayerFilter({ type: 'flip_horizontal', width: doc.width });
+        } else {
+          await bridge.applyLayerFilter({ type: 'flip_vertical', height: doc.height });
+        }
       }
     }
   };
@@ -74,13 +78,13 @@ export const TopMenuBar: React.FC<Props> = ({
       { label: 'Brightness / Contrast...', action: () => onOpenFilter('brightness_contrast') },
       {
         label: 'Invert Colors',
-        action: () => {
+        action: async () => {
           const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               filters.applyInvert(ctx, doc.width, doc.height);
-              bridge.commitStrokeHistory('Invert Colors');
+              await bridge.applyLayerFilter({ type: 'invert' });
             }
           }
         },
@@ -88,13 +92,13 @@ export const TopMenuBar: React.FC<Props> = ({
       },
       {
         label: 'Desaturate',
-        action: () => {
+        action: async () => {
           const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               filters.applyDesaturate(ctx, doc.width, doc.height);
-              bridge.commitStrokeHistory('Desaturate');
+              await bridge.applyLayerFilter({ type: 'desaturate' });
             }
           }
         },
@@ -142,6 +146,17 @@ export const TopMenuBar: React.FC<Props> = ({
         label: 'All Panels (Default Workspace)',
         action: () => setActivePanel('all'),
         shortcut: 'Tab',
+      },
+    ],
+    Help: [
+      { label: 'Check for Updates...', action: onOpenUpdateModal },
+      {
+        label: 'CekcokDraw Repository',
+        action: () => {
+          if (typeof window !== 'undefined') {
+            window.open('https://github.com/jati251/cekcok-draw', '_blank');
+          }
+        },
       },
     ],
   };

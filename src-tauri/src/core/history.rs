@@ -44,7 +44,7 @@ impl HistoryEngine {
 
     pub fn undo(&mut self, current_doc: &mut Document) -> Option<HistoryAction> {
         let (action, prev_doc) = self.undo_stack.pop()?;
-        
+
         let redo_action = HistoryAction {
             id: uuid::Uuid::new_v4().to_string(),
             description: format!("Before {}", action.description),
@@ -61,7 +61,7 @@ impl HistoryEngine {
 
     pub fn redo(&mut self, current_doc: &mut Document) -> Option<HistoryAction> {
         let (action, next_doc) = self.redo_stack.pop()?;
-        
+
         let undo_action = HistoryAction {
             id: uuid::Uuid::new_v4().to_string(),
             description: format!("Undo {}", action.description),
@@ -78,5 +78,9 @@ impl HistoryEngine {
 
     pub fn get_history_list(&self) -> Vec<HistoryAction> {
         self.undo_stack.iter().map(|(a, _)| a.clone()).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.undo_stack.len()
     }
 }

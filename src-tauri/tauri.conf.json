@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.cekcokdraw.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -37,5 +37,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYwQkNCMzU1NzkwNEY5NTIKUldSUytRUjVWYk84WU8rbjlnVFpFVFNpaEdHMElHcDFLUW9Rb0Z1SGRlNGxWMWkySkhza0lFVDYK",
+      "endpoints": ["https://releases.cekcok.my.id/cekcok-releases/draw-latest.json"]
+    }
   }
 }

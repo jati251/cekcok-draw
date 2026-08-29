@@ -2,6 +2,27 @@ use crate::core::sparse_grid::SparseTileGrid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BrushType {
+    RoundSoft,
+    RoundHard,
+    Calligraphy,
+    Pencil,
+    Charcoal,
+    Watercolor,
+    OilImpasto,
+    Spray,
+    Marker,
+    Pixel,
+}
+
+impl Default for BrushType {
+    fn default() -> Self {
+        Self::RoundSoft
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BrushPoint {
     pub x: f32,
@@ -11,32 +32,46 @@ pub struct BrushPoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrushSettings {
+    #[serde(rename = "type", default)]
+    pub brush_type: BrushType,
     pub size: f32,
     pub hardness: f32,  // 0.0 (soft) to 1.0 (hard)
     pub opacity: f32,   // 0.0 to 1.0
     pub flow: f32,      // 0.0 to 1.0
     pub spacing: f32,   // percentage of radius, e.g. 0.15
     pub color: [u8; 4], // RGBA
+    pub angle: Option<f32>,
+    pub grain: Option<f32>,
+    pub scatter: Option<f32>,
 }
 
 impl Default for BrushSettings {
     fn default() -> Self {
         Self {
-            size: 20.0,
+            brush_type: BrushType::RoundSoft,
+            size: 28.0,
             hardness: 0.8,
             opacity: 1.0,
             flow: 1.0,
             spacing: 0.15,
-            color: [30, 41, 59, 255], // dark slate
+            color: [37, 99, 235, 255],
+            angle: Some(45.0),
+            grain: Some(0.5),
+            scatter: Some(0.5),
         }
     }
+}
+
+fn pseudo_noise(x: f32, y: f32, seed: f32) -> f32 {
+    let n = ((x * 12.9898 + y * 78.233 + seed).sin() * 43758.5453).fract();
+    n.abs()
 }
 
 pub struct BrushEngine;
 
 impl BrushEngine {
     /// Applies a smooth stroke using a stroke scratch buffer with max-alpha clamping
-    /// and cosine bell curve radial falloff for ultra-smooth airbrush hardness.
+    /// and Catmull-Rom spline interpolation for all 10 Photoshop-grade brush styles.
     pub fn apply_stroke(
         grid: &mut SparseTileGrid,
         points: &[BrushPoint],
@@ -179,6 +214,11 @@ impl BrushEngine {
         let max_y = (center_y + eff_radius).ceil() as i32;
 
         let flow = settings.flow.clamp(0.01, 1.0);
+        let angle_rad = settings.angle.unwrap_or(45.0).to_radians();
+        let cos_a = angle_rad.cos();
+        let sin_a = angle_rad.sin();
+        let grain = settings.grain.unwrap_or(0.5);
+        let scatter = settings.scatter.unwrap_or(0.5);
 
         for py in min_y..=max_y {
             for px in min_x..=max_x {
@@ -186,24 +226,116 @@ impl BrushEngine {
                 let dy = py as f32 + 0.5 - center_y;
                 let dist_sq = dx * dx + dy * dy;
 
-                if dist_sq <= eff_radius_sq {
-                    let dist = dist_sq.sqrt();
-                    // Photoshop-grade cosine bell curve falloff for true airbrush smoothness
-                    let alpha_factor = if dist <= inner_radius {
-                        1.0
-                    } else {
-                        let t = (dist - inner_radius) / (eff_radius - inner_radius).max(0.001);
-                        let t_clamped = t.clamp(0.0, 1.0);
-                        0.5 * (1.0 + (std::f32::consts::PI * t_clamped).cos())
-                    };
+                let mut alpha_factor: f32 = 0.0;
 
-                    let stamp_a = (alpha_factor * flow * 255.0).clamp(0.0, 255.0) as u8;
-                    if stamp_a > 0 {
-                        buffer
-                            .entry((px, py))
-                            .and_modify(|existing| *existing = (*existing).max(stamp_a))
-                            .or_insert(stamp_a);
+                match settings.brush_type {
+                    BrushType::RoundSoft => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            if dist <= inner_radius {
+                                alpha_factor = 1.0;
+                            } else {
+                                let t =
+                                    (dist - inner_radius) / (eff_radius - inner_radius).max(0.001);
+                                let t_clamped = t.clamp(0.0, 1.0);
+                                alpha_factor =
+                                    0.5 * (1.0 + (std::f32::consts::PI * t_clamped).cos());
+                            }
+                        }
                     }
+                    BrushType::RoundHard => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let edge_dist = eff_radius - dist;
+                            alpha_factor = (edge_dist * 1.5).clamp(0.0, 1.0);
+                        }
+                    }
+                    BrushType::Calligraphy => {
+                        let rot_x = dx * cos_a + dy * sin_a;
+                        let rot_y = -dx * sin_a + dy * cos_a;
+                        let ry = (eff_radius * 0.25).max(0.5);
+                        let el_dist_sq =
+                            (rot_x * rot_x) / eff_radius_sq + (rot_y * rot_y) / (ry * ry);
+                        if el_dist_sq <= 1.0 {
+                            let edge = 1.0 - el_dist_sq.sqrt();
+                            alpha_factor = (edge * 3.0).clamp(0.0, 1.0);
+                        }
+                    }
+                    BrushType::Pencil => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let noise = pseudo_noise(px as f32, py as f32, 42.0);
+                            let edge_factor = 1.0 - dist / eff_radius;
+                            let threshold = 1.0 - (grain * 0.7 + 0.2);
+                            if noise > threshold {
+                                alpha_factor = edge_factor.powf(0.7) * (0.4 + noise * 0.6);
+                            }
+                        }
+                    }
+                    BrushType::Charcoal => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let noise1 = pseudo_noise(px as f32 * 1.5, py as f32 * 1.5, 99.0);
+                            let noise2 = pseudo_noise(px as f32 * 3.0, py as f32 * 3.0, 199.0);
+                            let comb = noise1 * 0.6 + noise2 * 0.4;
+                            let edge_factor = (1.0 - dist / eff_radius).max(0.0).sqrt();
+                            if comb > 0.25 {
+                                alpha_factor = edge_factor * comb * 1.2;
+                            }
+                        }
+                    }
+                    BrushType::Watercolor => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let norm_dist = dist / eff_radius;
+                            let ring = 0.4 + 0.6 * (-((norm_dist - 0.85) / 0.18).powi(2)).exp();
+                            let edge_fade = ((1.0 - norm_dist) * 5.0).clamp(0.0, 1.0);
+                            alpha_factor = ring * edge_fade * 0.8;
+                        }
+                    }
+                    BrushType::OilImpasto => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let bristle_pos = (dx * cos_a + dy * sin_a) * 0.8;
+                            let bristle_wave = (bristle_pos * 2.5).sin().abs();
+                            let base_circle = (1.0 - dist / eff_radius).max(0.0);
+                            alpha_factor = base_circle * (0.35 + 0.65 * bristle_wave);
+                        }
+                    }
+                    BrushType::Spray => {
+                        if dist_sq <= eff_radius_sq {
+                            let dist = dist_sq.sqrt();
+                            let p_noise = pseudo_noise(px as f32, py as f32, 777.0);
+                            let density = (1.0 - dist / eff_radius) * (scatter * 0.8 + 0.2);
+                            if p_noise < density * 0.35 {
+                                alpha_factor = 0.7 + p_noise * 0.3;
+                            }
+                        }
+                    }
+                    BrushType::Marker => {
+                        let rot_x = (dx * cos_a + dy * sin_a).abs();
+                        let rot_y = (-dx * sin_a + dy * cos_a).abs();
+                        let half_w = eff_radius;
+                        let half_h = (eff_radius * 0.35).max(0.5);
+                        if rot_x <= half_w && rot_y <= half_h {
+                            let edge_x = ((half_w - rot_x) * 2.0).clamp(0.0, 1.0);
+                            let edge_y = ((half_h - rot_y) * 2.0).clamp(0.0, 1.0);
+                            alpha_factor = edge_x * edge_y * 0.75;
+                        }
+                    }
+                    BrushType::Pixel => {
+                        if dx.abs() <= eff_radius && dy.abs() <= eff_radius {
+                            alpha_factor = 1.0;
+                        }
+                    }
+                }
+
+                let stamp_a = (alpha_factor * flow * 255.0).clamp(0.0, 255.0) as u8;
+                if stamp_a > 0 {
+                    buffer
+                        .entry((px, py))
+                        .and_modify(|existing| *existing = (*existing).max(stamp_a))
+                        .or_insert(stamp_a);
                 }
             }
         }

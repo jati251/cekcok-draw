@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ToolType, BrushSettings, ShapeSettings, TextSettings, SelectionArea } from '../types';
+import { hexToRgba } from '../utils/color';
 
 interface EditorState {
   activeTool: ToolType;
@@ -47,23 +48,19 @@ interface EditorState {
   resetView: () => void;
 }
 
-const hexToRgba = (hex: string, alpha = 255): [number, number, number, number] => {
-  const cleanHex = hex.replace('#', '');
-  const r = parseInt(cleanHex.substring(0, 2), 16) || 0;
-  const g = parseInt(cleanHex.substring(2, 4), 16) || 0;
-  const b = parseInt(cleanHex.substring(4, 6), 16) || 0;
-  return [r, g, b, alpha];
-};
-
 export const useEditorStore = create<EditorState>((set) => ({
   activeTool: 'brush',
   brushSettings: {
+    type: 'round_soft',
     size: 28,
     hardness: 0.8,
     opacity: 1.0,
     flow: 1.0,
     spacing: 0.15,
     color: [37, 99, 235, 255],
+    angle: 45,
+    grain: 0.5,
+    scatter: 0.5,
   },
   shapeSettings: {
     type: 'rectangle',

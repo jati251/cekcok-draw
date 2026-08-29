@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
-import * as filters from '../lib/filters';
+import * as filters from '../utils/filters';
 import * as bridge from '../lib/tauriBridge';
 import { X, Sliders, Sun, Contrast, Eye } from 'lucide-react';
 
@@ -18,17 +18,21 @@ export const FiltersModal: React.FC<Props> = ({ isOpen, filterType, onClose }) =
 
   if (!isOpen || !doc) return null;
 
-  const handleApply = () => {
+  const handleApply = async () => {
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         if (filterType === 'brightness_contrast') {
           filters.applyBrightnessContrast(ctx, doc.width, doc.height, brightness, contrast);
-          bridge.commitStrokeHistory(`Brightness (${brightness}) / Contrast (${contrast})`);
+          await bridge.applyLayerFilter({
+            type: 'brightness_contrast',
+            brightness,
+            contrast,
+          });
         } else if (filterType === 'gaussian_blur') {
           filters.applyGaussianBlur(ctx, doc.width, doc.height, blurRadius);
-          bridge.commitStrokeHistory(`Gaussian Blur (${blurRadius}px)`);
+          await bridge.commitStrokeHistory(`Gaussian Blur (${blurRadius}px)`);
         }
       }
     }

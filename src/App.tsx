@@ -11,6 +11,7 @@ import { NewDocumentModal } from './components/NewDocumentModal';
 import { ExportModal } from './components/ExportModal';
 import { FiltersModal } from './components/FiltersModal';
 import { HueSaturationModal } from './components/modals/HueSaturationModal';
+import { UpdateModal } from './components/modals/UpdateModal';
 import { useEditorStore } from './stores/editorStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
@@ -19,6 +20,7 @@ export const App: React.FC = () => {
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isHueSatOpen, setIsHueSatOpen] = useState(false);
+  const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [filterModal, setFilterModal] = useState<{
     isOpen: boolean;
     type: 'brightness_contrast' | 'gaussian_blur';
@@ -42,6 +44,7 @@ export const App: React.FC = () => {
         onOpenExport={() => setIsExportOpen(true)}
         onOpenFilter={(type) => setFilterModal({ isOpen: true, type })}
         onOpenHueSaturation={() => setIsHueSatOpen(true)}
+        onOpenUpdateModal={() => setIsUpdateOpen(true)}
       />
 
       {/* 2. Contextual Tool Options Bar */}
@@ -70,12 +73,13 @@ export const App: React.FC = () => {
       </div>
 
       {/* 4. Bottom Metrics Status Bar */}
-      <StatusBar />
+      <StatusBar onOpenUpdateModal={() => setIsUpdateOpen(true)} />
 
       {/* Modal Dialogs */}
       <NewDocumentModal isOpen={isNewDocOpen} onClose={() => setIsNewDocOpen(false)} />
       <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
       <HueSaturationModal isOpen={isHueSatOpen} onClose={() => setIsHueSatOpen(false)} />
+      <UpdateModal isOpen={isUpdateOpen} onClose={() => setIsUpdateOpen(false)} />
       <FiltersModal
         isOpen={filterModal.isOpen}
         filterType={filterModal.type}

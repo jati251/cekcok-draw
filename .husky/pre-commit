@@ -1,4 +1,4 @@
 #!/bin/sh
-npx lint-staged
-npm run typecheck
-npm run rust:check
+pnpm lint-staged
+pnpm run typecheck
+pnpm run rust:check

@@ -13,6 +13,8 @@ dist-ssr/
 **/*.scratch
 **/*.rs.bk
 *.key
+*.key.pub
+*.pub
 *.pem
 *.p12
 

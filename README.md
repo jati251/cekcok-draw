@@ -110,20 +110,20 @@ git clone https://github.com/jati251/cekcok-draw.git
 cd cekcok-draw
 
 # 2. Install dependencies
-npm install
+pnpm install
 
 # 3. Run in Web Preview mode (Browser Vite dev server)
-npm run dev
+pnpm dev
 
 # 4. Run in Native Desktop App mode (Tauri v2 + Rust Core)
-npm run tauri dev
+pnpm tauri dev
 ```
 
 ### Production Build
 
 ```bash
-npm run build
-npm run tauri build
+pnpm build
+pnpm tauri build
 ```
 
 ---

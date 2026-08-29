@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '../../stores/documentStore';
-import * as filters from '../../lib/filters';
+import * as filters from '../../utils/filters';
 import * as bridge from '../../lib/tauriBridge';
 import { X, Sliders } from 'lucide-react';
 
@@ -17,7 +17,7 @@ export const HueSaturationModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   if (!isOpen || !doc) return null;
 
-  const handleApply = () => {
+  const handleApply = async () => {
     const canvas = doc.active_layer_id
       ? (document.querySelector('canvas') as HTMLCanvasElement)
       : null;
@@ -26,7 +26,12 @@ export const HueSaturationModal: React.FC<Props> = ({ isOpen, onClose }) => {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         filters.applyHueSaturation(ctx, doc.width, doc.height, hue, saturation, lightness);
-        bridge.commitStrokeHistory(`Hue/Saturation (H:${hue}, S:${saturation}, L:${lightness})`);
+        await bridge.applyLayerFilter({
+          type: 'hue_saturation',
+          hue,
+          saturation,
+          lightness,
+        });
       }
     }
     onClose();
