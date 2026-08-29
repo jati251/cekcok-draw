@@ -1,3 +1,17 @@
+# CekcokDraw v0.2.6 — Official Release Notes 🐒🎨
+
+**CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.
+
+---
+
+## 🌟 Highlights & New Features in v0.2.6
+
+### 🎨 1. Native Desktop Polish
+
+- **Global Context Menu Blocker**: Disabled the default browser right-click context menu ("Reload", "Back") in production builds, providing a true native desktop app experience without distracting web-browser artifacts.
+
+---
+
 # CekcokDraw v0.2.5 — Official Release Notes 🐒🎨
 
 **CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.
