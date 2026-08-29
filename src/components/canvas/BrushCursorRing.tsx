@@ -22,7 +22,9 @@ export const BrushCursorRing: React.FC<Props> = ({
     (activeTool !== 'brush' &&
       activeTool !== 'eraser' &&
       activeTool !== 'dodge' &&
-      activeTool !== 'burn')
+      activeTool !== 'burn' &&
+      activeTool !== 'smudge' &&
+      activeTool !== 'blur')
   ) {
     return null;
   }
@@ -35,7 +37,11 @@ export const BrushCursorRing: React.FC<Props> = ({
       ? 'border-amber-300'
       : activeTool === 'burn'
         ? 'border-purple-400'
-        : 'border-white';
+        : activeTool === 'smudge'
+          ? 'border-orange-400'
+          : activeTool === 'blur'
+            ? 'border-cyan-400'
+            : 'border-white';
 
   return (
     <div
@@ -55,11 +61,11 @@ export const BrushCursorRing: React.FC<Props> = ({
           width: `${brushScreenRadius * 2}px`,
           height: `${brushScreenRadius * 2}px`,
         }}
-        className={`rounded-full border shadow-[0_0_0_1px_rgba(0,0,0,0.8)] ${borderColor}`}
+        className={`rounded-full border shadow-[0_0_0:1px_rgba(0,0,0,0.8)] ${borderColor}`}
       />
 
       {/* Inner Hardness Indicator Circle */}
-      {brushSettings.hardness < 0.95 && (
+      {brushSettings.hardness < 0.95 && activeTool !== 'smudge' && (
         <div
           style={{
             position: 'absolute',

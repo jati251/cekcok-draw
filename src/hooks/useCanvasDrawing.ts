@@ -32,9 +32,75 @@ export const useCanvasDrawing = ({
 
   const drawStrokeSegment = useCallback(
     (pPrev: BrushPoint, pCurr: BrushPoint) => {
-      const strokeCanvas = liveStrokeCanvasRef.current;
-      if (!strokeCanvas || !doc) return;
+      if (!doc) return;
+      const baseRadius = Math.max(1, brushSettings.size * 0.5);
 
+      // 1. Smudge Tool: Live Pixel Smearing directly on active layer canvas
+      if (activeTool === 'smudge') {
+        const activeCanvas = doc.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          : null;
+        if (!activeCanvas) return;
+        const ctx = activeCanvas.getContext('2d');
+        if (!ctx) return;
+
+        const size = Math.ceil(baseRadius * 2);
+        try {
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(
+            activeCanvas,
+            pPrev.x - baseRadius,
+            pPrev.y - baseRadius,
+            size,
+            size,
+            pCurr.x - baseRadius,
+            pCurr.y - baseRadius,
+            size,
+            size
+          );
+          ctx.restore();
+        } catch {
+          // ignore boundary error
+        }
+        return;
+      }
+
+      // 2. Blur Tool: Localized soft blurring
+      if (activeTool === 'blur') {
+        const activeCanvas = doc.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id)
+          : null;
+        if (!activeCanvas) return;
+        const ctx = activeCanvas.getContext('2d');
+        if (!ctx) return;
+
+        const size = Math.ceil(baseRadius * 2);
+        try {
+          ctx.save();
+          ctx.filter = `blur(${Math.max(1, baseRadius * 0.2)}px)`;
+          ctx.drawImage(
+            activeCanvas,
+            pCurr.x - baseRadius,
+            pCurr.y - baseRadius,
+            size,
+            size,
+            pCurr.x - baseRadius,
+            pCurr.y - baseRadius,
+            size,
+            size
+          );
+          ctx.filter = 'none';
+          ctx.restore();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      // 3. Regular Brushes & Tonals on liveStrokeCanvas
+      const strokeCanvas = liveStrokeCanvasRef.current;
+      if (!strokeCanvas) return;
       const ctx = strokeCanvas.getContext('2d');
       if (!ctx) return;
 
@@ -45,13 +111,10 @@ export const useCanvasDrawing = ({
       else if (activeTool === 'burn') ctx.globalCompositeOperation = 'multiply';
       else ctx.globalCompositeOperation = 'source-over';
 
-      const baseRadius = Math.max(1, brushSettings.size * 0.5);
       const dx = pCurr.x - pPrev.x;
       const dy = pCurr.y - pPrev.y;
       const dist = Math.hypot(dx, dy);
 
-      // Adaptive step size based on brush radius and zoom level
-      // Prevents thousands of redundant sub-screen stamps when zoomed out
       const minScreenPixelDocSize = 1.0 / Math.max(0.01, zoom);
       const standardBrushStep = Math.max(1, baseRadius * 0.25);
       const stepSize = Math.max(
@@ -77,6 +140,7 @@ export const useCanvasDrawing = ({
       brushSettings.size,
       doc,
       getToolColor,
+      layerCanvasesRef,
       liveStrokeCanvasRef,
       zoom,
     ]
@@ -84,6 +148,8 @@ export const useCanvasDrawing = ({
 
   const drawInitialDot = useCallback(
     (p: BrushPoint) => {
+      if (activeTool === 'smudge' || activeTool === 'blur') return;
+
       const strokeCanvas = liveStrokeCanvasRef.current;
       if (!strokeCanvas || !doc) return;
 
@@ -142,7 +208,11 @@ export const useCanvasDrawing = ({
             ? 'Dodge Tool'
             : activeTool === 'burn'
               ? 'Burn Tool'
-              : 'Brush Stroke';
+              : activeTool === 'smudge'
+                ? 'Smudge Tool'
+                : activeTool === 'blur'
+                  ? 'Blur Tool'
+                  : 'Brush Stroke';
       await bridge.commitStrokeHistory(actionName);
       setStrokePoints([]);
     }
