@@ -3,12 +3,18 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+.env
+.env.*
+!.env.example
 
 # Rust & Tauri
 /src-tauri/target/
 /target/
 **/*.scratch
 **/*.rs.bk
+*.key
+*.pem
+*.p12
 
 # Logs & temp
 npm-debug.log*
