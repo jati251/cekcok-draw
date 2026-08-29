@@ -1,3 +1,20 @@
+# CekcokDraw v0.2.5 — Official Release Notes 🐒🎨
+
+**CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.
+
+---
+
+## 🌟 Highlights & New Features in v0.2.5
+
+### 🚀 1. Universal Rust-First Pixel Synchronization
+
+- **Rust Core State Enforcement**: Eliminated deep-rooted bugs where React visual canvas operations bypassed the Rust engine. The `SparseTileGrid` in Rust is now the absolute, single source of truth for all pixel data.
+- **Image Import Sync**: Dragging and dropping an image now instantly uploads the raw RGBA buffer into the Rust memory using the new `write_layer_pixels` IPC command, ensuring exported files include all imported layers.
+- **Selection Erasure Sync**: Pressing `Delete` or `Backspace` to clear lasso/rectangular selections now precisely zeroes out the underlying Rust tile memory in addition to the DOM canvas.
+- **UI Filters Refactor**: Re-routed "Invert" (`I`) and "Desaturate" (`Shift+U`) shortcuts from pure-JS frontend operations to true `bridge.applyLayerFilter()` native Rust invocations.
+
+---
+
 # CekcokDraw v0.2.4 — Official Release Notes 🐒🎨
 
 **CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.

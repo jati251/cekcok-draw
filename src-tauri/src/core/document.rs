@@ -112,6 +112,95 @@ impl Document {
         true
     }
 
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+    }
+
+    pub fn rotate(&mut self, degrees: u16) {
+        let old_w = self.width;
+        let old_h = self.height;
+
+        let degrees = degrees % 360;
+        if degrees == 90 || degrees == 270 {
+            self.width = old_h;
+            self.height = old_w;
+        }
+
+        if degrees == 0 {
+            return;
+        }
+
+        for layer in &mut self.layers {
+            let mut rotated_pixels = Vec::new();
+            let coords = layer.grid.get_allocated_coords();
+            for coord in coords {
+                if let Some(tile) = layer.grid.get_tile(&coord) {
+                    let start_x = coord.x * 512;
+                    let start_y = coord.y * 512;
+                    for y in 0..512 {
+                        for x in 0..512 {
+                            let pixel = tile.get_pixel(x, y);
+                            if pixel[3] > 0 {
+                                let orig_x = start_x + x as i32;
+                                let orig_y = start_y + y as i32;
+
+                                let (new_x, new_y) = match degrees {
+                                    90 => (old_h as i32 - 1 - orig_y, orig_x),
+                                    180 => (old_w as i32 - 1 - orig_x, old_h as i32 - 1 - orig_y),
+                                    270 => (orig_y, old_w as i32 - 1 - orig_x),
+                                    _ => (orig_x, orig_y),
+                                };
+
+                                rotated_pixels.push((new_x, new_y, pixel));
+                            }
+                        }
+                    }
+                }
+            }
+
+            layer.grid.clear();
+            for (x, y, color) in rotated_pixels {
+                layer.grid.set_pixel_cow(x, y, color);
+            }
+        }
+    }
+
+    pub fn flip(&mut self, direction: &str) {
+        for layer in &mut self.layers {
+            let mut flipped_pixels = Vec::new();
+            let coords = layer.grid.get_allocated_coords();
+            for coord in coords {
+                if let Some(tile) = layer.grid.get_tile(&coord) {
+                    let start_x = coord.x * 512;
+                    let start_y = coord.y * 512;
+                    for y in 0..512 {
+                        for x in 0..512 {
+                            let pixel = tile.get_pixel(x, y);
+                            if pixel[3] > 0 {
+                                let orig_x = start_x + x as i32;
+                                let orig_y = start_y + y as i32;
+
+                                let (new_x, new_y) = match direction {
+                                    "horizontal" => (self.width as i32 - 1 - orig_x, orig_y),
+                                    "vertical" => (orig_x, self.height as i32 - 1 - orig_y),
+                                    _ => (orig_x, orig_y),
+                                };
+
+                                flipped_pixels.push((new_x, new_y, pixel));
+                            }
+                        }
+                    }
+                }
+            }
+
+            layer.grid.clear();
+            for (x, y, color) in flipped_pixels {
+                layer.grid.set_pixel_cow(x, y, color);
+            }
+        }
+    }
+
     /// Frustum Culling: Calculates which tiles intersect the viewport bounding box
     pub fn get_visible_tile_coords(
         &self,

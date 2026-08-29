@@ -75,3 +75,13 @@ pub struct EngineStats {
     pub history_nodes: usize,
     pub gpu_available: bool,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct WriteRegionPayload {
+    pub layer_id: Option<String>,
+    pub start_x: i32,
+    pub start_y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}

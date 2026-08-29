@@ -62,6 +62,32 @@ export async function getDocumentInfo(): Promise<DocumentInfo> {
   return { ...mockDoc };
 }
 
+export async function resizeDocument(width: number, height: number): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('resize_document', { width, height });
+  }
+  mockDoc.width = width;
+  mockDoc.height = height;
+  return { ...mockDoc };
+}
+
+export async function rotateDocument(degrees: number): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('rotate_document', { degrees });
+  }
+  const oldW = mockDoc.width;
+  mockDoc.width = mockDoc.height;
+  mockDoc.height = oldW;
+  return { ...mockDoc };
+}
+
+export async function flipDocument(direction: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('flip_document', { direction });
+  }
+  return { ...mockDoc };
+}
+
 export async function addLayer(name: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('add_layer', { name });
@@ -228,6 +254,29 @@ export async function applyLayerFilter(filter: unknown, layerId?: string): Promi
     });
   }
   return { ...mockDoc };
+}
+
+export async function writeLayerPixels(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  data: Uint8Array,
+  layerId?: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('write_layer_pixels', {
+      payload: {
+        layer_id: layerId || null,
+        start_x: Math.round(x),
+        start_y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height),
+        data: Array.from(data),
+      },
+    });
+  }
+  return 'Mock pixels written';
 }
 
 export async function exportDocumentImage(

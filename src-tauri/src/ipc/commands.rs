@@ -251,6 +251,40 @@ pub fn apply_shape(
 }
 
 #[tauri::command]
+pub fn write_layer_pixels(
+    payload: WriteRegionPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<String, String> {
+    let mut guard = state.lock();
+    guard.push_history("Write Pixel Region");
+
+    let doc = &mut guard.document;
+    let layer = match payload
+        .layer_id
+        .as_deref()
+        .or(doc.active_layer_id.as_deref())
+    {
+        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
+        None => doc.layers.last_mut(),
+    }
+    .ok_or_else(|| "No active layer to write".to_string())?;
+
+    if layer.locked {
+        return Err("Layer is locked".to_string());
+    }
+
+    layer.grid.write_region(
+        payload.start_x,
+        payload.start_y,
+        payload.width,
+        payload.height,
+        &payload.data,
+    );
+
+    Ok("Region written".into())
+}
+
+#[tauri::command]
 pub fn apply_layer_filter(
     payload: LayerFilterPayload,
     state: State<'_, SharedEngineState>,
@@ -299,6 +333,45 @@ pub fn get_layer_histogram(
 pub fn commit_stroke_history(description: String, state: State<'_, SharedEngineState>) {
     let mut guard = state.lock();
     guard.push_history(description);
+}
+
+#[tauri::command]
+pub fn resize_document(
+    width: u32,
+    height: u32,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Canvas Size ({}×{})", width, height));
+    guard.document.resize(width, height);
+    Ok(guard.document.get_info())
+}
+
+#[tauri::command]
+pub fn rotate_document(
+    degrees: u16,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Rotate Canvas {}°", degrees));
+    guard.document.rotate(degrees);
+    Ok(guard.document.get_info())
+}
+
+#[tauri::command]
+pub fn flip_document(
+    direction: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    let cap_dir = if direction == "horizontal" {
+        "Horizontal"
+    } else {
+        "Vertical"
+    };
+    guard.push_history(format!("Flip Canvas {}", cap_dir));
+    guard.document.flip(&direction);
+    Ok(guard.document.get_info())
 }
 
 #[tauri::command]

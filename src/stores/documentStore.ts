@@ -441,6 +441,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         }
       }
 
+      bridge
+        .resizeDocument(newWidth, newHeight)
+        .then((doc) => {
+          set({ doc, canvasRevision: get().canvasRevision + 1 });
+        })
+        .catch((err) => toast.error('Backend Sync Failed', String(err)));
+
       get().pushCanvasSnapshot(`Canvas Size (${newWidth}×${newHeight})`);
       get().bumpCanvasRevision();
       toast.success('Canvas Resized', `${newWidth} × ${newHeight} px`);
@@ -516,6 +523,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         }
       }
 
+      bridge
+        .rotateDocument(degrees)
+        .then((doc) => {
+          set({ doc, canvasRevision: get().canvasRevision + 1 });
+        })
+        .catch((err) => toast.error('Backend Sync Failed', String(err)));
+
       get().pushCanvasSnapshot(`Rotate Canvas ${degrees}°`);
       get().bumpCanvasRevision();
       toast.success('Canvas Rotated', `Rotated ${degrees}°`);
@@ -560,15 +574,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
     );
     get().bumpCanvasRevision();
-    if (direction === 'horizontal') {
-      await bridge
-        .applyLayerFilter({ type: 'flip_horizontal', width: currentDoc.width })
-        .catch(() => {});
-    } else {
-      await bridge
-        .applyLayerFilter({ type: 'flip_vertical', height: currentDoc.height })
-        .catch(() => {});
-    }
+
+    await bridge
+      .flipDocument(direction)
+      .then((doc) => {
+        set({ doc, canvasRevision: get().canvasRevision + 1 });
+      })
+      .catch(() => {});
+
     toast.success('Canvas Flipped', `Flipped ${direction}`);
   },
 
@@ -669,6 +682,22 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
               placement.width,
               placement.height
             );
+            const imgData = ctx.getImageData(
+              placement.x,
+              placement.y,
+              placement.width,
+              placement.height
+            );
+            bridge
+              .writeLayerPixels(
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+                new Uint8Array(imgData.data.buffer),
+                newLayerId
+              )
+              .catch(() => {});
             get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
             get().bumpCanvasRevision();
             toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
@@ -701,6 +730,17 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
+              const imgData = ctx.getImageData(0, 0, imgRes.width, imgRes.height);
+              bridge
+                .writeLayerPixels(
+                  0,
+                  0,
+                  imgRes.width,
+                  imgRes.height,
+                  new Uint8Array(imgData.data.buffer),
+                  targetLayerId
+                )
+                .catch(() => {});
               get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
               get().bumpCanvasRevision();
               toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
@@ -752,6 +792,22 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
               placement.width,
               placement.height
             );
+            const imgData = ctx.getImageData(
+              placement.x,
+              placement.y,
+              placement.width,
+              placement.height
+            );
+            bridge
+              .writeLayerPixels(
+                placement.x,
+                placement.y,
+                placement.width,
+                placement.height,
+                new Uint8Array(imgData.data.buffer),
+                newLayerId
+              )
+              .catch(() => {});
             get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
             get().bumpCanvasRevision();
             toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
@@ -782,6 +838,17 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
+              const imgData = ctx.getImageData(0, 0, imgRes.width, imgRes.height);
+              bridge
+                .writeLayerPixels(
+                  0,
+                  0,
+                  imgRes.width,
+                  imgRes.height,
+                  new Uint8Array(imgData.data.buffer),
+                  targetLayerId
+                )
+                .catch(() => {});
               get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
               get().bumpCanvasRevision();
               toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);

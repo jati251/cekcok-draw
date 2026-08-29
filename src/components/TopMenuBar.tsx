@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
 import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
-import * as filters from '../utils/filters';
 import { expandSelection, contractSelection } from '../utils/coordinates';
 import * as bridge from '../lib/tauriBridge';
 import { isTauriEnvironment } from '../lib/tauriBridge';
@@ -167,12 +166,11 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
-              filters.applyInvert(ctx, doc.width, doc.height);
-              useDocumentStore.getState().bumpCanvasRevision();
-              await bridge
+              bridge
                 .applyLayerFilter({ type: 'invert', layer_id: doc.active_layer_id })
                 .catch(() => {});
+              useDocumentStore.getState().bumpCanvasRevision();
+              bridge.commitStrokeHistory('Invert Colors');
             }
           }
         },
@@ -188,12 +186,11 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
-              filters.applyDesaturate(ctx, doc.width, doc.height);
-              useDocumentStore.getState().bumpCanvasRevision();
-              await bridge
+              bridge
                 .applyLayerFilter({ type: 'desaturate', layer_id: doc.active_layer_id })
                 .catch(() => {});
+              useDocumentStore.getState().bumpCanvasRevision();
+              bridge.commitStrokeHistory('Desaturate');
             }
           }
         },

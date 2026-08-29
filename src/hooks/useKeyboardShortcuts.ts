@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
-import * as filters from '../lib/filters';
 import * as bridge from '../lib/tauriBridge';
 
 interface ShortcutActions {
@@ -131,7 +130,7 @@ export const useKeyboardShortcuts = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              filters.applyInvert(ctx, doc.width, doc.height);
+              bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
               useDocumentStore.getState().bumpCanvasRevision();
               bridge.commitStrokeHistory('Invert Colors');
             }
@@ -142,7 +141,7 @@ export const useKeyboardShortcuts = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              filters.applyDesaturate(ctx, doc.width, doc.height);
+              bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
               useDocumentStore.getState().bumpCanvasRevision();
               bridge.commitStrokeHistory('Desaturate');
             }
@@ -185,8 +184,28 @@ export const useKeyboardShortcuts = ({
                 ctx.closePath();
                 ctx.clip();
                 ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+
+                // Read back erased pixels and push to Rust
+                const imgData = ctx.getImageData(sel.x, sel.y, sel.width, sel.height);
+                bridge.writeLayerPixels(
+                  sel.x,
+                  sel.y,
+                  sel.width,
+                  sel.height,
+                  new Uint8Array(imgData.data.buffer),
+                  currentDoc.active_layer_id
+                );
               } else if (sel.width > 0 && sel.height > 0) {
                 ctx.clearRect(sel.x, sel.y, sel.width, sel.height);
+                const imgData = ctx.getImageData(sel.x, sel.y, sel.width, sel.height);
+                bridge.writeLayerPixels(
+                  sel.x,
+                  sel.y,
+                  sel.width,
+                  sel.height,
+                  new Uint8Array(imgData.data.buffer),
+                  currentDoc.active_layer_id
+                );
               }
               ctx.restore();
               useDocumentStore.getState().bumpCanvasRevision();

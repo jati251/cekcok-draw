@@ -67,6 +67,37 @@ impl SparseTileGrid {
         tile.set_pixel(local_x, local_y, color);
     }
 
+    pub fn write_region(
+        &mut self,
+        start_x: i32,
+        start_y: i32,
+        width: u32,
+        height: u32,
+        data: &[u8],
+    ) {
+        if width == 0 || height == 0 || data.is_empty() {
+            return;
+        }
+
+        let mut data_idx = 0;
+        for y_offset in 0..height {
+            let global_y = start_y + y_offset as i32;
+            for x_offset in 0..width {
+                let global_x = start_x + x_offset as i32;
+
+                if data_idx + 3 < data.len() {
+                    let r = data[data_idx];
+                    let g = data[data_idx + 1];
+                    let b = data[data_idx + 2];
+                    let a = data[data_idx + 3];
+
+                    self.set_pixel_cow(global_x, global_y, [r, g, b, a]);
+                }
+                data_idx += 4;
+            }
+        }
+    }
+
     #[inline]
     pub fn fill_horizontal_span(&mut self, x1: i32, x2: i32, y: i32, color: [u8; 4]) {
         if y < 0 || x1 > x2 || x2 < 0 {

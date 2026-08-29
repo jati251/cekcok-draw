@@ -17,8 +17,9 @@ import { useEditorStore } from './stores/editorStore';
 import { useDocumentStore } from './stores/documentStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { checkForAppUpdate } from './lib/updaterService';
-import * as filters from './utils/filters';
+
 import { copyActiveLayerSelection } from './utils/clipboard';
+import * as bridge from './lib/tauriBridge';
 
 export const App: React.FC = () => {
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
@@ -221,9 +222,9 @@ export const App: React.FC = () => {
               if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                  useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
-                  filters.applyInvert(ctx, currentDoc.width, currentDoc.height);
+                  bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
                   useDocumentStore.getState().bumpCanvasRevision();
+                  bridge.commitStrokeHistory('Invert Colors');
                 }
               }
             }
@@ -236,9 +237,9 @@ export const App: React.FC = () => {
               if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                  useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
-                  filters.applyDesaturate(ctx, currentDoc.width, currentDoc.height);
+                  bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
                   useDocumentStore.getState().bumpCanvasRevision();
+                  bridge.commitStrokeHistory('Desaturate');
                 }
               }
             }
