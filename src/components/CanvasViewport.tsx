@@ -1,14 +1,55 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useEditorStore } from '../stores/editorStore';
-import { BrushPoint } from '../types';
+import { BlendMode, BrushPoint } from '../types';
 import { RulersOverlay } from './RulersOverlay';
 import * as bridge from '../lib/tauriBridge';
 
+const getCssBlendMode = (mode: BlendMode): React.CSSProperties['mixBlendMode'] => {
+  switch (mode) {
+    case 'multiply':
+      return 'multiply';
+    case 'screen':
+      return 'screen';
+    case 'overlay':
+      return 'overlay';
+    case 'darken':
+      return 'darken';
+    case 'lighten':
+      return 'lighten';
+    case 'color_dodge':
+      return 'color-dodge';
+    case 'color_burn':
+      return 'color-burn';
+    case 'hard_light':
+      return 'hard-light';
+    case 'soft_light':
+      return 'soft-light';
+    case 'difference':
+      return 'difference';
+    case 'exclusion':
+      return 'exclusion';
+    case 'hue':
+      return 'hue';
+    case 'saturation':
+      return 'saturation';
+    case 'color':
+      return 'color';
+    case 'luminosity':
+      return 'luminosity';
+    default:
+      return 'normal';
+  }
+};
+
 export const CanvasViewport: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportBoxRef = useRef<HTMLDivElement>(null);
   const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Registry of persistent canvas elements for each layer
+  const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const initializedLayersRef = useRef<Set<string>>(new Set());
 
   const { doc } = useDocumentStore();
   const {
@@ -46,9 +87,9 @@ export const CanvasViewport: React.FC = () => {
   // Exact, pixel-perfect conversion from client viewport coordinates to Canvas coordinates
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !doc) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
+      const box = viewportBoxRef.current;
+      if (!box || !doc) return { x: 0, y: 0 };
+      const rect = box.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
 
       const docX = (clientX - rect.left) * (doc.width / rect.width);
@@ -59,69 +100,35 @@ export const CanvasViewport: React.FC = () => {
     [doc]
   );
 
-  // Synchronize canvas dimensions and redraw layers
-  const syncCanvasDimensions = useCallback(() => {
+  // Initialize Background Layer with solid white upon document creation
+  useEffect(() => {
     if (!doc) return;
-    const canvas = canvasRef.current;
-    const strokeCanvas = liveStrokeCanvasRef.current;
+    doc.layers.forEach((layer) => {
+      const canvas = layerCanvasesRef.current.get(layer.id);
+      if (canvas && !initializedLayersRef.current.has(layer.id)) {
+        canvas.width = doc.width;
+        canvas.height = doc.height;
+        if (layer.name === 'Background') {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, doc.width, doc.height);
+          }
+        }
+        initializedLayersRef.current.add(layer.id);
+      }
+    });
 
-    if (canvas && (canvas.width !== doc.width || canvas.height !== doc.height)) {
-      canvas.width = doc.width;
-      canvas.height = doc.height;
-    }
-    if (strokeCanvas && (strokeCanvas.width !== doc.width || strokeCanvas.height !== doc.height)) {
-      strokeCanvas.width = doc.width;
-      strokeCanvas.height = doc.height;
+    if (liveStrokeCanvasRef.current) {
+      if (
+        liveStrokeCanvasRef.current.width !== doc.width ||
+        liveStrokeCanvasRef.current.height !== doc.height
+      ) {
+        liveStrokeCanvasRef.current.width = doc.width;
+        liveStrokeCanvasRef.current.height = doc.height;
+      }
     }
   }, [doc]);
-
-  // Redraw document canvas
-  const redrawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !doc) return;
-    syncCanvasDimensions();
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, doc.width, doc.height);
-
-    // Render layers
-    doc.layers.forEach((layer) => {
-      if (!layer.visible || layer.opacity <= 0) return;
-
-      ctx.save();
-      ctx.globalAlpha = layer.opacity;
-
-      if (layer.blend_mode === 'multiply') ctx.globalCompositeOperation = 'multiply';
-      else if (layer.blend_mode === 'screen') ctx.globalCompositeOperation = 'screen';
-      else if (layer.blend_mode === 'overlay') ctx.globalCompositeOperation = 'overlay';
-      else if (layer.blend_mode === 'darken') ctx.globalCompositeOperation = 'darken';
-      else if (layer.blend_mode === 'lighten') ctx.globalCompositeOperation = 'lighten';
-      else if (layer.blend_mode === 'color_dodge') ctx.globalCompositeOperation = 'color-dodge';
-      else if (layer.blend_mode === 'color_burn') ctx.globalCompositeOperation = 'color-burn';
-      else if (layer.blend_mode === 'hard_light') ctx.globalCompositeOperation = 'hard-light';
-      else if (layer.blend_mode === 'soft_light') ctx.globalCompositeOperation = 'soft-light';
-      else if (layer.blend_mode === 'difference') ctx.globalCompositeOperation = 'difference';
-      else if (layer.blend_mode === 'exclusion') ctx.globalCompositeOperation = 'exclusion';
-      else if (layer.blend_mode === 'hue') ctx.globalCompositeOperation = 'hue';
-      else if (layer.blend_mode === 'saturation') ctx.globalCompositeOperation = 'saturation';
-      else if (layer.blend_mode === 'color') ctx.globalCompositeOperation = 'color';
-      else if (layer.blend_mode === 'luminosity') ctx.globalCompositeOperation = 'luminosity';
-      else ctx.globalCompositeOperation = 'source-over';
-
-      if (layer.name === 'Background') {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, doc.width, doc.height);
-      }
-
-      ctx.restore();
-    });
-  }, [doc, syncCanvasDimensions]);
-
-  useEffect(() => {
-    redrawCanvas();
-  }, [redrawCanvas]);
 
   // Create high-precision radial gradient brush stamp with Cosine Bell curve (Airbrush feathering)
   const createSoftStamp = useCallback(
@@ -175,7 +182,6 @@ export const CanvasViewport: React.FC = () => {
     (points: BrushPoint[]) => {
       const strokeCanvas = liveStrokeCanvasRef.current;
       if (!strokeCanvas || points.length === 0 || !doc) return;
-      syncCanvasDimensions();
 
       const ctx = strokeCanvas.getContext('2d');
       if (!ctx) return;
@@ -184,9 +190,9 @@ export const CanvasViewport: React.FC = () => {
       if (activeTool === 'eraser') {
         color = [0, 0, 0, 255];
       } else if (activeTool === 'dodge') {
-        color = [255, 255, 255, 255]; // Highlights
+        color = [255, 255, 255, 255];
       } else if (activeTool === 'burn') {
-        color = [0, 0, 0, 255]; // Shadows
+        color = [0, 0, 0, 255];
       }
 
       ctx.save();
@@ -252,12 +258,13 @@ export const CanvasViewport: React.FC = () => {
 
       ctx.restore();
     },
-    [activeTool, brushSettings, createSoftStamp, doc, syncCanvasDimensions]
+    [activeTool, brushSettings, createSoftStamp, doc]
   );
 
-  // Eyedropper sampling
+  // Eyedropper sampling from active layer
   const sampleColorAt = (clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = layerCanvasesRef.current.get(doc.active_layer_id);
     if (!canvas) return;
     const pos = screenToCanvas(clientX, clientY);
     const ctx = canvas.getContext('2d');
@@ -276,10 +283,11 @@ export const CanvasViewport: React.FC = () => {
     }
   };
 
-  // Paint Bucket flood fill
+  // Paint Bucket flood fill on active layer
   const handlePaintBucket = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !doc) return;
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = layerCanvasesRef.current.get(doc.active_layer_id);
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -296,10 +304,11 @@ export const CanvasViewport: React.FC = () => {
     bridge.commitStrokeHistory(`Paint Bucket Fill (${primaryColor})`);
   };
 
-  // Apply Gradient
+  // Apply Gradient on active layer
   const applyGradient = (start: { x: number; y: number }, end: { x: number; y: number }) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !doc) return;
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = layerCanvasesRef.current.get(doc.active_layer_id);
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -323,7 +332,6 @@ export const CanvasViewport: React.FC = () => {
   // Pointer Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!doc) return;
-    syncCanvasDimensions();
     e.currentTarget.setPointerCapture(e.pointerId);
 
     // 1. Hand tool, Space drag, or Middle mouse -> Pan
@@ -500,11 +508,13 @@ export const CanvasViewport: React.FC = () => {
     if (isDrawing) {
       setIsDrawing(false);
 
-      // Bake the live stroke canvas into the permanent canvas
-      const mainCanvas = canvasRef.current;
+      // Bake the live stroke canvas directly into the active layer's canvas
       const strokeCanvas = liveStrokeCanvasRef.current;
-      if (mainCanvas && strokeCanvas && doc) {
-        const mainCtx = mainCanvas.getContext('2d');
+      const activeLayerId = doc?.active_layer_id;
+      const activeCanvas = activeLayerId ? layerCanvasesRef.current.get(activeLayerId) : null;
+
+      if (activeCanvas && strokeCanvas && doc) {
+        const mainCtx = activeCanvas.getContext('2d');
         if (mainCtx) {
           mainCtx.save();
           mainCtx.globalAlpha = brushSettings.opacity * brushSettings.flow;
@@ -604,6 +614,7 @@ export const CanvasViewport: React.FC = () => {
 
       {doc && (
         <div
+          ref={viewportBoxRef}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
@@ -612,17 +623,33 @@ export const CanvasViewport: React.FC = () => {
           }}
           className="relative shadow-2xl select-none bg-white will-change-transform"
         >
-          {/* 1. Main Permanent Layers Canvas Surface */}
-          <canvas
-            ref={canvasRef}
-            width={doc.width}
-            height={doc.height}
-            style={{
-              width: `${doc.width}px`,
-              height: `${doc.height}px`,
-            }}
-            className="w-full h-full block"
-          />
+          {/* 1. Multi-Layer Canvas Stack (Preserves pixels permanently per layer) */}
+          {doc.layers.map((layer) => (
+            <canvas
+              key={layer.id}
+              ref={(el) => {
+                if (el) {
+                  layerCanvasesRef.current.set(layer.id, el);
+                  if (el.width !== doc.width || el.height !== doc.height) {
+                    el.width = doc.width;
+                    el.height = doc.height;
+                  }
+                } else {
+                  layerCanvasesRef.current.delete(layer.id);
+                }
+              }}
+              width={doc.width}
+              height={doc.height}
+              style={{
+                width: `${doc.width}px`,
+                height: `${doc.height}px`,
+                opacity: layer.visible ? layer.opacity : 0,
+                mixBlendMode: getCssBlendMode(layer.blend_mode),
+                display: layer.visible ? 'block' : 'none',
+              }}
+              className="absolute inset-0 block"
+            />
+          ))}
 
           {/* 2. Live Stroke Overlay Canvas */}
           <canvas
@@ -634,12 +661,12 @@ export const CanvasViewport: React.FC = () => {
               height: `${doc.height}px`,
               opacity: isDrawing ? brushSettings.opacity * brushSettings.flow : 0,
             }}
-            className="absolute inset-0 pointer-events-none block z-10"
+            className="absolute inset-0 pointer-events-none block z-30"
           />
 
           {/* 3. Gradient Vector Line Preview */}
           {gradientDrag && (
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
               <line
                 x1={gradientDrag.start.x}
                 y1={gradientDrag.start.y}
@@ -668,14 +695,14 @@ export const CanvasViewport: React.FC = () => {
                 width: selection.width,
                 height: selection.height,
               }}
-              className="absolute border border-dashed border-black bg-blue-500/10 pointer-events-none ring-1 ring-white/70 z-20"
+              className="absolute border border-dashed border-black bg-blue-500/10 pointer-events-none ring-1 ring-white/70 z-40"
             />
           )}
 
           {/* 5. 🔲 High Precision Pixel Grid (Visible when Zoom >= 200%) */}
           {showGrid && zoom >= 2 && (
             <div
-              className="absolute inset-0 pointer-events-none opacity-30 z-20"
+              className="absolute inset-0 pointer-events-none opacity-30 z-40"
               style={{
                 backgroundImage:
                   zoom >= 4

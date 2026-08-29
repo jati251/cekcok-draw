@@ -15,10 +15,32 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   if (!isOpen || !doc) return null;
 
   const handleExport = () => {
-    const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-    if (canvas) {
+    if (!doc) return;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = doc.width;
+    exportCanvas.height = doc.height;
+    const ctx = exportCanvas.getContext('2d');
+    if (ctx) {
+      // Composite layers from bottom to top
+      doc.layers.forEach((layer) => {
+        if (!layer.visible || layer.opacity <= 0) return;
+        const allLayerCanvases = document.querySelectorAll('canvas');
+        allLayerCanvases.forEach((c) => {
+          if (
+            c.width === doc.width &&
+            c.height === doc.height &&
+            !c.className.includes('pointer-events-none')
+          ) {
+            ctx.save();
+            ctx.globalAlpha = layer.opacity;
+            ctx.drawImage(c, 0, 0);
+            ctx.restore();
+          }
+        });
+      });
+
       const mime = format === 'png' ? 'image/png' : 'image/jpeg';
-      const dataUrl = canvas.toDataURL(mime, quality);
+      const dataUrl = exportCanvas.toDataURL(mime, quality);
       const link = document.createElement('a');
       link.download = `${doc.title || 'artwork'}.${format}`;
       link.href = dataUrl;
