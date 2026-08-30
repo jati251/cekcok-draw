@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ColorPicker } from '@/features/adjustments/components/ColorPicker';
 import { HistoryPanel } from '@/features/document/components/HistoryPanel';
 import { LayerPanel } from '@/features/layers/components/LayerPanel';
+import { LayerActionsBar } from '@/features/layers/components/LayerActionsBar';
 import { AdjustmentsPanel } from '@/features/adjustments/components/AdjustmentsPanel';
 import {
   ChevronDown,
@@ -175,7 +176,10 @@ export const StudioSidebar: React.FC = () => {
       </div>
 
       {/* Vertical Stacked Panels Container - Scrollable entire sidebar */}
-      <div className="flex-1 flex flex-col overflow-y-auto divide-y divide-ps-border/70 no-scrollbar">
+      {/* min-h-0 is required so the container can shrink below its content and
+          actually scroll; otherwise min-height:auto forces it to overflow the
+          window and clips the bottom Layers panel out of reach. */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto divide-y divide-ps-border/70 no-scrollbar">
         {/* Panel 1: Color Palette */}
         {(activePanel === 'all' || activePanel === 'color') && (
           <div className="flex flex-col flex-shrink-0">
@@ -263,7 +267,7 @@ export const StudioSidebar: React.FC = () => {
 
         {/* Panel 4: Layers (Flexible Bottom Section - Photoshop King) */}
         {(activePanel === 'all' || activePanel === 'layers') && (
-          <div className="flex-1 flex flex-col min-h-[220px] overflow-hidden bg-ps-panel">
+          <div className="flex-1 flex flex-col min-h-[360px] overflow-hidden bg-ps-panel">
             <button
               type="button"
               onClick={() => setExpandLayers(!expandLayers)}
@@ -290,6 +294,10 @@ export const StudioSidebar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Sticky Layer Actions Bar - pinned outside the scroll container so the
+          add/duplicate/delete/merge tools never scroll out of view */}
+      {(activePanel === 'all' || activePanel === 'layers') && <LayerActionsBar />}
     </aside>
   );
 };

@@ -609,7 +609,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
       }}
-      className={`flex-1 relative overflow-hidden bg-[#0e0f12] select-none touch-none ${
+      className={`flex-1 relative overflow-hidden bg-ps-pasteboard select-none touch-none ${
         isPanning
           ? 'cursor-grabbing'
           : activeTool === 'hand'
@@ -638,6 +638,8 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
         }}
         className="transition-none backface-hidden"
       >
+        {/* Transparency checkerboard behind the layer stack (Photoshop-style) */}
+        <div className="absolute inset-0 viewport-checkerboard" aria-hidden="true" />
         <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} viewport={nativeViewport} />
 
         <canvas

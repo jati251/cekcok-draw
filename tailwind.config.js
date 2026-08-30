@@ -7,6 +7,7 @@ export default {
       colors: {
         ps: {
           bg: '#101114',
+          pasteboard: '#2a2d35',
           panel: '#16171c',
           surface: '#1c1e24',
           header: '#131418',

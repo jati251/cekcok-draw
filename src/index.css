@@ -96,6 +96,24 @@ input[type='range']::-webkit-slider-thumb:active {
     -8px 0px;
 }
 
+/* Photoshop-style light checkerboard for the document viewport.
+   Anchored to document pixels: transparent areas of the layer stack
+   reveal this pattern, mirroring Photoshop's transparency grid. */
+.viewport-checkerboard {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c8c8 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c8c8 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0px;
+}
+
 /* Authentic Photoshop Marching Ants selection animation */
 @keyframes marchingAnts {
   0% {
