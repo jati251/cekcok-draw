@@ -649,7 +649,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
 
         <div
           id="fast-selection-marquee"
-          className="absolute pointer-events-none z-40 bg-blue-500/10 hidden"
+          className="absolute pointer-events-none z-40 bg-blue-500/10"
           style={{ display: 'none' }}
         >
           <div className="absolute inset-0 border border-dashed border-black animate-marching-ants" />
@@ -658,7 +658,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
 
         <svg
           id="fast-lasso-svg"
-          className="absolute inset-0 w-full h-full pointer-events-none z-40 hidden"
+          className="absolute inset-0 w-full h-full pointer-events-none z-40"
           style={{ display: 'none' }}
         >
           <polygon
