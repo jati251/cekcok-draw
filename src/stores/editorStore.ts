@@ -27,6 +27,7 @@ interface EditorState {
   showRulers: boolean;
   activePanel: 'layers' | 'history' | 'color' | 'adjustments' | 'all';
   activeAdjustmentTab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null;
+  isSidebarCollapsed: boolean;
   selection: SelectionArea | null;
   activeTextNode: { x: number; y: number; text: string } | null;
   tabletTelemetry: TabletTelemetry;
@@ -53,6 +54,7 @@ interface EditorState {
   setIsDrawing: (drawing: boolean) => void;
   setShowGrid: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
+  setIsSidebarCollapsed: (collapsed: boolean) => void;
   setActivePanel: (panel: 'layers' | 'history' | 'color' | 'adjustments' | 'all') => void;
   setActiveAdjustmentTab: (
     tab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null
@@ -109,6 +111,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   isDrawing: false,
   showGrid: false,
   showRulers: true,
+  isSidebarCollapsed: false,
   activePanel: 'all',
   activeAdjustmentTab: null,
   selection: null,
@@ -196,8 +199,14 @@ export const useEditorStore = create<EditorState>((set) => ({
   setIsDrawing: (isDrawing) => set({ isDrawing }),
   setShowGrid: (showGrid) => set({ showGrid }),
   setShowRulers: (showRulers) => set({ showRulers }),
-  setActivePanel: (activePanel) => set({ activePanel }),
-  setActiveAdjustmentTab: (activeAdjustmentTab) => set({ activeAdjustmentTab }),
+  setIsSidebarCollapsed: (isSidebarCollapsed) => set({ isSidebarCollapsed }),
+  setActivePanel: (activePanel) => set({ activePanel, isSidebarCollapsed: false }),
+  setActiveAdjustmentTab: (activeAdjustmentTab) =>
+    set({
+      activeAdjustmentTab,
+      isSidebarCollapsed: false,
+      activePanel: 'all',
+    }),
   setSelection: (selection) => set({ selection }),
   setActiveTextNode: (activeTextNode) => set({ activeTextNode }),
   setTabletTelemetry: (telemetry) =>

@@ -46,6 +46,7 @@ export const App: React.FC = () => {
     onOpenCanvasSize: () => setIsCanvasSizeOpen(true),
     onOpenExport: () => setIsExportOpen(true),
     onOpenHueSaturation: () => useEditorStore.getState().setActiveAdjustmentTab('huesat'),
+    onOpenUpdateModal: () => setIsUpdateOpen(true),
   });
 
   // Automatic silent check for app update on startup

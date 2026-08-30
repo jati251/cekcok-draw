@@ -2,8 +2,16 @@ import { useEffect, useRef } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as bridge from '@/services/tauriBridge';
+import { isTauriEnvironment } from '@/services/tauriBridge';
 import { copyActiveLayerSelection } from '@/utils/clipboard';
 import { saveProjectFile, openProjectFile } from '@/features/document/utils/project';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import {
+  applyInvert,
+  applyDesaturate,
+  computeHistogram,
+  applyLevels,
+} from '@/features/adjustments/utils/filters';
 
 interface ShortcutActions {
   onOpenNewDoc: () => void;
@@ -11,6 +19,7 @@ interface ShortcutActions {
   onOpenCanvasSize?: () => void;
   onOpenExport: () => void;
   onOpenHueSaturation: () => void;
+  onOpenUpdateModal?: () => void;
 }
 
 export const useKeyboardShortcuts = ({
@@ -19,6 +28,7 @@ export const useKeyboardShortcuts = ({
   onOpenCanvasSize,
   onOpenExport,
   onOpenHueSaturation,
+  onOpenUpdateModal,
 }: ShortcutActions) => {
   const { initDocument, triggerUndo, triggerRedo, addNewLayer, doc } = useDocumentStore();
   const {
@@ -38,6 +48,136 @@ export const useKeyboardShortcuts = ({
     setZoom,
     resetView,
   } = useEditorStore();
+
+  const actionsRef = useRef<ShortcutActions>({
+    onOpenNewDoc,
+    onOpenOpenFile,
+    onOpenCanvasSize,
+    onOpenExport,
+    onOpenHueSaturation,
+    onOpenUpdateModal,
+  });
+
+  useEffect(() => {
+    actionsRef.current = {
+      onOpenNewDoc,
+      onOpenOpenFile,
+      onOpenCanvasSize,
+      onOpenExport,
+      onOpenHueSaturation,
+      onOpenUpdateModal,
+    };
+  });
+
+  const handleInvert = () => {
+    const currentDoc = useDocumentStore.getState().doc;
+    if (!currentDoc || !currentDoc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${currentDoc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
+        applyInvert(ctx, currentDoc.width, currentDoc.height);
+        useDocumentStore.getState().bumpCanvasRevision();
+        const imgData = ctx.getImageData(0, 0, currentDoc.width, currentDoc.height);
+        bridge
+          .writeLayerPixels(
+            0,
+            0,
+            currentDoc.width,
+            currentDoc.height,
+            new Uint8Array(imgData.data.buffer),
+            currentDoc.active_layer_id
+          )
+          .then(() => bridge.commitStrokeHistory('Invert Colors'))
+          .catch(() => {});
+      }
+    }
+  };
+
+  const handleDesaturate = () => {
+    const currentDoc = useDocumentStore.getState().doc;
+    if (!currentDoc || !currentDoc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${currentDoc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
+        applyDesaturate(ctx, currentDoc.width, currentDoc.height);
+        useDocumentStore.getState().bumpCanvasRevision();
+        const imgData = ctx.getImageData(0, 0, currentDoc.width, currentDoc.height);
+        bridge
+          .writeLayerPixels(
+            0,
+            0,
+            currentDoc.width,
+            currentDoc.height,
+            new Uint8Array(imgData.data.buffer),
+            currentDoc.active_layer_id
+          )
+          .then(() => bridge.commitStrokeHistory('Desaturate'))
+          .catch(() => {});
+      }
+    }
+  };
+
+  const handleAutoTone = () => {
+    const currentDoc = useDocumentStore.getState().doc;
+    if (!currentDoc || !currentDoc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${currentDoc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const hist = computeHistogram(ctx, currentDoc.width, currentDoc.height);
+        let autoBlack = 0;
+        let autoWhite = 255;
+        for (let i = 0; i < 256; i++) {
+          if (hist[i] > 10) {
+            autoBlack = i;
+            break;
+          }
+        }
+        for (let i = 255; i >= 0; i--) {
+          if (hist[i] > 10) {
+            autoWhite = i;
+            break;
+          }
+        }
+        useDocumentStore.getState().pushCanvasSnapshot('Auto Tone (Levels)');
+        applyLevels(ctx, currentDoc.width, currentDoc.height, autoBlack, 1.0, autoWhite, 0, 255);
+        useDocumentStore.getState().bumpCanvasRevision();
+        const imgData = ctx.getImageData(0, 0, currentDoc.width, currentDoc.height);
+        bridge
+          .writeLayerPixels(
+            0,
+            0,
+            currentDoc.width,
+            currentDoc.height,
+            new Uint8Array(imgData.data.buffer),
+            currentDoc.active_layer_id
+          )
+          .then(() => bridge.commitStrokeHistory('Auto Tone (Levels)'))
+          .catch(() => {});
+      }
+    }
+  };
+
+  const handleOpenGithub = () => {
+    const url = 'https://github.com/jati251/cekcok-draw';
+    if (isTauriEnvironment()) {
+      openUrl(url).catch(() => {
+        window.open(url, '_blank');
+      });
+    } else {
+      window.open(url, '_blank');
+    }
+  };
 
   const isInitializedRef = useRef(false);
   useEffect(() => {
@@ -136,26 +276,10 @@ export const useKeyboardShortcuts = ({
           addNewLayer('Layer Copy');
         } else if (e.key.toLowerCase() === 'i') {
           e.preventDefault();
-          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-          if (canvas && doc) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
-              useDocumentStore.getState().bumpCanvasRevision();
-              bridge.commitStrokeHistory('Invert Colors');
-            }
-          }
+          handleInvert();
         } else if (e.key.toLowerCase() === 'u' && e.shiftKey) {
           e.preventDefault();
-          const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-          if (canvas && doc) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
-              useDocumentStore.getState().bumpCanvasRevision();
-              bridge.commitStrokeHistory('Desaturate');
-            }
-          }
+          handleDesaturate();
         } else if (e.key === '0') {
           e.preventDefault();
           resetView();
@@ -297,7 +421,7 @@ export const useKeyboardShortcuts = ({
     let lastActionTime = 0;
     let lastActionName = '';
 
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    if (isTauriEnvironment()) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         if (!isMounted) return;
         listen<string>('native-menu-action', (event) => {
@@ -312,17 +436,23 @@ export const useKeyboardShortcuts = ({
           lastActionTime = now;
           lastActionName = action;
 
-          if (action === 'new_doc') onOpenNewDoc();
-          else if (action === 'open_file') {
-            if (onOpenOpenFile) onOpenOpenFile();
+          if (action === 'new_doc') {
+            actionsRef.current.onOpenNewDoc();
+          } else if (action === 'open_file') {
+            actionsRef.current.onOpenOpenFile?.();
           } else if (action === 'open_project') {
             openProjectFile();
           } else if (action === 'save_project') {
             saveProjectFile();
           } else if (action === 'canvas_size') {
-            if (onOpenCanvasSize) onOpenCanvasSize();
-          } else if (action === 'export_image') onOpenExport();
-          else if (action === 'free_transform' || action === 'free_transform_layer') {
+            actionsRef.current.onOpenCanvasSize?.();
+          } else if (action === 'export_image') {
+            actionsRef.current.onOpenExport();
+          } else if (action === 'check_updates' || action === 'check_updates_help') {
+            actionsRef.current.onOpenUpdateModal?.();
+          } else if (action === 'doc_github') {
+            handleOpenGithub();
+          } else if (action === 'free_transform' || action === 'free_transform_layer') {
             const currentDoc = useDocumentStore.getState().doc;
             if (currentDoc && currentDoc.active_layer_id) {
               const canvas = document.getElementById(
@@ -354,27 +484,39 @@ export const useKeyboardShortcuts = ({
               useDocumentStore.getState().cropCanvas(sel.x, sel.y, sel.width, sel.height);
               useEditorStore.getState().setSelection(null);
             }
-          } else if (action === 'rotate_90_cw') useDocumentStore.getState().rotateCanvas(90);
-          else if (action === 'rotate_90_ccw') useDocumentStore.getState().rotateCanvas(270);
-          else if (action === 'rotate_180') useDocumentStore.getState().rotateCanvas(180);
-          else if (action === 'flip_h') useDocumentStore.getState().flipCanvas('horizontal');
-          else if (action === 'flip_v') useDocumentStore.getState().flipCanvas('vertical');
-          else if (action === 'flip_layer_h')
+          } else if (action === 'rotate_90_cw') {
+            useDocumentStore.getState().rotateCanvas(90);
+          } else if (action === 'rotate_90_ccw') {
+            useDocumentStore.getState().rotateCanvas(270);
+          } else if (action === 'rotate_180') {
+            useDocumentStore.getState().rotateCanvas(180);
+          } else if (action === 'flip_h') {
+            useDocumentStore.getState().flipCanvas('horizontal');
+          } else if (action === 'flip_v') {
+            useDocumentStore.getState().flipCanvas('vertical');
+          } else if (action === 'flip_layer_h') {
             useDocumentStore.getState().flipActiveLayer('horizontal');
-          else if (action === 'flip_layer_v')
+          } else if (action === 'flip_layer_v') {
             useDocumentStore.getState().flipActiveLayer('vertical');
-          else if (action === 'levels' || action === 'auto_tone')
+          } else if (action === 'levels') {
+            useEditorStore.getState().setActivePanel('all');
             useEditorStore.getState().setActiveAdjustmentTab('levels');
-          else if (action === 'hue_sat') useEditorStore.getState().setActiveAdjustmentTab('huesat');
-          else if (action === 'brightness_contrast')
+          } else if (action === 'auto_tone') {
+            handleAutoTone();
+          } else if (action === 'hue_sat') {
+            useEditorStore.getState().setActivePanel('all');
+            useEditorStore.getState().setActiveAdjustmentTab('huesat');
+          } else if (action === 'brightness_contrast') {
+            useEditorStore.getState().setActivePanel('all');
             useEditorStore.getState().setActiveAdjustmentTab('brightness');
-          else if (action === 'gaussian_blur')
+          } else if (action === 'gaussian_blur') {
+            useEditorStore.getState().setActivePanel('all');
             useEditorStore.getState().setActiveAdjustmentTab('blur');
-          else if (action === 'check_updates' || action === 'check_updates_help') {
-            // setIsUpdateOpen(true); TODO trigger via global store or toast;
-          } else if (action === 'cut') copyActiveLayerSelection(true);
-          else if (action === 'copy') copyActiveLayerSelection(false);
-          else if (action === 'paste') {
+          } else if (action === 'cut') {
+            copyActiveLayerSelection(true);
+          } else if (action === 'copy') {
+            copyActiveLayerSelection(false);
+          } else if (action === 'paste') {
             if (
               typeof navigator !== 'undefined' &&
               navigator.clipboard &&
@@ -404,9 +546,11 @@ export const useKeyboardShortcuts = ({
                 })
                 .catch(() => {});
             }
-          } else if (action === 'new_layer') useDocumentStore.getState().addNewLayer();
-          else if (action === 'dup_layer') useDocumentStore.getState().duplicateLayer();
-          else if (action === 'merge_down') {
+          } else if (action === 'new_layer') {
+            useDocumentStore.getState().addNewLayer();
+          } else if (action === 'dup_layer') {
+            useDocumentStore.getState().duplicateLayer();
+          } else if (action === 'merge_down') {
             const currentDoc = useDocumentStore.getState().doc;
             if (currentDoc?.active_layer_id) {
               useDocumentStore.getState().mergeDown(currentDoc.active_layer_id);
@@ -421,19 +565,23 @@ export const useKeyboardShortcuts = ({
             if (currentDoc?.active_layer_id) {
               useDocumentStore.getState().deleteLayer(currentDoc.active_layer_id);
             }
-          } else if (action === 'deselect') useEditorStore.getState().setSelection(null);
-          else if (action === 'toggle_grid')
+          } else if (action === 'deselect') {
+            useEditorStore.getState().setSelection(null);
+          } else if (action === 'toggle_grid') {
             useEditorStore.getState().setShowGrid(!useEditorStore.getState().showGrid);
-          else if (action === 'toggle_rulers')
+          } else if (action === 'toggle_rulers') {
             useEditorStore.getState().setShowRulers(!useEditorStore.getState().showRulers);
-          else if (action === 'zoom_in')
+          } else if (action === 'zoom_in') {
             useEditorStore.getState().setZoom((z) => Math.min(32, z * 1.25));
-          else if (action === 'zoom_out')
+          } else if (action === 'zoom_out') {
             useEditorStore.getState().setZoom((z) => Math.max(0.05, z / 1.25));
-          else if (action === 'fit_screen') useEditorStore.getState().resetView();
-          else if (action === 'undo') useDocumentStore.getState().triggerUndo();
-          else if (action === 'redo') useDocumentStore.getState().triggerRedo();
-          else if (action === 'select_all') {
+          } else if (action === 'fit_screen') {
+            useEditorStore.getState().resetView();
+          } else if (action === 'undo') {
+            useDocumentStore.getState().triggerUndo();
+          } else if (action === 'redo') {
+            useDocumentStore.getState().triggerRedo();
+          } else if (action === 'select_all') {
             const currentDoc = useDocumentStore.getState().doc;
             if (currentDoc) {
               useEditorStore.getState().setSelection({
@@ -445,41 +593,18 @@ export const useKeyboardShortcuts = ({
               });
             }
           } else if (action === 'invert') {
-            const currentDoc = useDocumentStore.getState().doc;
-            if (currentDoc && currentDoc.active_layer_id) {
-              const canvas = document.getElementById(
-                `layer-canvas-${currentDoc.active_layer_id}`
-              ) as HTMLCanvasElement | null;
-              if (canvas) {
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
-                  useDocumentStore.getState().bumpCanvasRevision();
-                  bridge.commitStrokeHistory('Invert Colors');
-                }
-              }
-            }
+            handleInvert();
           } else if (action === 'desaturate') {
-            const currentDoc = useDocumentStore.getState().doc;
-            if (currentDoc && currentDoc.active_layer_id) {
-              const canvas = document.getElementById(
-                `layer-canvas-${currentDoc.active_layer_id}`
-              ) as HTMLCanvasElement | null;
-              if (canvas) {
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
-                  useDocumentStore.getState().bumpCanvasRevision();
-                  bridge.commitStrokeHistory('Desaturate');
-                }
-              }
-            }
-          } else if (action === 'panel_all') useEditorStore.getState().setActivePanel('all');
-          else if (action === 'panel_layers') useEditorStore.getState().setActivePanel('layers');
-          else if (action === 'panel_color') useEditorStore.getState().setActivePanel('color');
-          else if (action === 'panel_history') useEditorStore.getState().setActivePanel('history');
-          else if (action === 'doc_github')
-            window.open('https://github.com/jati251/cekcok-draw', '_blank');
+            handleDesaturate();
+          } else if (action === 'panel_all') {
+            useEditorStore.getState().setActivePanel('all');
+          } else if (action === 'panel_layers') {
+            useEditorStore.getState().setActivePanel('layers');
+          } else if (action === 'panel_color') {
+            useEditorStore.getState().setActivePanel('color');
+          } else if (action === 'panel_history') {
+            useEditorStore.getState().setActivePanel('history');
+          }
         }).then((unlisten) => {
           if (!isMounted) {
             unlisten();
@@ -494,5 +619,5 @@ export const useKeyboardShortcuts = ({
       isMounted = false;
       if (cleanupFn) cleanupFn();
     };
-  }, [onOpenOpenFile, onOpenNewDoc, onOpenCanvasSize, onOpenExport]);
+  }, []);
 };

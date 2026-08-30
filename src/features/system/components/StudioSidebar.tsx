@@ -17,19 +17,18 @@ import { useEditorStore } from '@/stores/editorStore';
 import { Tooltip } from '@/components/ui/Tooltip';
 
 export const StudioSidebar: React.FC = () => {
-  const { activePanel } = useEditorStore();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { activePanel, isSidebarCollapsed, setIsSidebarCollapsed } = useEditorStore();
   const [expandColor, setExpandColor] = useState(false);
   const [expandAdjustments, setExpandAdjustments] = useState(true);
   const [expandHistory, setExpandHistory] = useState(false);
   const [expandLayers, setExpandLayers] = useState(true);
 
-  if (isCollapsed) {
+  if (isSidebarCollapsed) {
     return (
       <aside className="w-10 bg-ps-panel/95 backdrop-blur-md border-l border-ps-border flex flex-col items-center py-2.5 space-y-2.5 z-20 select-none shadow-studio-subtle">
         <Tooltip content="Expand Sidebar" position="left">
           <button
-            onClick={() => setIsCollapsed(false)}
+            onClick={() => setIsSidebarCollapsed(false)}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-ps-hover transition-all active:scale-95"
           >
             <PanelRightOpen size={16} />
@@ -41,7 +40,7 @@ export const StudioSidebar: React.FC = () => {
         <Tooltip content="Adjustments & Filters" position="left">
           <button
             onClick={() => {
-              setIsCollapsed(false);
+              setIsSidebarCollapsed(false);
               setExpandAdjustments(true);
             }}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-ps-hover transition-all active:scale-95"
@@ -53,7 +52,7 @@ export const StudioSidebar: React.FC = () => {
         <Tooltip content="Color Panel" position="left">
           <button
             onClick={() => {
-              setIsCollapsed(false);
+              setIsSidebarCollapsed(false);
               setExpandColor(true);
             }}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-ps-hover transition-all active:scale-95"
@@ -65,7 +64,7 @@ export const StudioSidebar: React.FC = () => {
         <Tooltip content="History Panel" position="left">
           <button
             onClick={() => {
-              setIsCollapsed(false);
+              setIsSidebarCollapsed(false);
               setExpandHistory(true);
             }}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-ps-hover transition-all active:scale-95"
@@ -77,7 +76,7 @@ export const StudioSidebar: React.FC = () => {
         <Tooltip content="Layers Panel" position="left">
           <button
             onClick={() => {
-              setIsCollapsed(false);
+              setIsSidebarCollapsed(false);
               setExpandLayers(true);
             }}
             className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-ps-hover transition-all active:scale-95"
@@ -101,7 +100,7 @@ export const StudioSidebar: React.FC = () => {
         </div>
         <Tooltip content="Collapse Sidebar" position="left">
           <button
-            onClick={() => setIsCollapsed(true)}
+            onClick={() => setIsSidebarCollapsed(true)}
             className="p-1 text-zinc-400 hover:text-white rounded-md hover:bg-ps-surface transition-all active:scale-95"
           >
             <PanelRightClose size={14} />
