@@ -16,6 +16,7 @@ import {
   relaunchApp,
   AppUpdateInfo,
 } from '@/services/updaterService';
+import { useModalDismiss } from '@/hooks';
 
 interface Props {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
     downloaded: 0,
     total: 0,
   });
+
+  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
 
   const runCheck = () => {
     setStatus('checking');
@@ -113,7 +116,10 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const totalMb = (downloadProgress.total / (1024 * 1024)).toFixed(1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm select-none animate-in fade-in duration-150">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm select-none animate-in fade-in duration-150"
+    >
       <div className="bg-ps-panel border border-ps-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-ps-text flex flex-col">
         {/* Modal Header */}
         <div className="h-11 px-4 bg-ps-header border-b border-ps-border flex items-center justify-between">
@@ -123,169 +129,213 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-surface transition-colors"
+            className="text-zinc-400 hover:text-zinc-100 p-1 rounded-md hover:bg-ps-surface transition-colors"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-4">
-          {/* 1. Checking State */}
+        <div className="p-5 flex flex-col items-center text-center space-y-4">
+          {/* Status: Checking */}
           {status === 'checking' && (
-            <div className="flex flex-col items-center justify-center py-6 space-y-3 text-center">
-              <RefreshCw size={28} className="animate-spin text-blue-400" />
-              <div>
-                <h3 className="text-sm font-medium text-white">Checking for Updates...</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Connecting to CekcokDraw release server...
-                </p>
+            <div className="py-6 flex flex-col items-center space-y-3">
+              <RefreshCw size={36} className="text-blue-400 animate-spin" />
+              <div className="text-sm font-medium text-zinc-200">Checking for updates...</div>
+              <div className="text-xs text-zinc-400 font-mono">
+                Current version: v{CURRENT_VERSION}
               </div>
             </div>
           )}
 
-          {/* 2. Update Available */}
-          {status === 'available' && updateInfo && (
-            <div className="space-y-4">
-              <div className="p-3.5 bg-blue-950/40 border border-blue-800/40 rounded-lg flex items-start space-x-3">
-                <div className="p-2 rounded-full bg-blue-500/20 text-blue-400 flex-shrink-0">
-                  <DownloadCloud size={20} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white">Version {updateInfo.version}</h3>
-                    <span className="text-[10px] font-mono bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded border border-blue-500/40">
-                      New
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Current: <span className="font-mono text-zinc-300">v{CURRENT_VERSION}</span>
-                  </p>
+          {/* Status: Up To Date */}
+          {status === 'up_to_date' && (
+            <div className="py-4 flex flex-col items-center space-y-3 w-full">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 size={26} />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-zinc-100">You&apos;re up to date!</div>
+                <div className="text-xs text-zinc-400 mt-1">
+                  CekcokDraw v{CURRENT_VERSION} is currently the newest version available.
                 </div>
               </div>
-
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-semibold text-zinc-300">Release Notes:</h4>
-                <div className="max-h-36 overflow-y-auto p-2.5 bg-ps-surface rounded border border-ps-border text-xs text-zinc-300 font-sans leading-relaxed whitespace-pre-line">
-                  {updateInfo.body}
+              <div className="w-full bg-ps-surface border border-ps-border/50 rounded-lg p-3 text-left text-xs space-y-1 mt-2">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Installed Version</span>
+                  <span className="text-zinc-200 font-mono">v{CURRENT_VERSION}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Architecture</span>
+                  <span className="text-zinc-200">Apple Silicon / ARM64</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Release Channel</span>
+                  <span className="text-emerald-400 font-medium">Stable</span>
                 </div>
               </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-2">
+              <div className="flex space-x-2 w-full pt-2">
+                <button
+                  onClick={runCheck}
+                  className="flex-1 px-3 py-1.5 bg-ps-surface hover:bg-ps-hover border border-ps-border rounded-lg text-xs font-medium text-zinc-200 transition-colors flex items-center justify-center space-x-1.5"
+                >
+                  <RefreshCw size={13} />
+                  <span>Check Again</span>
+                </button>
                 <button
                   onClick={onClose}
-                  className="px-3.5 py-1.5 text-xs text-zinc-400 hover:text-white rounded hover:bg-ps-surface transition-colors"
+                  className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Status: Available */}
+          {status === 'available' && updateInfo && (
+            <div className="py-2 flex flex-col items-center space-y-3 w-full">
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                <DownloadCloud size={26} />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-zinc-100">
+                  A new version is available!
+                </div>
+                <div className="text-xs text-zinc-400 mt-0.5">
+                  CekcokDraw{' '}
+                  <span className="text-blue-400 font-medium">v{updateInfo.version}</span> is ready
+                  to install.
+                </div>
+              </div>
+
+              {/* Version Comparison Card */}
+              <div className="w-full bg-ps-surface border border-ps-border/60 rounded-lg p-3 text-xs flex items-center justify-between">
+                <div className="text-left">
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-400">Current</div>
+                  <div className="font-mono text-zinc-300">v{CURRENT_VERSION}</div>
+                </div>
+                <ArrowRight size={16} className="text-blue-400" />
+                <div className="text-right">
+                  <div className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold">
+                    New
+                  </div>
+                  <div className="font-mono text-emerald-400 font-medium">
+                    v{updateInfo.version}
+                  </div>
+                </div>
+              </div>
+
+              {/* Release Notes */}
+              {updateInfo.body && (
+                <div className="w-full text-left">
+                  <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Release Notes
+                  </div>
+                  <div className="w-full bg-ps-surface border border-ps-border rounded-lg p-2.5 text-xs text-zinc-300 max-h-28 overflow-y-auto whitespace-pre-wrap font-sans text-left leading-relaxed">
+                    {updateInfo.body}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex space-x-2 w-full pt-2">
+                <button
+                  onClick={onClose}
+                  className="flex-1 px-3 py-2 border border-ps-border rounded-lg text-xs font-medium text-zinc-300 hover:bg-ps-surface transition-colors"
                 >
                   Later
                 </button>
                 <button
                   onClick={handleStartDownload}
-                  className="px-4 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/20 flex items-center space-x-1.5 transition-colors"
+                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20 transition-colors flex items-center justify-center space-x-1.5"
                 >
-                  <span>Download & Install</span>
-                  <ArrowRight size={13} />
+                  <DownloadCloud size={14} />
+                  <span>Update Now</span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* 3. Downloading State */}
+          {/* Status: Downloading */}
           {status === 'downloading' && (
-            <div className="space-y-4 py-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-zinc-200">Downloading update...</span>
-                <span className="font-mono text-blue-400 font-bold">{percent}%</span>
+            <div className="py-4 flex flex-col items-center space-y-4 w-full">
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 animate-pulse">
+                <DownloadCloud size={26} />
               </div>
-
-              <div className="w-full h-2.5 bg-ps-bg rounded-full overflow-hidden border border-ps-border/70 p-0.5">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 rounded-full transition-all duration-200"
-                  style={{ width: `${percent}%` }}
-                />
+              <div className="w-full space-y-1.5">
+                <div className="flex justify-between text-xs text-zinc-300 font-medium">
+                  <span>Downloading update...</span>
+                  <span className="font-mono text-blue-400">{percent}%</span>
+                </div>
+                <div className="w-full h-2 bg-ps-surface rounded-full overflow-hidden border border-ps-border">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-150 rounded-full"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-zinc-400">
+                  <span>
+                    {downloadedMb} MB / {totalMb} MB
+                  </span>
+                  <span>Verifying signature...</span>
+                </div>
               </div>
-
-              <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                <span>
-                  {downloadProgress.total > 0
-                    ? `${downloadedMb} MB / ${totalMb} MB`
-                    : 'Receiving payload...'}
-                </span>
-                <span className="animate-pulse text-blue-300">Installing components...</span>
+              <div className="text-xs text-zinc-400 text-center">
+                Please wait while the update is securely downloaded and verified.
               </div>
             </div>
           )}
 
-          {/* 4. Ready State */}
+          {/* Status: Ready to Relaunch */}
           {status === 'ready' && (
-            <div className="flex flex-col items-center justify-center py-4 space-y-4 text-center">
-              <div className="p-3 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                <CheckCircle2 size={32} />
+            <div className="py-4 flex flex-col items-center space-y-3 w-full">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <ShieldCheck size={26} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white">Update Downloaded</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Restart CekcokDraw now to apply the new update and launch the updated studio.
-                </p>
+                <div className="text-sm font-semibold text-zinc-100">Update Ready to Install</div>
+                <div className="text-xs text-zinc-400 mt-1">
+                  The update package has been downloaded and cryptographically verified.
+                </div>
               </div>
               <button
                 onClick={handleRelaunch}
-                className="w-full py-2.5 px-4 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-lg shadow-emerald-600/30 transition-colors"
+                className="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-emerald-600/20 transition-colors flex items-center justify-center space-x-1.5 mt-2"
               >
-                Restart & Apply Update
+                <RefreshCw size={14} />
+                <span>Restart & Apply Update</span>
               </button>
             </div>
           )}
 
-          {/* 5. Up to date */}
-          {status === 'up_to_date' && (
-            <div className="flex flex-col items-center justify-center py-4 space-y-4 text-center">
-              <div className="p-3 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                <ShieldCheck size={32} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-white">You're Up to Date!</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  CekcokDraw <span className="font-mono text-zinc-300">v{CURRENT_VERSION}</span> is
-                  currently the latest version.
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-full py-2 px-4 text-xs bg-ps-surface hover:bg-ps-hover border border-ps-border rounded-lg text-zinc-200 transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          )}
-
-          {/* 6. Error State */}
+          {/* Status: Error */}
           {status === 'error' && (
-            <div className="flex flex-col items-center justify-center py-3 space-y-3 text-center">
-              <div className="p-3 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                <AlertCircle size={28} />
+            <div className="py-3 flex flex-col items-center space-y-3 w-full">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <AlertCircle size={26} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white">Update Server Info</h3>
-                <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed max-w-xs">
+                <div className="text-sm font-semibold text-zinc-100">Update Check Notice</div>
+                <div className="text-xs text-zinc-400 mt-1 max-h-24 overflow-y-auto text-left bg-ps-surface p-2 rounded border border-ps-border leading-relaxed font-mono">
                   {errorMessage}
-                </p>
+                </div>
               </div>
-              <div className="flex items-center space-x-2.5 w-full pt-1">
+              <div className="flex space-x-2 w-full pt-1">
                 <button
-                  onClick={() =>
-                    window.open('https://github.com/jati251/cekcok-draw/releases', '_blank')
-                  }
-                  className="flex-1 py-2 px-3 text-xs bg-ps-surface hover:bg-ps-hover border border-ps-border rounded-lg text-zinc-300 transition-colors flex items-center justify-center space-x-1"
+                  onClick={onClose}
+                  className="flex-1 px-3 py-1.5 border border-ps-border rounded-lg text-xs font-medium text-zinc-300 hover:bg-ps-surface transition-colors"
                 >
-                  <span>GitHub Releases</span>
-                  <ExternalLink size={11} />
+                  Close
                 </button>
-                <button
-                  onClick={runCheck}
-                  className="flex-1 py-2 px-3 text-xs bg-blue-600 hover:bg-blue-500 font-medium text-white rounded-lg transition-colors"
+                <a
+                  href="https://github.com/jati251/cekcok-draw/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-3 py-1.5 bg-ps-surface hover:bg-ps-hover border border-ps-border rounded-lg text-xs font-medium text-zinc-200 transition-colors flex items-center justify-center space-x-1.5"
                 >
-                  Try Again
-                </button>
+                  <ExternalLink size={13} />
+                  <span>View Releases</span>
+                </a>
               </div>
             </div>
           )}

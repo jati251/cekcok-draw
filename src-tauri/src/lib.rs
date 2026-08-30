@@ -88,6 +88,8 @@ pub fn run() {
             get_engine_stats,
             undo,
             redo,
+            undo_with_layers,
+            redo_with_layers,
             get_history,
             render_viewport,
             render_layer_viewport,

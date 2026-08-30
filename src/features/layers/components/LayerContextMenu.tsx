@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { LayerMetadata } from '@/types';
+import { useModalDismiss } from '@/hooks';
 
 interface Props {
   x: number;
@@ -20,6 +21,8 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
     mergeDown,
     clearLayer,
   } = useDocumentStore();
+
+  useModalDismiss({ onClose });
 
   const isOnlyLayer = (doc?.layers.length ?? 0) <= 1;
   const isBottomLayer = doc?.layers[0]?.id === layer.id;

@@ -6,7 +6,6 @@ use crate::compute::shapes::ShapeRasterizer;
 use crate::core::document::{Document, DocumentInfo};
 use crate::core::history::{HistoryAction, HistoryEngine};
 use crate::core::layer::BlendMode;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::io::Cursor;
 use tauri::State;
 
@@ -653,23 +652,106 @@ pub fn get_history(state: State<'_, SharedEngineState>) -> Vec<HistoryAction> {
     guard.history.get_history_list()
 }
 
+/// Combined undo + render all layers + history in a single IPC call.
+///
+/// Binary response format:
+///   [4 bytes: JSON header length (u32 LE)]
+///   [JSON header bytes: { doc, history, layers: [{id, offset, length}] }]
+///   [concatenated raw RGBA buffers for each layer]
+#[tauri::command]
+pub fn undo_with_layers(
+    state: State<'_, SharedEngineState>,
+) -> Result<tauri::ipc::Response, String> {
+    let mut guard = state.lock();
+    let mut current_doc = guard.document.clone();
+    if guard.history.undo(&mut current_doc).is_none() {
+        return Err("Nothing to undo".into());
+    }
+    guard.document = current_doc;
+    Ok(pack_doc_with_layers(&guard.document, &guard.history))
+}
+
+/// Combined redo + render all layers + history in a single IPC call.
+#[tauri::command]
+pub fn redo_with_layers(
+    state: State<'_, SharedEngineState>,
+) -> Result<tauri::ipc::Response, String> {
+    let mut guard = state.lock();
+    let mut current_doc = guard.document.clone();
+    if guard.history.redo(&mut current_doc).is_none() {
+        return Err("Nothing to redo".into());
+    }
+    guard.document = current_doc;
+    Ok(pack_doc_with_layers(&guard.document, &guard.history))
+}
+
+/// Packs document info, history, and all layer RGBA pixels into a single binary buffer.
+fn pack_doc_with_layers(doc: &Document, history: &HistoryEngine) -> tauri::ipc::Response {
+    let doc_info = doc.get_info();
+    let history_list = history.get_history_list();
+    let w = doc.width;
+    let h = doc.height;
+    let layer_pixel_bytes = (w as usize) * (h as usize) * 4;
+
+    // Render all layers and build offset table
+    let mut layer_buffers: Vec<(String, Vec<u8>)> = Vec::with_capacity(doc_info.layers.len());
+    for layer_info in &doc_info.layers {
+        let rgba = doc
+            .render_layer_viewport_rgba(&layer_info.id, 0, 0, w, h)
+            .unwrap_or_else(|| vec![0u8; layer_pixel_bytes]);
+        layer_buffers.push((layer_info.id.clone(), rgba));
+    }
+
+    // Build JSON header with layer offset table
+    let mut offset = 0usize;
+    let mut layer_entries = Vec::new();
+    for (id, buf) in &layer_buffers {
+        layer_entries.push(serde_json::json!({
+            "id": id,
+            "offset": offset,
+            "length": buf.len(),
+        }));
+        offset += buf.len();
+    }
+
+    let header = serde_json::json!({
+        "doc": doc_info,
+        "history": history_list,
+        "layers": layer_entries,
+    });
+    let header_bytes = serde_json::to_vec(&header).unwrap_or_default();
+    let header_len = header_bytes.len() as u32;
+
+    // Pack: [4B header_len LE] [header JSON] [layer RGBA buffers...]
+    let total_pixel_bytes: usize = layer_buffers.iter().map(|(_, b)| b.len()).sum();
+    let mut out = Vec::with_capacity(4 + header_bytes.len() + total_pixel_bytes);
+    out.extend_from_slice(&header_len.to_le_bytes());
+    out.extend_from_slice(&header_bytes);
+    for (_, buf) in layer_buffers {
+        out.extend_from_slice(&buf);
+    }
+
+    tauri::ipc::Response::new(out)
+}
+
 /// Render the viewport region to a raw binary RGBA byte buffer
 #[tauri::command]
 pub fn render_viewport(
     request: ViewportRenderRequest,
     state: State<'_, SharedEngineState>,
-) -> Vec<u8> {
+) -> tauri::ipc::Response {
     let guard = state.lock();
-    guard
+    let rgba = guard
         .document
-        .render_viewport_rgba(request.vx, request.vy, request.vw, request.vh)
+        .render_viewport_rgba(request.vx, request.vy, request.vw, request.vh);
+    tauri::ipc::Response::new(rgba)
 }
 
 #[tauri::command]
 pub fn render_layer_viewport(
     request: LayerViewportRenderRequest,
     state: State<'_, SharedEngineState>,
-) -> Result<String, String> {
+) -> Result<tauri::ipc::Response, String> {
     let guard = state.lock();
     let rgba = guard
         .document
@@ -682,13 +764,7 @@ pub fn render_layer_viewport(
         )
         .ok_or_else(|| "Layer not found".to_string())?;
 
-    let image = image::RgbaImage::from_raw(request.vw, request.vh, rgba)
-        .ok_or_else(|| "Failed to construct layer image".to_string())?;
-    let mut png = Cursor::new(Vec::new());
-    image
-        .write_to(&mut png, image::ImageFormat::Png)
-        .map_err(|error| format!("Failed to encode layer image: {error}"))?;
-    Ok(STANDARD.encode(png.into_inner()))
+    Ok(tauri::ipc::Response::new(rgba))
 }
 
 /// Native multi-format image exporter encoding PNG, JPEG, WebP, BMP, TIFF directly in Rust

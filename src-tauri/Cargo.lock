@@ -522,7 +522,7 @@ dependencies = [
 
 [[package]]
 name = "cekcok-draw-core"
-version = "0.3.0"
+version = "0.3.3"
 dependencies = [
  "base64 0.22.1",
  "bytemuck",

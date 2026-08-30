@@ -241,56 +241,136 @@ export async function setLayerBlendMode(
   return { ...mockDoc };
 }
 
+let backendQueue = Promise.resolve();
+
+export function queueBackendOperation<T>(op: () => Promise<T>): Promise<T> {
+  const next = backendQueue.then(op, op);
+  backendQueue = next.then(
+    () => {},
+    () => {}
+  );
+  return next;
+}
+
 export async function applyBrushStroke(
   points: BrushPoint[],
   settings: BrushSettings,
   layerId?: string,
   actionName?: string
 ): Promise<string> {
-  if (isTauriEnvironment()) {
-    return await invoke<string>('apply_brush_stroke', {
-      payload: {
-        points,
-        settings,
-        layer_id: layerId || null,
-        action_name: actionName || null,
-      },
-    });
-  }
-  return 'Browser stroke applied';
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      return await invoke<string>('apply_brush_stroke', {
+        payload: {
+          points,
+          settings,
+          layer_id: layerId || null,
+          action_name: actionName || null,
+        },
+      });
+    }
+    return 'Browser stroke applied';
+  });
 }
 
 export async function commitStrokeHistory(description: string): Promise<void> {
-  if (isTauriEnvironment()) {
-    await invoke('commit_stroke_history', { description });
-    return;
-  }
-  mockHistory.push({
-    id: `h-${Date.now()}`,
-    description,
-    timestamp: Date.now(),
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      await invoke('commit_stroke_history', { description });
+      return;
+    }
+    mockHistory.push({
+      id: `h-${Date.now()}`,
+      description,
+      timestamp: Date.now(),
+    });
   });
 }
 
 export async function undo(): Promise<DocumentInfo> {
-  if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('undo');
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      return await invoke<DocumentInfo>('undo');
+    }
+    return { ...mockDoc };
+  });
 }
 
 export async function redo(): Promise<DocumentInfo> {
-  if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('redo');
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      return await invoke<DocumentInfo>('redo');
+    }
+    return { ...mockDoc };
+  });
 }
 
 export async function getHistory(): Promise<HistoryAction[]> {
-  if (isTauriEnvironment()) {
-    return await invoke<HistoryAction[]>('get_history');
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      return await invoke<HistoryAction[]>('get_history');
+    }
+    return [...mockHistory];
+  });
+}
+
+/** Result from combined undo/redo + layer render IPC */
+export interface UndoRedoWithLayersResult {
+  doc: DocumentInfo;
+  history: HistoryAction[];
+  layerPixels: Map<string, Uint8ClampedArray>;
+}
+
+/**
+ * Decode the packed binary response from undo_with_layers / redo_with_layers.
+ *
+ * Binary format:
+ *   [4 bytes: u32 LE header length]
+ *   [JSON header: { doc, history, layers: [{id, offset, length}] }]
+ *   [concatenated RGBA pixel buffers]
+ */
+function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersResult {
+  const view = new DataView(raw);
+  const headerLen = view.getUint32(0, true);
+  const headerBytes = new Uint8Array(raw, 4, headerLen);
+  const header = JSON.parse(new TextDecoder().decode(headerBytes));
+
+  const pixelDataStart = 4 + headerLen;
+  const layerPixels = new Map<string, Uint8ClampedArray>();
+
+  for (const entry of header.layers as { id: string; offset: number; length: number }[]) {
+    const start = pixelDataStart + entry.offset;
+    const bytes = new Uint8ClampedArray(raw, start, entry.length);
+    layerPixels.set(entry.id, bytes);
   }
-  return [...mockHistory];
+
+  return {
+    doc: header.doc as DocumentInfo,
+    history: header.history as HistoryAction[],
+    layerPixels,
+  };
+}
+
+/** Combined undo + render all layers in a single IPC call */
+export async function undoWithLayers(): Promise<UndoRedoWithLayersResult> {
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      const raw = await invoke<ArrayBuffer>('undo_with_layers');
+      return decodePackedLayerResponse(raw);
+    }
+    return { doc: { ...mockDoc }, history: [...mockHistory], layerPixels: new Map() };
+  });
+}
+
+/** Combined redo + render all layers in a single IPC call */
+export async function redoWithLayers(): Promise<UndoRedoWithLayersResult> {
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) {
+      const raw = await invoke<ArrayBuffer>('redo_with_layers');
+      return decodePackedLayerResponse(raw);
+    }
+    return { doc: { ...mockDoc }, history: [...mockHistory], layerPixels: new Map() };
+  });
 }
 
 export async function renderViewport(
@@ -300,10 +380,10 @@ export async function renderViewport(
   vh: number
 ): Promise<Uint8Array | null> {
   if (isTauriEnvironment()) {
-    const raw = await invoke<number[]>('render_viewport', {
+    const raw = await invoke<ArrayBuffer | number[]>('render_viewport', {
       request: { vx, vy, vw, vh },
     });
-    return new Uint8Array(raw);
+    return raw instanceof ArrayBuffer ? new Uint8Array(raw) : new Uint8Array(raw);
   }
   return null;
 }
@@ -314,11 +394,12 @@ export async function renderLayerViewport(
   vy: number,
   vw: number,
   vh: number
-): Promise<string | null> {
+): Promise<Uint8ClampedArray | null> {
   if (isTauriEnvironment()) {
-    return await invoke<string>('render_layer_viewport', {
+    const raw = await invoke<ArrayBuffer | number[]>('render_layer_viewport', {
       request: { layer_id: layerId, vx, vy, vw, vh },
     });
+    return raw instanceof ArrayBuffer ? new Uint8ClampedArray(raw) : new Uint8ClampedArray(raw);
   }
   return null;
 }

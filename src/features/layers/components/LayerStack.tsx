@@ -2,29 +2,24 @@ import React, { useEffect, useRef } from 'react';
 import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
 import { useEditorStore } from '@/stores/editorStore';
+import { useDocumentStore } from '@/stores/documentStore';
 import { isTauriEnvironment, renderLayerViewport } from '@/services/tauriBridge';
 
 interface Props {
   doc: DocumentInfo;
   layerCanvasesRef: React.RefObject<Map<string, HTMLCanvasElement>>;
-  viewport: { x: number; y: number; width: number; height: number };
+  viewport?: { x: number; y: number; width: number; height: number };
 }
 
-const decodePng = (base64: string): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Could not decode native layer image'));
-    image.src = `data:image/png;base64,${base64}`;
-  });
-
-export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef, viewport }) => {
+export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
   const initializedLayersRef = useRef<Set<string>>(new Set());
   const lastDimensionsRef = useRef({ width: doc.width, height: doc.height });
   const transformState = useEditorStore((state) => state.transformState);
+  const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
 
-  // Canvases are a sparse display cache. Native state supplies only the visible
-  // document rectangle, so panning does not move complete raster layers over IPC.
+  // Sync layer canvases from Rust engine state.
+  // Uses pre-fetched pixels from combined undo/redo IPC when available (instant),
+  // falls back to individual IPC calls only on init / dimension changes.
   useEffect(() => {
     if (
       lastDimensionsRef.current.width !== doc.width ||
@@ -35,69 +30,85 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef, viewport })
     }
 
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      hydrate().catch((error) => console.error('Failed to hydrate layer cache:', error));
-    }, 40);
 
     const hydrate = async () => {
-      if (isTauriEnvironment()) {
-        // Keep a new document usable while its native viewport is decoding.
-        // The native background replaces this cache entry as soon as it arrives.
-        const background = doc.layers.find((layer) => layer.name === 'Background');
-        if (background && !initializedLayersRef.current.has(background.id)) {
-          const canvas = layerCanvasesRef.current?.get(background.id);
+      if (!isTauriEnvironment()) {
+        // Browser mock fallback
+        doc.layers.forEach((layer) => {
+          const canvas = layerCanvasesRef.current?.get(layer.id);
+          if (!canvas || initializedLayersRef.current.has(layer.id) || layer.name !== 'Background')
+            return;
           const ctx = canvas?.getContext('2d');
           if (ctx) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, doc.width, doc.height);
-            initializedLayersRef.current.add(background.id);
           }
-        }
-        if (viewport.width < 1 || viewport.height < 1) return;
-        await Promise.all(
-          doc.layers.map(async (layer) => {
-            const png = await renderLayerViewport(
-              layer.id,
-              viewport.x,
-              viewport.y,
-              viewport.width,
-              viewport.height
-            );
-            if (cancelled || !png) return;
-            const canvas = layerCanvasesRef.current?.get(layer.id);
-            const ctx = canvas?.getContext('2d');
-            const image = await decodePng(png);
-            if (cancelled) return;
-            if (canvas && ctx) {
-              ctx.clearRect(viewport.x, viewport.y, viewport.width, viewport.height);
-              ctx.drawImage(image, viewport.x, viewport.y, viewport.width, viewport.height);
-              initializedLayersRef.current.add(layer.id);
-            }
-          })
-        );
+          initializedLayersRef.current.add(layer.id);
+        });
         return;
       }
 
-      if (viewport.width < 1 || viewport.height < 1) return;
+      if (doc.width < 1 || doc.height < 1) return;
 
-      doc.layers.forEach((layer) => {
-        const canvas = layerCanvasesRef.current?.get(layer.id);
-        if (!canvas || initializedLayersRef.current.has(layer.id) || layer.name !== 'Background')
-          return;
-        const ctx = canvas.getContext('2d');
+      // Check for pre-fetched pixels from combined undo/redo IPC
+      const store = useDocumentStore.getState();
+      const pendingPixels = store.pendingLayerPixels;
+
+      if (pendingPixels && pendingPixels.size > 0) {
+        // Instant blit: pixels already arrived with the undo/redo response
+        for (const layer of doc.layers) {
+          if (cancelled) return;
+          const rawBytes = pendingPixels.get(layer.id);
+          if (!rawBytes) continue;
+          const canvas = layerCanvasesRef.current?.get(layer.id);
+          const ctx = canvas?.getContext('2d');
+          if (canvas && ctx) {
+            const imgData = ctx.createImageData(doc.width, doc.height);
+            imgData.data.set(rawBytes);
+            ctx.putImageData(imgData, 0, 0);
+            initializedLayersRef.current.add(layer.id);
+          }
+        }
+        // Consume: clear pending pixels so they aren't re-applied
+        useDocumentStore.setState({ pendingLayerPixels: null });
+        return;
+      }
+
+      // Fallback: fetch pixels via individual IPC (init, dimension changes, etc.)
+      // Background placeholder while initial render arrives
+      const background = doc.layers.find((layer) => layer.name === 'Background');
+      if (background && !initializedLayersRef.current.has(background.id)) {
+        const canvas = layerCanvasesRef.current?.get(background.id);
+        const ctx = canvas?.getContext('2d');
         if (ctx) {
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, doc.width, doc.height);
+          initializedLayersRef.current.add(background.id);
         }
-        initializedLayersRef.current.add(layer.id);
-      });
+      }
+
+      await Promise.all(
+        doc.layers.map(async (layer) => {
+          const rawBytes = await renderLayerViewport(layer.id, 0, 0, doc.width, doc.height);
+          if (cancelled || !rawBytes) return;
+          const canvas = layerCanvasesRef.current?.get(layer.id);
+          const ctx = canvas?.getContext('2d');
+          if (canvas && ctx) {
+            const imgData = ctx.createImageData(doc.width, doc.height);
+            imgData.data.set(rawBytes);
+            ctx.putImageData(imgData, 0, 0);
+            initializedLayersRef.current.add(layer.id);
+          }
+        })
+      );
     };
+
+    hydrate().catch((error) => console.error('Failed to hydrate layer cache:', error));
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [doc.layers, doc.width, doc.height, layerCanvasesRef, viewport]);
+  }, [doc.layers, doc.width, doc.height, layerCanvasesRef, rustSyncRevision]);
 
   return (
     <>

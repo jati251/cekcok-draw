@@ -745,6 +745,9 @@ impl Document {
 
     /// Renders one layer without applying its display properties. The webview applies
     /// opacity, visibility, and blend mode so it can keep the existing layer UI.
+    ///
+    /// Uses tile-row bulk memcpy instead of pixel-by-pixel HashMap lookups for
+    /// O(tiles) performance instead of O(width × height).
     pub fn render_layer_viewport_rgba(
         &self,
         layer_id: &str,
@@ -756,24 +759,57 @@ impl Document {
         let layer = self.layers.iter().find(|layer| layer.id == layer_id)?;
         let mut buffer = vec![0u8; (vw * vh * 4) as usize];
 
-        for vy_offset in 0..vh {
-            let doc_y = vy + vy_offset as i32;
-            if !(0..self.height as i32).contains(&doc_y) {
-                continue;
-            }
+        let ts = TILE_SIZE as i32;
+        let vw_i = vw as i32;
+        let vh_i = vh as i32;
 
-            for vx_offset in 0..vw {
-                let doc_x = vx + vx_offset as i32;
-                if !(0..self.width as i32).contains(&doc_x) {
+        // Compute tile coordinate range that overlaps the viewport
+        let tile_x_min = (vx.max(0)) / ts;
+        let tile_x_max = ((vx + vw_i - 1).min(self.width as i32 - 1)) / ts;
+        let tile_y_min = (vy.max(0)) / ts;
+        let tile_y_max = ((vy + vh_i - 1).min(self.height as i32 - 1)) / ts;
+
+        for ty in tile_y_min..=tile_y_max {
+            for tx in tile_x_min..=tile_x_max {
+                let coord = TileCoord::new(tx, ty, 0);
+                let tile = match layer.grid.get_tile(&coord) {
+                    Some(t) => t,
+                    None => continue, // Empty tile = transparent, buffer already zeroed
+                };
+
+                // Pixel range this tile covers in document space
+                let tile_doc_x0 = tx * ts;
+                let tile_doc_y0 = ty * ts;
+                let tile_doc_x1 = tile_doc_x0 + ts; // exclusive
+                let tile_doc_y1 = tile_doc_y0 + ts;
+
+                // Clamp to viewport + document bounds
+                let copy_doc_x0 = tile_doc_x0.max(vx).max(0);
+                let copy_doc_x1 = tile_doc_x1.min(vx + vw_i).min(self.width as i32);
+                let copy_doc_y0 = tile_doc_y0.max(vy).max(0);
+                let copy_doc_y1 = tile_doc_y1.min(vy + vh_i).min(self.height as i32);
+
+                if copy_doc_x0 >= copy_doc_x1 || copy_doc_y0 >= copy_doc_y1 {
                     continue;
                 }
 
-                let coord = TileCoord::new(doc_x / TILE_SIZE as i32, doc_y / TILE_SIZE as i32, 0);
-                if let Some(tile) = layer.grid.get_tile(&coord) {
-                    let local_x = (doc_x % TILE_SIZE as i32) as u32;
-                    let local_y = (doc_y % TILE_SIZE as i32) as u32;
-                    let index = ((vy_offset * vw + vx_offset) * 4) as usize;
-                    buffer[index..index + 4].copy_from_slice(&tile.get_pixel(local_x, local_y));
+                let row_pixels = (copy_doc_x1 - copy_doc_x0) as usize;
+                let row_bytes = row_pixels * 4;
+
+                for doc_y in copy_doc_y0..copy_doc_y1 {
+                    let local_y = (doc_y - tile_doc_y0) as usize;
+                    let local_x0 = (copy_doc_x0 - tile_doc_x0) as usize;
+
+                    let tile_row_start = (local_y * TILE_SIZE as usize + local_x0) * 4;
+                    let tile_row_end = tile_row_start + row_bytes;
+
+                    let buf_x = (copy_doc_x0 - vx) as usize;
+                    let buf_y = (doc_y - vy) as usize;
+                    let buf_start = (buf_y * vw as usize + buf_x) * 4;
+                    let buf_end = buf_start + row_bytes;
+
+                    buffer[buf_start..buf_end]
+                        .copy_from_slice(&tile.data[tile_row_start..tile_row_end]);
                 }
             }
         }

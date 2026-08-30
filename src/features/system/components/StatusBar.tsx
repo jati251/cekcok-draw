@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
+import { formatPercentage } from '@/utils/formatters';
 import { HardDrive, MousePointer, Sparkles, PenTool } from 'lucide-react';
 
 interface Props {
@@ -26,7 +27,7 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
         <div className="flex items-center space-x-1.5 font-mono text-[10px]">
           <span className="text-zinc-500 uppercase font-sans font-semibold">Zoom</span>
           <span className="text-zinc-200 font-semibold px-1 py-0.2 rounded bg-ps-surface border border-ps-border/50">
-            {Math.round(zoom * 100)}%
+            {formatPercentage(zoom)}
           </span>
         </div>
 

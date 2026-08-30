@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '@/types';
 import { getOrCreateStamp } from '@/features/canvas/utils/stamp';
 import { applyLocalBlur, applyLocalSmudge } from '@/features/canvas/utils/smudgeBlur';
 import {
   computeEffectiveAlpha,
   computeEffectiveRadius,
+  simplifyStrokePoints,
   StrokeStabilizer,
 } from '@/features/canvas/utils/tablet';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -28,8 +29,10 @@ export const useCanvasDrawing = ({
   liveStrokeCanvasRef,
   layerCanvasesRef,
 }: UseCanvasDrawingProps) => {
-  const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
+  // Mutable ref for stroke points — avoids O(n²) array copy on each pointer move
+  // and eliminates spurious re-renders during the drawing hot loop.
+  const strokePointsRef = useRef<BrushPoint[]>([]);
+  const isDrawingRef = useRef(false);
   const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
   const selection = useEditorStore((s) => s.selection);
   const stabilizerRef = useRef<StrokeStabilizer>(new StrokeStabilizer());
@@ -405,7 +408,7 @@ export const useCanvasDrawing = ({
     [brushSettings.smoothing]
   );
 
-  const bakeStrokeToLayer = useCallback(async () => {
+  const bakeStrokeToLayer = useCallback(() => {
     const strokeCanvas = liveStrokeCanvasRef.current;
     const activeLayerId = doc?.active_layer_id;
     const activeCanvas = activeLayerId
@@ -416,6 +419,7 @@ export const useCanvasDrawing = ({
         ) as HTMLCanvasElement | null)
       : null;
 
+    // ── Phase 1: Synchronous canvas bake (instant visual feedback) ──
     if (activeCanvas && strokeCanvas && doc) {
       const mainCtx = activeCanvas.getContext('2d');
       if (mainCtx) {
@@ -438,7 +442,13 @@ export const useCanvasDrawing = ({
 
     bumpCanvasRevision();
 
-    if (strokePoints.length > 0) {
+    // ── Phase 2: Fire-and-forget Rust backend sync (non-blocking) ──
+    const points = strokePointsRef.current;
+    if (points.length > 0) {
+      // Snapshot the points array before clearing the ref
+      const pointsCopy = points;
+      strokePointsRef.current = [];
+
       let color = brushSettings.color;
       if (activeTool === 'eraser') color = [0, 0, 0, 0];
       else if (activeTool === 'dodge') color = [255, 255, 255, 255];
@@ -458,14 +468,18 @@ export const useCanvasDrawing = ({
                   : `${brushSettings.type.replace('_', ' ')} Stroke`;
 
       useDocumentStore.getState().pushCanvasSnapshot(actionName);
-      await bridge.applyBrushStroke(
-        strokePoints,
-        { ...brushSettings, color },
-        activeLayerId || undefined,
-        actionName
-      );
-      await useDocumentStore.getState().refreshHistory();
-      setStrokePoints([]);
+
+      // Non-blocking: IPC to Rust runs in background with simplified point curve, UI stays responsive
+      const decimatedPoints = simplifyStrokePoints(pointsCopy);
+      bridge
+        .applyBrushStroke(
+          decimatedPoints,
+          { ...brushSettings, color },
+          activeLayerId || undefined,
+          actionName
+        )
+        .then(() => useDocumentStore.getState().refreshHistory())
+        .catch((err) => console.error('Backend stroke sync failed:', err));
     }
   }, [
     activeTool,
@@ -475,30 +489,27 @@ export const useCanvasDrawing = ({
     doc,
     layerCanvasesRef,
     liveStrokeCanvasRef,
-    strokePoints,
   ]);
 
   const startStroke = useCallback(
     (rawPoint: BrushPoint) => {
       stabilizerRef.current.reset(rawPoint);
-      setIsDrawing(true);
-      setStrokePoints([rawPoint]);
+      isDrawingRef.current = true;
+      strokePointsRef.current = [rawPoint];
       drawInitialDot(rawPoint);
     },
     [drawInitialDot]
   );
 
-  const endStroke = useCallback(async () => {
-    setIsDrawing(false);
+  const endStroke = useCallback(() => {
+    isDrawingRef.current = false;
     stabilizerRef.current.reset();
-    await bakeStrokeToLayer();
+    bakeStrokeToLayer();
   }, [bakeStrokeToLayer]);
 
   return {
-    strokePoints,
-    setStrokePoints,
-    isDrawing,
-    setIsDrawing,
+    strokePointsRef,
+    isDrawingRef,
     startStroke,
     endStroke,
     drawInitialDot,

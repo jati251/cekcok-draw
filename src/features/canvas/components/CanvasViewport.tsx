@@ -92,8 +92,8 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
   } = useVectorInteractions({ doc, layerCanvasesRef });
 
   const {
-    isDrawing,
-    setStrokePoints,
+    isDrawingRef,
+    strokePointsRef,
     startStroke,
     endStroke,
     drawStrokeSegment,
@@ -364,6 +364,42 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
       return;
     }
 
+    if (isDrawingRef.current) {
+      // High-performance hot drawing loop: bypass React state updates during active stroke
+      const coalescedEvents =
+        typeof e.nativeEvent.getCoalescedEvents === 'function'
+          ? e.nativeEvent.getCoalescedEvents()
+          : [e.nativeEvent];
+
+      let lastPt =
+        strokePointsRef.current.length > 0
+          ? strokePointsRef.current[strokePointsRef.current.length - 1]
+          : null;
+
+      for (const rawEv of coalescedEvents) {
+        const subDetails = extractPointerDetails(rawEv);
+        const subCanvasPos = screenToCanvas(subDetails.point.x, subDetails.point.y);
+        const rawSubPt: BrushPoint = {
+          x: subCanvasPos.x,
+          y: subCanvasPos.y,
+          pressure: subDetails.point.pressure,
+          tiltX: subDetails.point.tiltX,
+          tiltY: subDetails.point.tiltY,
+          twist: subDetails.point.twist,
+          pointerType: subDetails.point.pointerType,
+        };
+        const smoothed = processSmoothPoint(rawSubPt);
+
+        if (lastPt) {
+          drawStrokeSegment(lastPt, smoothed);
+        }
+        lastPt = smoothed;
+        // O(1) amortized push — no array copy, no re-render
+        strokePointsRef.current.push(smoothed);
+      }
+      return;
+    }
+
     const { telemetry } = extractPointerDetails(e);
     setTabletTelemetry(telemetry);
 
@@ -405,42 +441,6 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
         path: [...selection.path, { x: pos.x, y: pos.y }],
       });
       return;
-    }
-
-    if (isDrawing) {
-      // Extract high-frequency sub-frame coalesced tablet events if available
-      const coalescedEvents =
-        typeof e.nativeEvent.getCoalescedEvents === 'function'
-          ? e.nativeEvent.getCoalescedEvents()
-          : [e.nativeEvent];
-
-      setStrokePoints((prev) => {
-        let lastPt = prev.length > 0 ? prev[prev.length - 1] : null;
-        const newPoints: BrushPoint[] = [];
-
-        for (const rawEv of coalescedEvents) {
-          const subDetails = extractPointerDetails(rawEv);
-          const subCanvasPos = screenToCanvas(subDetails.point.x, subDetails.point.y);
-          const rawSubPt: BrushPoint = {
-            x: subCanvasPos.x,
-            y: subCanvasPos.y,
-            pressure: subDetails.point.pressure,
-            tiltX: subDetails.point.tiltX,
-            tiltY: subDetails.point.tiltY,
-            twist: subDetails.point.twist,
-            pointerType: subDetails.point.pointerType,
-          };
-          const smoothed = processSmoothPoint(rawSubPt);
-
-          if (lastPt) {
-            drawStrokeSegment(lastPt, smoothed);
-          }
-          lastPt = smoothed;
-          newPoints.push(smoothed);
-        }
-
-        return [...prev, ...newPoints];
-      });
     }
   };
 
@@ -496,7 +496,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
       return;
     }
 
-    if (isDrawing) {
+    if (isDrawingRef.current) {
       endStroke();
     }
   };

@@ -6,7 +6,7 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     let app_menu = SubmenuBuilder::new(app, "CekcokDraw")
         .about(Some(tauri::menu::AboutMetadata {
             name: Some("CekcokDraw".into()),
-            version: Some("0.3.2".into()),
+            version: Some("0.3.3".into()),
             authors: Some(vec!["Jati Suryo".into()]),
             comments: Some("High-Performance Raster Graphics Studio".into()),
             ..Default::default()

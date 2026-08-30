@@ -15,6 +15,9 @@ interface DocumentState {
   isLoading: boolean;
   error: string | null;
   canvasRevision: number;
+  rustSyncRevision: number;
+  /** Pre-fetched layer pixels from combined undo/redo IPC — consumed once by LayerStack */
+  pendingLayerPixels: Map<string, Uint8ClampedArray> | null;
 
   initDocument: (
     title?: string,
@@ -40,6 +43,7 @@ interface DocumentState {
   jumpToHistoryIndex: (index: number) => Promise<void>;
   refreshHistory: () => Promise<void>;
   bumpCanvasRevision: () => void;
+  syncLayersFromRust: () => void;
   resizeCanvas: (
     newWidth: number,
     newHeight: number,
@@ -65,9 +69,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   isLoading: false,
   error: null,
   canvasRevision: 0,
+  rustSyncRevision: 0,
+  pendingLayerPixels: null,
 
   bumpCanvasRevision: () => {
     set((state) => ({ canvasRevision: state.canvasRevision + 1 }));
+  },
+
+  syncLayersFromRust: () => {
+    set((state) => ({
+      rustSyncRevision: state.rustSyncRevision + 1,
+      canvasRevision: state.canvasRevision + 1,
+    }));
   },
 
   pushCanvasSnapshot: (description: string) => {
@@ -87,6 +100,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         historyIndex: history.length - 1,
         isLoading: false,
         canvasRevision: get().canvasRevision + 1,
+        rustSyncRevision: get().rustSyncRevision + 1,
       });
       if (showToast) {
         toast.success('Document Created', `${title} (${width}×${height}px)`);
@@ -298,13 +312,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   triggerUndo: async () => {
     try {
-      const doc = await bridge.undo();
-      const history = await bridge.getHistory();
+      const result = await bridge.undoWithLayers();
       set({
-        doc,
-        history,
-        historyIndex: history.length - 1,
+        doc: result.doc,
+        history: result.history,
+        historyIndex: result.history.length - 1,
         canvasRevision: get().canvasRevision + 1,
+        rustSyncRevision: get().rustSyncRevision + 1,
+        pendingLayerPixels: result.layerPixels,
       });
     } catch (err) {
       set({ error: String(err) });
@@ -313,13 +328,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   triggerRedo: async () => {
     try {
-      const doc = await bridge.redo();
-      const history = await bridge.getHistory();
+      const result = await bridge.redoWithLayers();
       set({
-        doc,
-        history,
-        historyIndex: history.length - 1,
+        doc: result.doc,
+        history: result.history,
+        historyIndex: result.history.length - 1,
         canvasRevision: get().canvasRevision + 1,
+        rustSyncRevision: get().rustSyncRevision + 1,
+        pendingLayerPixels: result.layerPixels,
       });
     } catch (err) {
       set({ error: String(err) });

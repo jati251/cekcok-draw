@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
+import { useModalDismiss } from '@/hooks';
+import { clamp } from '@/utils/math';
 import {
   X,
   Maximize,
@@ -35,6 +37,8 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [extensionColor, setExtensionColor] = useState<string>('white');
   const [showClippingWarning, setShowClippingWarning] = useState<boolean>(false);
 
+  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
+
   if (!isOpen || !doc) return null;
 
   // Convert input values to final pixel dimensions
@@ -61,8 +65,8 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
 
     return {
-      targetW: Math.max(16, Math.min(16384, Math.round(w))),
-      targetH: Math.max(16, Math.min(16384, Math.round(h))),
+      targetW: clamp(Math.round(w), 16, 16384),
+      targetH: clamp(Math.round(h), 16, 16384),
     };
   };
 
@@ -99,7 +103,10 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
+    >
       <div className="w-[460px] bg-ps-panel/95 backdrop-blur-xl border border-ps-border rounded-xl shadow-studio overflow-hidden flex flex-col">
         {/* Header */}
         <div className="h-11 px-5 bg-ps-header/90 border-b border-ps-border flex items-center justify-between">
@@ -116,164 +123,158 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Modal Body */}
-        {showClippingWarning ? (
-          <div className="p-6 space-y-4 text-xs text-zinc-300">
-            <div className="p-4 bg-amber-950/30 border border-amber-800/50 rounded-xl flex items-start space-x-3 text-amber-200">
-              <AlertTriangle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-semibold text-amber-300 mb-1">Clipping Warning</h4>
-                <p className="text-zinc-300 text-[11px] leading-relaxed">
-                  The new canvas size is smaller than the current canvas size; some clipping will
-                  occur. Do you want to proceed?
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2.5 pt-2">
-              <button
-                onClick={() => setShowClippingWarning(false)}
-                className="px-4 py-1.5 rounded-md bg-ps-surface border border-ps-border text-zinc-300 hover:bg-ps-hover text-xs font-medium transition-all active:scale-95"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApply}
-                className="px-5 py-1.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs shadow-md transition-all active:scale-95"
-              >
-                Proceed & Clip
-              </button>
-            </div>
+        <div className="p-5 space-y-4">
+          {/* Current Dimensions */}
+          <div className="p-3 bg-ps-surface/60 border border-ps-border/50 rounded-lg flex justify-between items-center text-xs">
+            <span className="text-zinc-400">Current Canvas Dimensions:</span>
+            <span className="font-semibold text-zinc-200">
+              {doc.width} × {doc.height} px
+            </span>
           </div>
-        ) : (
-          <div className="p-5 space-y-4 text-xs text-zinc-300">
-            {/* Current Dimensions Summary */}
-            <div className="p-3 rounded-lg bg-ps-surface/50 border border-ps-border/60 flex justify-between items-center text-[11px]">
-              <span className="text-zinc-400">Current Canvas:</span>
-              <span className="font-mono text-zinc-200 font-medium">
-                {doc.width} × {doc.height} px ({doc.dpi || 72} DPI)
-              </span>
+
+          {/* New Dimensions */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-200">New Canvas Dimensions</span>
+              <div className="flex space-x-1">
+                {(['pixels', 'percent', 'inches', 'cm'] as Unit[]).map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => setUnit(u)}
+                    className={`px-2 py-0.5 text-[11px] rounded transition-all capitalize ${
+                      unit === u
+                        ? 'bg-blue-600/90 text-white font-medium shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-surface'
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* New Dimensions Setup */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  New Dimensions
-                </span>
-                <select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value as Unit)}
-                  className="bg-ps-surface border border-ps-border rounded-md px-2 py-0.5 text-zinc-200 text-[11px] focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner-light"
-                >
-                  <option value="pixels">Pixels</option>
-                  <option value="percent">Percent (%)</option>
-                  <option value="inches">Inches</option>
-                  <option value="cm">Centimeters (cm)</option>
-                </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1">Width</label>
+                <input
+                  type="number"
+                  value={widthVal}
+                  onChange={(e) => setWidthVal(Number(e.target.value))}
+                  className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
+                />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-zinc-400 block mb-1 text-[11px]">Width ({unit}):</label>
-                  <input
-                    type="number"
-                    value={widthVal}
-                    onChange={(e) => setWidthVal(Number(e.target.value))}
-                    className="w-full bg-ps-surface border border-ps-border rounded-md px-3 py-1.5 text-zinc-100 font-mono focus:outline-none focus:border-blue-500 shadow-inner-light"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1 text-[11px]">Height ({unit}):</label>
-                  <input
-                    type="number"
-                    value={heightVal}
-                    onChange={(e) => setHeightVal(Number(e.target.value))}
-                    className="w-full bg-ps-surface border border-ps-border rounded-md px-3 py-1.5 text-zinc-100 font-mono focus:outline-none focus:border-blue-500 shadow-inner-light"
-                  />
-                </div>
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1">Height</label>
+                <input
+                  type="number"
+                  value={heightVal}
+                  onChange={(e) => setHeightVal(Number(e.target.value))}
+                  className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
+                />
               </div>
+            </div>
 
-              <label className="flex items-center space-x-2 text-zinc-300 cursor-pointer pt-1">
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center space-x-2 text-xs text-zinc-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isRelative}
                   onChange={(e) => setIsRelative(e.target.checked)}
-                  className="rounded bg-ps-surface border-ps-border text-blue-500 focus:ring-0 cursor-pointer w-4 h-4"
+                  className="rounded border-ps-border bg-ps-surface text-blue-600 focus:ring-0"
                 />
-                <span className="text-[11px]">Relative (Offset by values)</span>
+                <span>Relative Adjustment</span>
               </label>
-            </div>
 
-            {/* Anchor Selector & Extension Color */}
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-ps-border/60">
-              <div>
-                <label className="text-zinc-400 block mb-2 text-[10px] uppercase font-semibold tracking-wider">
-                  Anchor Direction
-                </label>
-                <div className="grid grid-cols-3 gap-1 w-24 h-24 p-1.5 bg-ps-surface/80 rounded-lg border border-ps-border/70 shadow-inner-light">
-                  {anchorGrid.map((cell) => {
-                    const isSelected = anchor[0] === cell.coords[0] && anchor[1] === cell.coords[1];
-                    return (
-                      <button
-                        key={cell.label}
-                        type="button"
-                        onClick={() => setAnchor(cell.coords)}
-                        title={cell.label}
-                        className={`flex items-center justify-center rounded-md transition-all ${
-                          isSelected
-                            ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
-                            : 'hover:bg-ps-hover text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {cell.icon}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
-                <label className="text-zinc-400 block text-[10px] uppercase font-semibold tracking-wider">
-                  Extension Color
-                </label>
-                <select
-                  value={extensionColor}
-                  onChange={(e) => setExtensionColor(e.target.value)}
-                  className="w-full bg-ps-surface border border-ps-border rounded-md px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-blue-500 cursor-pointer shadow-inner-light"
-                >
-                  <option value="white">White (#FFFFFF)</option>
-                  <option value="black">Black (#000000)</option>
-                  <option value="transparent">Transparent Alpha</option>
-                  <option value="foreground">Foreground Color</option>
-                  <option value="background">Background Color</option>
-                </select>
-
-                <div className="p-2.5 rounded-lg bg-ps-header/60 border border-ps-border/40 text-[10px] text-zinc-400 flex justify-between items-center">
-                  <span>Target:</span>
-                  <span className="text-blue-400 font-mono font-semibold">
-                    {targetW} × {targetH} px
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="flex space-x-2 pt-3 border-t border-ps-border/60">
-              <button
-                onClick={onClose}
-                className="flex-1 py-1.5 rounded-md bg-ps-surface border border-ps-border text-zinc-300 hover:bg-ps-hover text-xs font-medium transition-all active:scale-95"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApply}
-                className="flex-1 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md transition-all active:scale-95 border border-blue-400/30"
-              >
-                Resize Canvas
-              </button>
+              {unit !== 'pixels' && (
+                <span className="text-[11px] text-zinc-400 font-mono">
+                  = {targetW} × {targetH} px
+                </span>
+              )}
             </div>
           </div>
-        )}
+
+          {/* Anchor Direction Grid */}
+          <div className="pt-2 border-t border-ps-border/50 flex items-center justify-between">
+            <div>
+              <span className="block text-xs font-semibold text-zinc-200 mb-0.5">
+                Anchor Placement
+              </span>
+              <span className="block text-[11px] text-zinc-400">
+                Direction to expand/clip content
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1 bg-ps-surface p-1.5 rounded-lg border border-ps-border">
+              {anchorGrid.map((item, idx) => {
+                const isSelected = anchor[0] === item.coords[0] && anchor[1] === item.coords[1];
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setAnchor(item.coords)}
+                    title={item.label}
+                    className={`w-7 h-7 flex items-center justify-center rounded transition-all ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-ps-hover'
+                    }`}
+                  >
+                    {item.icon}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Canvas Extension Color */}
+          <div className="pt-2 border-t border-ps-border/50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-200">Extension Color</span>
+            <select
+              value={extensionColor}
+              onChange={(e) => setExtensionColor(e.target.value)}
+              className="bg-ps-surface border border-ps-border rounded-lg px-2.5 py-1 text-xs text-zinc-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="white">White</option>
+              <option value="black">Black</option>
+              <option value="foreground">Foreground Color</option>
+              <option value="background">Background Color</option>
+              <option value="transparent">Transparent</option>
+            </select>
+          </div>
+
+          {/* Clipping Warning Alert */}
+          {showClippingWarning && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/40 rounded-lg flex items-start space-x-2.5 text-xs text-amber-200 animate-in fade-in">
+              <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold block">Warning: Clipping Will Occur</span>
+                <span className="text-[11px] text-amber-200/80 leading-relaxed block mt-0.5">
+                  The new canvas size is smaller than the current canvas size. Some content will be
+                  clipped and permanently discarded.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex space-x-2 pt-3 border-t border-ps-border/50">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-ps-border rounded-lg text-xs font-semibold text-zinc-300 hover:bg-ps-hover hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className={`flex-1 px-4 py-2 text-white rounded-lg text-xs font-semibold shadow-md transition-colors ${
+                showClippingWarning
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
+              }`}
+            >
+              {showClippingWarning ? 'Proceed & Clip' : 'Apply Resize'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

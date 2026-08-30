@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { TextSettings } from '@/types';
-import { AlignLeft, AlignCenter, AlignRight, ChevronDown, Check } from 'lucide-react';
+import { useClickOutside } from '@/hooks';
+import { AlignLeft, AlignCenter, AlignRight, ChevronDown, Check, Type } from 'lucide-react';
 
 interface Props {
   textSettings: TextSettings;
@@ -19,35 +20,27 @@ export const TextOptions: React.FC<Props> = ({ textSettings, setTextSettings }) 
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handleOutsideClick);
-    return () => window.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+  useClickOutside(menuRef, () => setIsOpen(false), isOpen);
 
   const selectedFont =
     FONT_OPTIONS.find((f) => f.id === textSettings.fontFamily) || FONT_OPTIONS[0];
 
   return (
-    <div className="flex items-center space-x-4 flex-shrink-0">
-      {/* Custom Font Family Dropdown */}
-      <div className="relative" ref={menuRef}>
+    <div className="flex items-center gap-2 flex-shrink-0">
+      {/* 1. Custom Font Family Dropdown */}
+      <div className="relative h-6.5 flex items-center" ref={menuRef}>
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="bg-ps-panel border border-ps-border rounded px-2.5 py-1 text-zinc-200 text-[11px] font-medium flex items-center space-x-1.5 hover:bg-ps-hover hover:border-zinc-600 transition-colors shadow-sm"
+          className="bg-zinc-800/80 border border-zinc-700/70 rounded px-2 h-6.5 text-[11px] font-medium flex items-center space-x-1.5 hover:bg-zinc-700/80 transition-colors shadow-xs"
         >
-          <span className="text-zinc-400 text-[10px]">Font:</span>
-          <span className="font-semibold text-white">{selectedFont.label}</span>
-          <ChevronDown size={12} className="text-zinc-400" />
+          <Type size={11} className="text-zinc-400" />
+          <span className="font-semibold text-zinc-100">{selectedFont.label}</span>
+          <ChevronDown size={11} className="text-zinc-400" />
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 w-44 bg-ps-panel border border-ps-border rounded-lg shadow-2xl z-50 py-1 animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute top-full left-0 mt-1 w-44 bg-zinc-900 border border-zinc-700 rounded-md shadow-2xl z-50 py-1 animate-in fade-in zoom-in-95 duration-100">
             {FONT_OPTIONS.map((f) => {
               const isSelected = f.id === textSettings.fontFamily;
               return (
@@ -61,7 +54,7 @@ export const TextOptions: React.FC<Props> = ({ textSettings, setTextSettings }) 
                   className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center justify-between transition-colors ${
                     isSelected
                       ? 'bg-blue-600 text-white font-medium'
-                      : 'text-zinc-300 hover:bg-ps-hover hover:text-white'
+                      : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                   }`}
                   style={{ fontFamily: f.id }}
                 >
@@ -74,57 +67,61 @@ export const TextOptions: React.FC<Props> = ({ textSettings, setTextSettings }) 
         )}
       </div>
 
-      {/* Font Size */}
-      <div className="flex items-center space-x-2">
-        <span className="text-zinc-400 text-[11px]">Size:</span>
+      {/* 2. Font Size */}
+      <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
+        <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
+          Size
+        </span>
         <input
           type="range"
           min="12"
           max="144"
           value={textSettings.fontSize}
           onChange={(e) => setTextSettings({ fontSize: Number(e.target.value) })}
-          className="w-16 accent-blue-500 cursor-pointer h-1.5 bg-zinc-700 rounded-lg appearance-none"
+          className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
         />
-        <span className="font-mono text-[11px] w-8 text-zinc-200">{textSettings.fontSize}pt</span>
+        <span className="font-mono text-[11px] w-8 text-zinc-200 text-right font-medium">
+          {textSettings.fontSize}pt
+        </span>
       </div>
 
-      {/* Alignment */}
-      <div className="flex items-center bg-ps-panel border border-ps-border rounded p-0.5 space-x-1">
+      {/* 3. Alignment Segmented Control */}
+      <div className="flex items-center bg-zinc-800/80 border border-zinc-700/60 rounded p-0.5 space-x-0.5 h-6.5">
         <button
           type="button"
           onClick={() => setTextSettings({ align: 'left' })}
-          className={`p-1 rounded ${
+          className={`p-1 rounded-xs transition-colors ${
             textSettings.align === 'left'
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
           }`}
           title="Align Left"
         >
-          <AlignLeft size={13} />
+          <AlignLeft size={12} />
         </button>
         <button
           type="button"
           onClick={() => setTextSettings({ align: 'center' })}
-          className={`p-1 rounded ${
+          className={`p-1 rounded-xs transition-colors ${
             textSettings.align === 'center'
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
           }`}
           title="Align Center"
         >
-          <AlignCenter size={13} />
+          <AlignCenter size={12} />
         </button>
         <button
           type="button"
           onClick={() => setTextSettings({ align: 'right' })}
-          className={`p-1 rounded ${
+          className={`p-1 rounded-xs transition-colors ${
             textSettings.align === 'right'
-              ? 'bg-blue-600 text-white'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
           }`}
           title="Align Right"
         >
-          <AlignRight size={13} />
+          <AlignRight size={12} />
         </button>
       </div>
     </div>

@@ -1,11 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ToolType, BrushSettings } from '@/types';
-import { useEditorStore } from '@/stores/editorStore';
-import { computeEffectiveRadius } from '@/features/canvas/utils/tablet';
 
 interface Props {
   isHovering: boolean;
-  mousePos: { clientX: number; clientY: number } | null;
+  mousePos?: { clientX: number; clientY: number } | null;
   activeTool: ToolType;
   brushSettings: BrushSettings;
   zoom: number;
@@ -18,29 +16,36 @@ export const BrushCursorRing: React.FC<Props> = ({
   brushSettings,
   zoom,
 }) => {
-  const isDrawing = useEditorStore((s) => s.isDrawing);
-  const tabletTelemetry = useEditorStore((s) => s.tabletTelemetry);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  if (
-    !isHovering ||
-    !mousePos ||
-    (activeTool !== 'brush' &&
-      activeTool !== 'eraser' &&
-      activeTool !== 'dodge' &&
-      activeTool !== 'burn' &&
-      activeTool !== 'smudge' &&
-      activeTool !== 'blur')
-  ) {
+  // Real-time zero-latency hardware cursor tracking via direct DOM transform
+  useEffect(() => {
+    if (!isHovering) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (containerRef.current) {
+        containerRef.current.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0) translate(-50%, -50%)`;
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, [isHovering]);
+
+  const isDrawingTools =
+    activeTool === 'brush' ||
+    activeTool === 'eraser' ||
+    activeTool === 'dodge' ||
+    activeTool === 'burn' ||
+    activeTool === 'smudge' ||
+    activeTool === 'blur';
+
+  if (!isHovering || !isDrawingTools) {
     return null;
   }
 
   const baseRadius = brushSettings.size * 0.5;
-  const currentRadius =
-    isDrawing && tabletTelemetry.pressure > 0
-      ? computeEffectiveRadius(baseRadius, tabletTelemetry.pressure, brushSettings)
-      : baseRadius;
-
-  const brushScreenRadius = currentRadius * zoom;
+  const brushScreenRadius = Math.max(1.5, baseRadius * zoom);
   const brushInnerRadius = brushScreenRadius * brushSettings.hardness;
   const brushType = brushSettings.type || 'round_soft';
   const angle = brushSettings.angle ?? 45;
@@ -56,17 +61,21 @@ export const BrushCursorRing: React.FC<Props> = ({
             ? 'border-cyan-400'
             : 'border-white';
 
+  const initialX = mousePos?.clientX ?? -1000;
+  const initialY = mousePos?.clientY ?? -1000;
+
   return (
     <div
+      ref={containerRef}
       style={{
         position: 'fixed',
-        left: `${mousePos.clientX}px`,
-        top: `${mousePos.clientY}px`,
-        transform: 'translate(-50%, -50%)',
+        left: 0,
+        top: 0,
+        transform: `translate3d(${initialX}px, ${initialY}px, 0) translate(-50%, -50%)`,
         width: `${brushScreenRadius * 2}px`,
         height: `${brushScreenRadius * 2}px`,
       }}
-      className="pointer-events-none z-50 transition-none flex items-center justify-center"
+      className="pointer-events-none z-50 transition-none flex items-center justify-center will-change-transform"
     >
       {/* 1. Pixel Art: Square Cursor */}
       {brushType === 'pixel' && activeTool === 'brush' ? (

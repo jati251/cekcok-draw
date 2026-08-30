@@ -119,3 +119,25 @@ input[type='range']::-webkit-slider-thumb:active {
 .animate-marching-ants {
   animation: marchingAnts 0.6s linear infinite;
 }
+
+/* Tauri window drag region support */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+button,
+input,
+select,
+textarea,
+[data-no-drag] {
+  -webkit-app-region: no-drag;
+}
+
+/* Utility to hide scrollbars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

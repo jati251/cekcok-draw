@@ -4,6 +4,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { BRUSH_TYPES, BrushDefinition } from '@/config/brushes';
 import { BrushType } from '@/types';
 import * as bridge from '@/services/tauriBridge';
+import { useModalDismiss } from '@/hooks';
 
 interface Props {
   x: number;
@@ -14,6 +15,8 @@ interface Props {
 export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
   const { activeTool, brushSettings, setBrushSettings, selection, setSelection } = useEditorStore();
   const { doc, addNewLayer, bumpCanvasRevision } = useDocumentStore();
+
+  useModalDismiss({ onClose });
 
   const isBrushLike =
     activeTool === 'brush' ||
