@@ -54,7 +54,6 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
         e.preventDefault();
         handleApply();
       } else if (e.key === 'Escape') {
-        e.preventDefault();
         handleCancel();
       }
     };

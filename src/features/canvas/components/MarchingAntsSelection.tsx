@@ -9,7 +9,10 @@ export const MarchingAntsSelection: React.FC = () => {
   if (selection.path && selection.path.length > 2) {
     const pointsStr = selection.path.map((p) => `${p.x},${p.y}`).join(' ');
     return (
-      <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
+      <svg
+        id="react-marching-ants"
+        className="absolute inset-0 w-full h-full pointer-events-none z-40"
+      >
         <polygon
           points={pointsStr}
           fill="rgba(59, 130, 246, 0.15)"
@@ -36,6 +39,7 @@ export const MarchingAntsSelection: React.FC = () => {
 
   return (
     <div
+      id="react-marching-ants"
       style={{
         left: `${selection.x}px`,
         top: `${selection.y}px`,

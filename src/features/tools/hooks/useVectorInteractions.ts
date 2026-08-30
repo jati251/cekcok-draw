@@ -263,6 +263,14 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(originalBaseBufferRef.current, 0, 0);
       ctx.drawImage(moveBufferRef.current, dx, dy);
+
+      // Visually move the marching ants
+      if (selection && selection.active) {
+        const marchingAnts = document.getElementById('react-marching-ants');
+        if (marchingAnts) {
+          marchingAnts.style.transform = `translate(${dx}px, ${dy}px)`;
+        }
+      }
     },
     [doc, layerCanvasesRef]
   );
@@ -329,6 +337,20 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
               .catch(() => {});
           }
         }
+
+        // Reset transform and update selection bounds so marching ants follow the dropped pixels
+        const marchingAnts = document.getElementById('react-marching-ants');
+        if (marchingAnts) {
+          marchingAnts.style.transform = '';
+        }
+
+        useEditorStore
+          .getState()
+          .setSelection(
+            selection.path
+              ? { ...selection, path: selection.path.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
+              : { ...selection, x: selection.x + dx, y: selection.y + dy }
+          );
       } else {
         bridge
           .moveLayerContent(doc.active_layer_id, dx, dy)
