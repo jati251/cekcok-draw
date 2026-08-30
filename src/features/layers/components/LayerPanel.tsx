@@ -10,6 +10,8 @@ import {
   Unlock,
   Copy,
   ArrowDown,
+  ChevronUp,
+  ChevronDown,
   Shapes,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -30,6 +32,7 @@ export const LayerPanel: React.FC = () => {
     renameLayer,
     changeLayerBlendMode,
     mergeDown,
+    reorderLayer,
   } = useDocumentStore();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -260,6 +263,38 @@ export const LayerPanel: React.FC = () => {
               className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
             >
               <ArrowDown size={13} />
+            </button>
+          </Tooltip>
+
+          <div className="w-px h-4 bg-ps-border/60 mx-1" />
+
+          <Tooltip content="Move Up" position="top">
+            <button
+              onClick={() => {
+                if (activeLayer) {
+                  const idx = doc.layers.findIndex((l) => l.id === activeLayer.id);
+                  if (idx < doc.layers.length - 1) reorderLayer(activeLayer.id, idx + 1);
+                }
+              }}
+              disabled={!activeLayer || doc.layers[doc.layers.length - 1]?.id === activeLayer.id}
+              className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+              <ChevronUp size={14} />
+            </button>
+          </Tooltip>
+
+          <Tooltip content="Move Down" position="top">
+            <button
+              onClick={() => {
+                if (activeLayer) {
+                  const idx = doc.layers.findIndex((l) => l.id === activeLayer.id);
+                  if (idx > 0) reorderLayer(activeLayer.id, idx - 1);
+                }
+              }}
+              disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
+              className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+              <ChevronDown size={14} />
             </button>
           </Tooltip>
         </div>

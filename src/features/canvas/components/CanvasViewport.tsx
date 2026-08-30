@@ -615,6 +615,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
           ref={liveStrokeCanvasRef}
           width={doc.width}
           height={doc.height}
+          style={{ opacity: brushSettings.opacity }}
           className="absolute inset-0 pointer-events-none z-10"
         />
 

@@ -200,7 +200,9 @@ export const useCanvasDrawing = ({
             interpVelocity
           );
           const stepAlpha = computeEffectiveAlpha(
-            brushSettings.opacity * brushSettings.flow,
+            activeTool === 'eraser'
+              ? brushSettings.opacity * brushSettings.flow
+              : brushSettings.flow,
             interpPressure,
             brushSettings
           );
@@ -267,11 +269,7 @@ export const useCanvasDrawing = ({
           brushSettings,
           interpVelocity
         );
-        const stepAlpha = computeEffectiveAlpha(
-          brushSettings.opacity * brushSettings.flow,
-          interpPressure,
-          brushSettings
-        );
+        const stepAlpha = computeEffectiveAlpha(brushSettings.flow, interpPressure, brushSettings);
         ctx.globalAlpha = stepAlpha;
 
         const stamp = getOrCreateStamp(stepRadius, brushSettings, color);
@@ -309,7 +307,9 @@ export const useCanvasDrawing = ({
         p.velocity || 0
       );
       const effAlpha = computeEffectiveAlpha(
-        brushSettings.opacity * brushSettings.flow,
+        activeTool === 'eraser' || activeTool === 'blur' || activeTool === 'smudge'
+          ? brushSettings.opacity * brushSettings.flow
+          : brushSettings.flow,
         p.pressure,
         brushSettings
       );
@@ -425,7 +425,7 @@ export const useCanvasDrawing = ({
       if (mainCtx) {
         mainCtx.save();
         applySelectionClip(mainCtx);
-        mainCtx.globalAlpha = 1.0;
+        mainCtx.globalAlpha = brushSettings.opacity;
         if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
         else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
         else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';

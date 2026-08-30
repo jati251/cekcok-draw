@@ -226,7 +226,12 @@ impl BrushEngine {
         // Composite directly tile-by-tile into the SparseTileGrid
         let stroke_opacity = settings.opacity.clamp(0.0, 1.0);
         let color = settings.color;
-        let color_a = color[3] as f32 / 255.0;
+        let is_eraser = color[3] == 0;
+        let color_a = if is_eraser {
+            1.0
+        } else {
+            color[3] as f32 / 255.0
+        };
         let src_r = color[0] as f32 / 255.0;
         let src_g = color[1] as f32 / 255.0;
         let src_b = color[2] as f32 / 255.0;
@@ -255,17 +260,30 @@ impl BrushEngine {
 
                 let sa = final_a as f32 * (1.0 / 255.0);
                 let inv_sa = 1.0 - sa;
-                let out_a = sa + dst_a * inv_sa;
-                if out_a > 0.0001 {
-                    let inv_out_a = 1.0 / out_a;
-                    let out_r = (src_r * sa + dst_r * dst_a * inv_sa) * inv_out_a;
-                    let out_g = (src_g * sa + dst_g * dst_a * inv_sa) * inv_out_a;
-                    let out_b = (src_b * sa + dst_b * dst_a * inv_sa) * inv_out_a;
 
-                    dst_data[offset] = (out_r.clamp(0.0, 1.0) * 255.0) as u8;
-                    dst_data[offset + 1] = (out_g.clamp(0.0, 1.0) * 255.0) as u8;
-                    dst_data[offset + 2] = (out_b.clamp(0.0, 1.0) * 255.0) as u8;
-                    dst_data[offset + 3] = (out_a.clamp(0.0, 1.0) * 255.0) as u8;
+                if is_eraser {
+                    let out_a = dst_a * inv_sa;
+                    if out_a > 0.0001 {
+                        dst_data[offset + 3] = (out_a.clamp(0.0, 1.0) * 255.0) as u8;
+                    } else {
+                        dst_data[offset] = 0;
+                        dst_data[offset + 1] = 0;
+                        dst_data[offset + 2] = 0;
+                        dst_data[offset + 3] = 0;
+                    }
+                } else {
+                    let out_a = sa + dst_a * inv_sa;
+                    if out_a > 0.0001 {
+                        let inv_out_a = 1.0 / out_a;
+                        let out_r = (src_r * sa + dst_r * dst_a * inv_sa) * inv_out_a;
+                        let out_g = (src_g * sa + dst_g * dst_a * inv_sa) * inv_out_a;
+                        let out_b = (src_b * sa + dst_b * dst_a * inv_sa) * inv_out_a;
+
+                        dst_data[offset] = (out_r.clamp(0.0, 1.0) * 255.0) as u8;
+                        dst_data[offset + 1] = (out_g.clamp(0.0, 1.0) * 255.0) as u8;
+                        dst_data[offset + 2] = (out_b.clamp(0.0, 1.0) * 255.0) as u8;
+                        dst_data[offset + 3] = (out_a.clamp(0.0, 1.0) * 255.0) as u8;
+                    }
                 }
             }
             tile.is_dirty = true;
