@@ -3,6 +3,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as filters from '@/features/adjustments/utils/filters';
 import * as bridge from '@/services/tauriBridge';
+import { AdjustmentSlider } from './AdjustmentSlider';
 import {
   SunMedium,
   Sliders,
@@ -17,7 +18,7 @@ import {
 type AdjustmentTab = 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick';
 
 export const AdjustmentsPanel: React.FC = () => {
-  const { doc, bumpCanvasRevision, pushCanvasSnapshot } = useDocumentStore();
+  const doc = useDocumentStore((s) => s.doc);
   const { activeAdjustmentTab, setActiveAdjustmentTab } = useEditorStore();
 
   const currentTab: AdjustmentTab = activeAdjustmentTab || 'brightness';
@@ -43,24 +44,14 @@ export const AdjustmentsPanel: React.FC = () => {
   const activeLayerRef = useRef<string | null>(null);
 
   // Capture baseline layer image data
-  const captureBaseline = useCallback(() => {
+  const captureBaseline = useCallback(async () => {
     if (!doc || !doc.active_layer_id) return null;
-    const canvas = document.getElementById(
-      `layer-canvas-${doc.active_layer_id}`
-    ) as HTMLCanvasElement | null;
-    if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-
-    try {
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      baselineDataRef.current = data;
-      activeLayerRef.current = doc.active_layer_id;
-      return data;
-    } catch {
-      return null;
-    }
+    const bytes = await bridge.renderLayer(doc.active_layer_id);
+    if (!bytes) return null;
+    const data = new ImageData(new Uint8ClampedArray(bytes), doc.width, doc.height);
+    baselineDataRef.current = data;
+    activeLayerRef.current = doc.active_layer_id;
+    return data;
   }, [doc]);
 
   // Reset baseline when active layer changes
@@ -145,73 +136,16 @@ export const AdjustmentsPanel: React.FC = () => {
     }
   }, [currentTab, renderHistogram]);
 
-  // Realtime Live Preview Execution
+  // Realtime preview is intentionally deferred in the single Rust-fed display
+  // canvas model: the filtered result appears when Apply commits to Rust.
   const applyLivePreview = useCallback(
     (
-      tab: AdjustmentTab,
-      params?: { b?: number; c?: number; h?: number; s?: number; l?: number; r?: number }
+      _tab: AdjustmentTab,
+      _params?: { b?: number; c?: number; h?: number; s?: number; l?: number; r?: number }
     ) => {
-      if (!doc || !doc.active_layer_id) return;
-      const canvas = document.getElementById(
-        `layer-canvas-${doc.active_layer_id}`
-      ) as HTMLCanvasElement | null;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      let base = baselineDataRef.current;
-      if (!base) {
-        base = captureBaseline();
-        if (!base) return;
-      }
-
-      // Restore baseline first
-      ctx.putImageData(base, 0, 0);
-
-      const bVal = params?.b ?? brightness;
-      const cVal = params?.c ?? contrast;
-      const hVal = params?.h ?? hue;
-      const sVal = params?.s ?? saturation;
-      const lVal = params?.l ?? lightness;
-      const rVal = params?.r ?? blurRadius;
-
-      if (tab === 'brightness' && (bVal !== 0 || cVal !== 0)) {
-        filters.applyBrightnessContrast(ctx, doc.width, doc.height, bVal, cVal);
-      } else if (tab === 'huesat' && (hVal !== 0 || sVal !== 0 || lVal !== 0)) {
-        filters.applyHueSaturation(ctx, doc.width, doc.height, hVal, sVal, lVal);
-      } else if (tab === 'blur' && rVal > 0) {
-        filters.applyGaussianBlur(ctx, doc.width, doc.height, rVal);
-      } else if (tab === 'levels') {
-        filters.applyLevels(
-          ctx,
-          doc.width,
-          doc.height,
-          inBlack,
-          inGamma,
-          inWhite,
-          outBlack,
-          outWhite
-        );
-      }
-
-      bumpCanvasRevision();
+      // no-op
     },
-    [
-      blurRadius,
-      brightness,
-      bumpCanvasRevision,
-      captureBaseline,
-      contrast,
-      doc,
-      hue,
-      inBlack,
-      inGamma,
-      inWhite,
-      lightness,
-      outBlack,
-      outWhite,
-      saturation,
-    ]
+    []
   );
 
   // Commit / Apply button
@@ -219,7 +153,6 @@ export const AdjustmentsPanel: React.FC = () => {
     if (!doc || !doc.active_layer_id) return;
 
     if (currentTab === 'brightness') {
-      pushCanvasSnapshot(`Brightness (${brightness}) / Contrast (${contrast})`);
       await bridge
         .applyLayerFilter({
           type: 'brightness_contrast',
@@ -229,7 +162,6 @@ export const AdjustmentsPanel: React.FC = () => {
         })
         .catch(() => {});
     } else if (currentTab === 'huesat') {
-      pushCanvasSnapshot(`Hue (${hue}°) / Saturation (${saturation})`);
       await bridge
         .applyLayerFilter({
           type: 'hue_saturation',
@@ -240,7 +172,6 @@ export const AdjustmentsPanel: React.FC = () => {
         })
         .catch(() => {});
     } else if (currentTab === 'levels') {
-      pushCanvasSnapshot('Levels Adjustment');
       await bridge
         .applyLayerFilter({
           type: 'levels',
@@ -253,7 +184,6 @@ export const AdjustmentsPanel: React.FC = () => {
         })
         .catch(() => {});
     } else if (currentTab === 'blur') {
-      pushCanvasSnapshot(`Gaussian Blur (${blurRadius}px)`);
       await bridge
         .applyLayerFilter({
           type: 'gaussian_blur',
@@ -265,7 +195,9 @@ export const AdjustmentsPanel: React.FC = () => {
 
     // Refresh baseline with new state
     baselineDataRef.current = null;
-    captureBaseline();
+    await captureBaseline();
+    useDocumentStore.getState().requestRepaint();
+    useDocumentStore.getState().refreshHistory();
     histogramRef.current = [];
     if (currentTab === 'levels') renderHistogram();
   };
@@ -273,18 +205,7 @@ export const AdjustmentsPanel: React.FC = () => {
   // Revert / Reset
   const handleReset = () => {
     if (!doc || !doc.active_layer_id) return;
-    if (baselineDataRef.current) {
-      const canvas = document.getElementById(
-        `layer-canvas-${doc.active_layer_id}`
-      ) as HTMLCanvasElement | null;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.putImageData(baselineDataRef.current, 0, 0);
-          bumpCanvasRevision();
-        }
-      }
-    }
+    baselineDataRef.current = null;
 
     setBrightness(0);
     setContrast(0);
@@ -298,28 +219,19 @@ export const AdjustmentsPanel: React.FC = () => {
     setOutBlack(0);
     setOutWhite(255);
 
+    useDocumentStore.getState().requestRepaint();
     if (currentTab === 'levels') renderHistogram();
   };
 
   // Quick Action Filters
   const handleQuickFilter = async (type: 'invert' | 'desaturate') => {
     if (!doc || !doc.active_layer_id) return;
-    const canvas = document.getElementById(
-      `layer-canvas-${doc.active_layer_id}`
-    ) as HTMLCanvasElement | null;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        pushCanvasSnapshot(type === 'invert' ? 'Invert Colors' : 'Desaturate');
-        if (type === 'invert') filters.applyInvert(ctx, doc.width, doc.height);
-        else filters.applyDesaturate(ctx, doc.width, doc.height);
-        bumpCanvasRevision();
-
-        await bridge.applyLayerFilter({ type, layer_id: doc.active_layer_id }).catch(() => {});
-        baselineDataRef.current = null;
-        captureBaseline();
-      }
-    }
+    await bridge.applyLayerFilter({ type, layer_id: doc.active_layer_id }).catch(() => {});
+    useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
+    useDocumentStore.getState().requestRepaint();
+    useDocumentStore.getState().refreshHistory();
+    baselineDataRef.current = null;
+    await captureBaseline();
   };
 
   const handleAutoLevels = () => {
@@ -432,105 +344,66 @@ export const AdjustmentsPanel: React.FC = () => {
         {/* 1. Brightness & Contrast */}
         {currentTab === 'brightness' && (
           <div className="space-y-3 animate-in fade-in duration-100">
-            <div className="p-2.5 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-2">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Brightness</span>
-                <span className="font-mono text-blue-400 font-bold">{brightness}</span>
-              </div>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                value={brightness}
-                onChange={(e) => {
-                  const b = Number(e.target.value);
-                  setBrightness(b);
-                  applyLivePreview('brightness', { b });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Brightness"
+              value={brightness}
+              min={-100}
+              max={100}
+              onChange={(b) => {
+                setBrightness(b);
+                applyLivePreview('brightness', { b });
+              }}
+            />
 
-            <div className="p-2.5 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-2">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Contrast</span>
-                <span className="font-mono text-blue-400 font-bold">{contrast}</span>
-              </div>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                value={contrast}
-                onChange={(e) => {
-                  const c = Number(e.target.value);
-                  setContrast(c);
-                  applyLivePreview('brightness', { c });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Contrast"
+              value={contrast}
+              min={-100}
+              max={100}
+              onChange={(c) => {
+                setContrast(c);
+                applyLivePreview('brightness', { c });
+              }}
+            />
           </div>
         )}
 
         {/* 2. Hue & Saturation */}
         {currentTab === 'huesat' && (
           <div className="space-y-2.5 animate-in fade-in duration-100">
-            <div className="p-2.5 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-1.5">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Hue Shift</span>
-                <span className="font-mono text-blue-400 font-bold">{hue}°</span>
-              </div>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                value={hue}
-                onChange={(e) => {
-                  const h = Number(e.target.value);
-                  setHue(h);
-                  applyLivePreview('huesat', { h });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Hue Shift"
+              value={hue}
+              min={-180}
+              max={180}
+              display={`${hue}°`}
+              onChange={(h) => {
+                setHue(h);
+                applyLivePreview('huesat', { h });
+              }}
+            />
 
-            <div className="p-2.5 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-1.5">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Saturation</span>
-                <span className="font-mono text-blue-400 font-bold">{saturation}</span>
-              </div>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                value={saturation}
-                onChange={(e) => {
-                  const s = Number(e.target.value);
-                  setSaturation(s);
-                  applyLivePreview('huesat', { s });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Saturation"
+              value={saturation}
+              min={-100}
+              max={100}
+              onChange={(s) => {
+                setSaturation(s);
+                applyLivePreview('huesat', { s });
+              }}
+            />
 
-            <div className="p-2.5 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-1.5">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Lightness</span>
-                <span className="font-mono text-blue-400 font-bold">{lightness}</span>
-              </div>
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                value={lightness}
-                onChange={(e) => {
-                  const l = Number(e.target.value);
-                  setLightness(l);
-                  applyLivePreview('huesat', { l });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Lightness"
+              value={lightness}
+              min={-100}
+              max={100}
+              onChange={(l) => {
+                setLightness(l);
+                applyLivePreview('huesat', { l });
+              }}
+            />
           </div>
         )}
 
@@ -653,24 +526,17 @@ export const AdjustmentsPanel: React.FC = () => {
         {/* 4. Gaussian Blur */}
         {currentTab === 'blur' && (
           <div className="space-y-3 animate-in fade-in duration-100">
-            <div className="p-3 bg-ps-surface/60 rounded-lg border border-ps-border/50 space-y-2">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-zinc-300 font-medium">Blur Radius</span>
-                <span className="font-mono text-blue-400 font-bold">{blurRadius} px</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="50"
-                value={blurRadius}
-                onChange={(e) => {
-                  const r = Number(e.target.value);
-                  setBlurRadius(r);
-                  applyLivePreview('blur', { r });
-                }}
-                className="w-full cursor-pointer"
-              />
-            </div>
+            <AdjustmentSlider
+              label="Blur Radius"
+              value={blurRadius}
+              min={1}
+              max={50}
+              display={`${blurRadius} px`}
+              onChange={(r) => {
+                setBlurRadius(r);
+                applyLivePreview('blur', { r });
+              }}
+            />
           </div>
         )}
 

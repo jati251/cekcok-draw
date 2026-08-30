@@ -1,12 +1,7 @@
 use super::payloads::*;
-use crate::compute::brush_engine::BrushEngine;
-use crate::compute::filters::FilterEngine;
-use crate::compute::flood_fill::FloodFillEngine;
-use crate::compute::shapes::ShapeRasterizer;
 use crate::core::document::{Document, DocumentInfo};
-use crate::core::history::{HistoryAction, HistoryEngine};
+use crate::core::history::HistoryEngine;
 use crate::core::layer::BlendMode;
-use std::io::Cursor;
 use tauri::State;
 
 #[tauri::command]
@@ -143,190 +138,161 @@ pub fn rename_layer(
 }
 
 #[tauri::command]
-pub fn apply_brush_stroke(
-    payload: StrokePayload,
-    state: State<'_, SharedEngineState>,
-) -> Result<String, String> {
-    let mut guard = state.lock();
-    let doc = &mut guard.document;
-
-    let layer = match payload
-        .layer_id
-        .as_deref()
-        .or(doc.active_layer_id.as_deref())
-    {
-        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
-        None => doc.layers.last_mut(),
-    }
-    .ok_or_else(|| "No active layer to draw on".to_string())?;
-
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    BrushEngine::apply_stroke(&mut layer.grid, &payload.points, &payload.settings);
-    Ok("Stroke applied".into())
-}
-
-#[tauri::command]
-pub fn apply_flood_fill(
-    payload: FloodFillPayload,
-    state: State<'_, SharedEngineState>,
-) -> Result<String, String> {
-    let mut guard = state.lock();
-    guard.push_history("Paint Bucket Fill");
-
-    let doc = &mut guard.document;
-    let doc_w = doc.width;
-    let doc_h = doc.height;
-
-    let layer = match payload
-        .layer_id
-        .as_deref()
-        .or(doc.active_layer_id.as_deref())
-    {
-        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
-        None => doc.layers.last_mut(),
-    }
-    .ok_or_else(|| "No active layer for fill".to_string())?;
-
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    let bounds = payload.bounds.map(|b| (b[0], b[1], b[2], b[3]));
-    FloodFillEngine::fill(
-        &mut layer.grid,
-        doc_w,
-        doc_h,
-        payload.start_x,
-        payload.start_y,
-        payload.color,
-        payload.tolerance,
-        bounds,
-    );
-
-    Ok("Flood fill completed".into())
-}
-
-#[tauri::command]
-pub fn apply_shape(
-    payload: ShapePayload,
-    state: State<'_, SharedEngineState>,
-) -> Result<String, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Shape: {:?}", payload.shape_type));
-
-    let doc = &mut guard.document;
-    let layer = match payload
-        .layer_id
-        .as_deref()
-        .or(doc.active_layer_id.as_deref())
-    {
-        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
-        None => doc.layers.last_mut(),
-    }
-    .ok_or_else(|| "No active layer for shape".to_string())?;
-
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    ShapeRasterizer::rasterize(
-        &mut layer.grid,
-        payload.shape_type,
-        payload.start_x,
-        payload.start_y,
-        payload.end_x,
-        payload.end_y,
-        payload.stroke_color,
-        payload.fill_color,
-        payload.stroke_width,
-        payload.radius,
-        payload.has_fill,
-        payload.has_stroke,
-    );
-
-    Ok("Shape rasterized".into())
-}
-
-#[tauri::command]
-pub fn write_layer_pixels(
-    payload: WriteRegionPayload,
-    state: State<'_, SharedEngineState>,
-) -> Result<String, String> {
-    let mut guard = state.lock();
-    guard.push_history("Write Pixel Region");
-
-    let doc = &mut guard.document;
-    let layer = match payload
-        .layer_id
-        .as_deref()
-        .or(doc.active_layer_id.as_deref())
-    {
-        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
-        None => doc.layers.last_mut(),
-    }
-    .ok_or_else(|| "No active layer to write".to_string())?;
-
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    layer.grid.write_region(
-        payload.start_x,
-        payload.start_y,
-        payload.width,
-        payload.height,
-        &payload.data,
-    );
-
-    Ok("Region written".into())
-}
-
-#[tauri::command]
-pub fn apply_layer_filter(
-    payload: LayerFilterPayload,
+pub async fn duplicate_layer(
+    layer_id: String,
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history("Apply Image Filter");
-
-    let doc = &mut guard.document;
-    let layer = match payload
-        .layer_id
-        .as_deref()
-        .or(doc.active_layer_id.as_deref())
-    {
-        Some(id) => doc.layers.iter_mut().find(|l| l.id == id),
-        None => doc.layers.last_mut(),
-    }
-    .ok_or_else(|| "No active layer for filter".to_string())?;
-
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    FilterEngine::apply_filter(&mut layer.grid, &payload.filter);
-    Ok(guard.document.get_info())
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Duplicate Layer");
+        if guard.document.duplicate_layer(&layer_id) {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Layer not found".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_layer_histogram(
-    layer_id: Option<String>,
+pub async fn merge_down(
+    layer_id: String,
     state: State<'_, SharedEngineState>,
-) -> Result<Vec<u32>, String> {
-    let guard = state.lock();
-    let doc = &guard.document;
+) -> Result<DocumentInfo, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Merge Down");
+        if guard.document.merge_down(&layer_id) {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Layer not found or already bottommost".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    let layer = match layer_id.as_deref().or(doc.active_layer_id.as_deref()) {
-        Some(id) => doc.layers.iter().find(|l| l.id == id),
-        None => doc.layers.last(),
-    }
-    .ok_or_else(|| "No active layer for histogram".to_string())?;
+#[tauri::command]
+pub async fn clear_layer(
+    layer_id: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Clear Layer");
+        if guard.document.clear_layer(&layer_id) {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Layer not found".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    let hist = FilterEngine::calculate_histogram(&layer.grid);
-    Ok(hist.to_vec())
+#[tauri::command]
+pub async fn move_layer_region(
+    payload: MoveLayerPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Move Layer Content");
+        if guard
+            .document
+            .move_layer_region(&payload.layer_id, payload.dx, payload.dy)
+        {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Layer not found".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_gradient(
+    payload: GradientPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<String, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Gradient Tool");
+        let doc = &mut guard.document;
+        let layer_id = payload
+            .layer_id
+            .clone()
+            .or_else(|| doc.active_layer_id.clone())
+            .ok_or_else(|| "No active layer for gradient".to_string())?;
+        doc.gradient(
+            &layer_id,
+            payload.x0,
+            payload.y0,
+            payload.x1,
+            payload.y1,
+            payload.color0,
+            payload.color1,
+            payload.opacity,
+        );
+        Ok("Gradient applied".into())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn crop_document(
+    payload: CropPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Crop Canvas");
+        if guard
+            .document
+            .crop(payload.x, payload.y, payload.width, payload.height)
+        {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Invalid crop region".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn transform_layer(
+    payload: TransformLayerPayload,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let engine = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = engine.lock();
+        guard.push_history("Free Transform");
+        if guard.document.transform_layer(
+            &payload.layer_id,
+            payload.x,
+            payload.y,
+            payload.width,
+            payload.height,
+            payload.rotation,
+        ) {
+            Ok(guard.document.get_info())
+        } else {
+            Err("Layer not found".to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -407,127 +373,4 @@ pub fn flip_layer(
     } else {
         Err("Layer not found".into())
     }
-}
-
-#[tauri::command]
-pub fn undo(state: State<'_, SharedEngineState>) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.undo(&mut current_doc).is_some() {
-        guard.document = current_doc;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Nothing to undo".into())
-    }
-}
-
-#[tauri::command]
-pub fn redo(state: State<'_, SharedEngineState>) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.redo(&mut current_doc).is_some() {
-        guard.document = current_doc;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Nothing to redo".into())
-    }
-}
-
-#[tauri::command]
-pub fn get_history(state: State<'_, SharedEngineState>) -> Vec<HistoryAction> {
-    let guard = state.lock();
-    guard.history.get_history_list()
-}
-
-/// Render the viewport region to a raw binary RGBA byte buffer
-#[tauri::command]
-pub fn render_viewport(
-    request: ViewportRenderRequest,
-    state: State<'_, SharedEngineState>,
-) -> Vec<u8> {
-    let guard = state.lock();
-    guard
-        .document
-        .render_viewport_rgba(request.vx, request.vy, request.vw, request.vh)
-}
-
-/// Native multi-format image exporter encoding PNG, JPEG, WebP, BMP, TIFF directly in Rust
-#[tauri::command]
-pub fn export_document_image(
-    format: String,
-    quality: Option<u8>,
-    state: State<'_, SharedEngineState>,
-) -> Result<Vec<u8>, String> {
-    let guard = state.lock();
-    let doc = &guard.document;
-    let raw_rgba = doc.render_viewport_rgba(0, 0, doc.width, doc.height);
-
-    let img_buffer = image::RgbaImage::from_raw(doc.width, doc.height, raw_rgba)
-        .ok_or_else(|| "Failed to construct RGBA image buffer".to_string())?;
-
-    let mut cursor = Cursor::new(Vec::new());
-    let fmt_lower = format.to_lowercase();
-
-    match fmt_lower.as_str() {
-        "jpeg" | "jpg" => {
-            let rgb_img = image::DynamicImage::ImageRgba8(img_buffer).to_rgb8();
-            let q = quality.unwrap_or(92).clamp(1, 100);
-            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, q);
-            encoder
-                .encode_image(&rgb_img)
-                .map_err(|e| format!("JPEG encode error: {}", e))?;
-        }
-        "webp" => {
-            img_buffer
-                .write_to(&mut cursor, image::ImageFormat::WebP)
-                .map_err(|e| format!("WebP encode error: {}", e))?;
-        }
-        "bmp" => {
-            img_buffer
-                .write_to(&mut cursor, image::ImageFormat::Bmp)
-                .map_err(|e| format!("BMP encode error: {}", e))?;
-        }
-        "tiff" | "tif" => {
-            img_buffer
-                .write_to(&mut cursor, image::ImageFormat::Tiff)
-                .map_err(|e| format!("TIFF encode error: {}", e))?;
-        }
-        "ico" => {
-            img_buffer
-                .write_to(&mut cursor, image::ImageFormat::Ico)
-                .map_err(|e| format!("ICO encode error: {}", e))?;
-        }
-        _ => {
-            img_buffer
-                .write_to(&mut cursor, image::ImageFormat::Png)
-                .map_err(|e| format!("PNG encode error: {}", e))?;
-        }
-    }
-
-    Ok(cursor.into_inner())
-}
-
-/// Retrieve telemetry metrics from the Rust engine state
-#[tauri::command]
-pub fn get_engine_stats(state: State<'_, SharedEngineState>) -> EngineStats {
-    let guard = state.lock();
-    let mut total_tiles = 0;
-    for layer in &guard.document.layers {
-        total_tiles += layer.grid.tile_count();
-    }
-    let allocated_memory_mb = (total_tiles as f32 * 1.0).max(1.0); // ~1MB per tile uncompressed
-    let history_nodes = guard.history.len();
-
-    EngineStats {
-        total_tiles,
-        allocated_memory_mb,
-        history_nodes,
-        gpu_available: true,
-    }
-}
-
-/// Read local binary image file contents directly from disk
-#[tauri::command]
-pub fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
-    std::fs::read(&path).map_err(|e| format!("Failed to read file '{}': {}", path, e))
 }

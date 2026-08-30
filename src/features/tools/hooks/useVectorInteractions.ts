@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DocumentInfo } from '@/types';
-import { floodFill } from '@/features/tools/utils/floodFill';
 import { hexToRgba } from '@/utils/color';
 import * as bridge from '@/services/tauriBridge';
 
@@ -23,8 +22,6 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     setSelection,
     setActiveTextNode,
   } = useEditorStore();
-
-  const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
 
   const [gradientDrag, setGradientDrag] = useState<{
     start: { x: number; y: number };
@@ -50,94 +47,75 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
   const sampleColorAt = useCallback(
     (pos: { x: number; y: number }) => {
       if (!doc || !doc.active_layer_id) return;
-      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
       const px = Math.floor(pos.x);
       const py = Math.floor(pos.y);
-      if (px < 0 || px >= canvas.width || py < 0 || py >= canvas.height) return;
+      if (px < 0 || px >= doc.width || py < 0 || py >= doc.height) return;
 
-      try {
-        const pixel = ctx.getImageData(px, py, 1, 1).data;
-        const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
-        setPrimaryColor(hex);
-      } catch {
-        // ignore
-      }
+      bridge
+        .sampleColor(px, py, doc.active_layer_id)
+        .then((pixel) => {
+          const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
+          setPrimaryColor(hex);
+        })
+        .catch(() => {
+          // ignore
+        });
     },
-    [doc, layerCanvasesRef, setPrimaryColor]
+    [doc, setPrimaryColor]
   );
 
   const handlePaintBucket = useCallback(
     (pos: { x: number; y: number }) => {
       if (!doc || !doc.active_layer_id) return;
-      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
 
-      useDocumentStore.getState().pushCanvasSnapshot('Paint Bucket Fill');
       const fillColor = hexToRgba(primaryColor, Math.round(brushSettings.opacity * 255));
-      const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
-
-      if (filled) {
-        bumpCanvasRevision();
-        const selBounds: [number, number, number, number] | undefined =
-          selection && selection.active
-            ? [
-                Math.floor(selection.x),
-                Math.floor(selection.y),
-                Math.ceil(selection.x + selection.width),
-                Math.ceil(selection.y + selection.height),
-              ]
-            : undefined;
-        const activeLayerId = doc.active_layer_id;
-        setTimeout(() => {
-          bridge
-            .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
-            .catch(() => {});
-        }, 0);
-      }
+      const selBounds: [number, number, number, number] | undefined =
+        selection && selection.active
+          ? [
+              Math.floor(selection.x),
+              Math.floor(selection.y),
+              Math.ceil(selection.x + selection.width),
+              Math.ceil(selection.y + selection.height),
+            ]
+          : undefined;
+      const activeLayerId = doc.active_layer_id;
+      bridge
+        .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
+        .then(async () => {
+          useDocumentStore.getState().requestRepaint();
+          useDocumentStore.getState().markLayerDirty(activeLayerId);
+          await useDocumentStore.getState().refreshHistory();
+        })
+        .catch(() => {});
     },
-    [brushSettings.opacity, bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, selection]
+    [brushSettings.opacity, doc, primaryColor, selection]
   );
 
   const applyGradient = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {
       if (!doc || !doc.active_layer_id) return;
-      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      useDocumentStore.getState().pushCanvasSnapshot('Gradient Tool');
-      ctx.save();
-      const grad = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
-      grad.addColorStop(0, primaryColor);
-      grad.addColorStop(1, secondaryColor);
-      ctx.fillStyle = grad;
-      ctx.globalAlpha = brushSettings.opacity;
-
-      if (selection && selection.active && selection.width > 0) {
-        ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
-      } else {
-        ctx.fillRect(0, 0, doc.width, doc.height);
-      }
-      ctx.restore();
-      bumpCanvasRevision();
-      bridge.commitStrokeHistory('Gradient Tool');
+      const activeLayerId = doc.active_layer_id;
+      const color0 = hexToRgba(primaryColor, 255);
+      const color1 = hexToRgba(secondaryColor, 255);
+      bridge
+        .applyGradient(
+          start.x,
+          start.y,
+          end.x,
+          end.y,
+          color0,
+          color1,
+          brushSettings.opacity,
+          activeLayerId
+        )
+        .then(async () => {
+          await useDocumentStore.getState().refreshHistory();
+          useDocumentStore.getState().requestRepaint();
+          useDocumentStore.getState().markLayerDirty(activeLayerId);
+        })
+        .catch(() => {});
     },
-    [
-      brushSettings.opacity,
-      bumpCanvasRevision,
-      doc,
-      layerCanvasesRef,
-      primaryColor,
-      secondaryColor,
-      selection,
-    ]
+    [brushSettings.opacity, doc, primaryColor, secondaryColor]
   );
 
   const startMove = useCallback(
@@ -146,7 +124,6 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
       if (!canvas) return;
 
-      useDocumentStore.getState().pushCanvasSnapshot('Move Layer Content');
       moveStartRef.current = { x: pos.x, y: pos.y };
       setMoveDrag({ start: pos, current: pos });
 
@@ -186,12 +163,25 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
 
   const endMove = useCallback(() => {
     if (moveStartRef.current) {
+      const start = moveStartRef.current;
+      const end = moveDrag ? moveDrag.current : start;
+      const dx = Math.round(end.x - start.x);
+      const dy = Math.round(end.y - start.y);
+      const layerId = doc?.active_layer_id;
       moveStartRef.current = null;
       setMoveDrag(null);
-      bumpCanvasRevision();
-      bridge.commitStrokeHistory('Move Layer Content');
+      if (layerId) useDocumentStore.getState().markLayerDirty(layerId);
+      if (layerId) {
+        bridge
+          .moveLayerRegion(layerId, dx, dy)
+          .then(async () => {
+            await useDocumentStore.getState().refreshHistory();
+            useDocumentStore.getState().requestRepaint();
+          })
+          .catch(() => {});
+      }
     }
-  }, [bumpCanvasRevision]);
+  }, [doc, moveDrag]);
 
   const clearSelectionContent = useCallback(() => {
     if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
@@ -216,9 +206,8 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     }
     ctx.restore();
 
-    bumpCanvasRevision();
-    bridge.commitStrokeHistory('Clear Selection (Delete)');
-  }, [bumpCanvasRevision, doc, layerCanvasesRef, selection]);
+    useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
+  }, [doc, layerCanvasesRef, selection]);
 
   const bakeShapeToCanvas = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {
@@ -227,8 +216,6 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-
-      useDocumentStore.getState().pushCanvasSnapshot(`Shape (${shapeSettings.type})`);
 
       const x = Math.min(start.x, end.x);
       const y = Math.min(start.y, end.y);
@@ -262,27 +249,33 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         if (shapeSettings.stroke) ctx.stroke();
       }
       ctx.restore();
-      bumpCanvasRevision();
+      useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
 
       const strokeRgba = hexToRgba(secondaryColor, 255);
       const fillRgba = hexToRgba(primaryColor, 255);
 
-      bridge.applyShape(
-        shapeSettings.type,
-        start.x,
-        start.y,
-        end.x,
-        end.y,
-        strokeRgba,
-        fillRgba,
-        shapeSettings.strokeWidth,
-        shapeSettings.radius,
-        shapeSettings.fill,
-        shapeSettings.stroke,
-        doc.active_layer_id
-      );
+      bridge
+        .applyShape(
+          shapeSettings.type,
+          start.x,
+          start.y,
+          end.x,
+          end.y,
+          strokeRgba,
+          fillRgba,
+          shapeSettings.strokeWidth,
+          shapeSettings.radius,
+          shapeSettings.fill,
+          shapeSettings.stroke,
+          doc.active_layer_id
+        )
+        .then(async () => {
+          useDocumentStore.getState().requestRepaint();
+          await useDocumentStore.getState().refreshHistory();
+        })
+        .catch(() => {});
     },
-    [bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
+    [doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
   );
 
   return {

@@ -79,21 +79,70 @@ impl SparseTileGrid {
             return;
         }
 
-        let mut data_idx = 0;
-        for y_offset in 0..height {
-            let global_y = start_y + y_offset as i32;
-            for x_offset in 0..width {
-                let global_x = start_x + x_offset as i32;
+        // Negative origins are rare (frontend always sends >= 0); keep the
+        // original per-pixel path for them to preserve drop-out-of-bounds behavior.
+        if start_x < 0 || start_y < 0 {
+            let mut data_idx = 0;
+            for y_offset in 0..height {
+                let global_y = start_y + y_offset as i32;
+                for x_offset in 0..width {
+                    let global_x = start_x + x_offset as i32;
 
-                if data_idx + 3 < data.len() {
-                    let r = data[data_idx];
-                    let g = data[data_idx + 1];
-                    let b = data[data_idx + 2];
-                    let a = data[data_idx + 3];
+                    if data_idx + 3 < data.len() {
+                        let r = data[data_idx];
+                        let g = data[data_idx + 1];
+                        let b = data[data_idx + 2];
+                        let a = data[data_idx + 3];
 
-                    self.set_pixel_cow(global_x, global_y, [r, g, b, a]);
+                        self.set_pixel_cow(global_x, global_y, [r, g, b, a]);
+                    }
+                    data_idx += 4;
                 }
-                data_idx += 4;
+            }
+            return;
+        }
+
+        // Tile-batched fast path: one HashMap lookup + one CoW clone per tile,
+        // then copy full RGBA rows directly into tile memory.
+        let ts = TILE_SIZE as i32;
+        let end_x = start_x + width as i32;
+        let end_y = start_y + height as i32;
+
+        let start_tx = start_x / ts;
+        let start_ty = start_y / ts;
+        let end_tx = (end_x - 1) / ts;
+        let end_ty = (end_y - 1) / ts;
+
+        for ty in start_ty..=end_ty {
+            let tile_y0 = ty * ts;
+            let row_y0 = (start_y.max(tile_y0) - start_y) as u32;
+            let row_y1 = (end_y.min(tile_y0 + ts) - start_y) as u32;
+
+            for tx in start_tx..=end_tx {
+                let tile_x0 = tx * ts;
+                let col_x0 = (start_x.max(tile_x0) - start_x) as u32;
+                let col_x1 = (end_x.min(tile_x0 + ts) - start_x) as u32;
+
+                let coord = TileCoord::new(tx, ty, 0);
+                let tile = self.get_or_create_mut(coord);
+                let local_x0 = (start_x.max(tile_x0) - tile_x0) as u32;
+                let local_y0 = (start_y.max(tile_y0) - tile_y0) as u32;
+
+                for y in row_y0..row_y1 {
+                    let local_y = local_y0 + (y - row_y0);
+                    let src_row = (y as usize * width as usize) * 4;
+                    let dst_row = (local_y as usize * TILE_SIZE as usize) * 4;
+
+                    for x in col_x0..col_x1 {
+                        let local_x = local_x0 + (x - col_x0);
+                        let src_idx = src_row + x as usize * 4;
+                        let dst_idx = dst_row + local_x as usize * 4;
+
+                        tile.data[dst_idx..dst_idx + 4]
+                            .copy_from_slice(&data[src_idx..src_idx + 4]);
+                    }
+                }
+                tile.is_dirty = true;
             }
         }
     }
@@ -149,13 +198,43 @@ impl SparseTileGrid {
         tile.blend_pixel_over(local_x, local_y, r, g, b, a);
     }
 
+    #[inline]
+    pub fn get_pixel(&self, global_x: i32, global_y: i32) -> [u8; 4] {
+        if global_x < 0 || global_y < 0 {
+            return [0, 0, 0, 0];
+        }
+        let tile_x = global_x / (TILE_SIZE as i32);
+        let tile_y = global_y / (TILE_SIZE as i32);
+        let local_x = (global_x % (TILE_SIZE as i32)) as u32;
+        let local_y = (global_y % (TILE_SIZE as i32)) as u32;
+
+        let coord = TileCoord::new(tile_x, tile_y, 0);
+        self.tiles
+            .get(&coord)
+            .map(|tile| tile.get_pixel(local_x, local_y))
+            .unwrap_or([0, 0, 0, 0])
+    }
+
+    /// Reads a rectangular region into a tightly packed RGBA byte buffer.
+    pub fn read_region(&self, start_x: i32, start_y: i32, width: u32, height: u32) -> Vec<u8> {
+        let mut out = vec![0u8; (width as usize * height as usize) * 4];
+        for y in 0..height as i32 {
+            for x in 0..width as i32 {
+                let pixel = self.get_pixel(start_x + x, start_y + y);
+                let idx = ((y * width as i32 + x) * 4) as usize;
+                out[idx..idx + 4].copy_from_slice(&pixel);
+            }
+        }
+        out
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&TileCoord, &SharedTile)> {
         self.tiles.iter()
     }
 
     pub fn drain_dirty(&mut self) -> Vec<TileCoord> {
         let mut coords = std::mem::take(&mut self.dirty_coords);
-        coords.sort_unstable_by(|a, b| (a.x, a.y, a.lod).cmp(&(b.x, b.y, b.lod)));
+        coords.sort_unstable_by_key(|c| (c.x, c.y, c.lod));
         coords.dedup();
         coords
     }

@@ -175,13 +175,15 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
               filters.applyInvert(ctx, doc.width, doc.height);
-              useDocumentStore.getState().bumpCanvasRevision();
+              useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
               bridge
                 .applyLayerFilter({ type: 'invert', layer_id: doc.active_layer_id })
+                .then(async () => {
+                  useDocumentStore.getState().requestRepaint();
+                  await useDocumentStore.getState().refreshHistory();
+                })
                 .catch(() => {});
-              bridge.commitStrokeHistory('Invert Colors');
             }
           }
         },
@@ -197,13 +199,15 @@ export const TopMenuBar: React.FC<Props> = ({
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
               filters.applyDesaturate(ctx, doc.width, doc.height);
-              useDocumentStore.getState().bumpCanvasRevision();
+              useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
               bridge
                 .applyLayerFilter({ type: 'desaturate', layer_id: doc.active_layer_id })
+                .then(async () => {
+                  useDocumentStore.getState().requestRepaint();
+                  await useDocumentStore.getState().refreshHistory();
+                })
                 .catch(() => {});
-              bridge.commitStrokeHistory('Desaturate');
             }
           }
         },

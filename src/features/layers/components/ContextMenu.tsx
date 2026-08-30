@@ -13,7 +13,7 @@ interface Props {
 
 export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
   const { activeTool, brushSettings, setBrushSettings, selection, setSelection } = useEditorStore();
-  const { doc, addNewLayer, bumpCanvasRevision } = useDocumentStore();
+  const { doc, addNewLayer } = useDocumentStore();
 
   const isBrushLike =
     activeTool === 'brush' ||
@@ -41,6 +41,7 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
   // Clear Selection
   const handleClearSelection = () => {
     if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
+    const activeLayerId = doc.active_layer_id;
     const canvas = document.getElementById(
       `layer-canvas-${doc.active_layer_id}`
     ) as HTMLCanvasElement | null;
@@ -48,7 +49,26 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.save();
+        let bx = 0;
+        let by = 0;
+        let bw = doc.width;
+        let bh = doc.height;
         if (selection.path && selection.path.length > 2) {
+          let minX = Infinity;
+          let minY = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          for (const p of selection.path) {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          }
+          bx = Math.max(0, Math.floor(minX));
+          by = Math.max(0, Math.floor(minY));
+          bw = Math.min(doc.width - bx, Math.ceil(maxX) - bx);
+          bh = Math.min(doc.height - by, Math.ceil(maxY) - by);
+
           ctx.beginPath();
           ctx.moveTo(selection.path[0].x, selection.path[0].y);
           for (let i = 1; i < selection.path.length; i++) {
@@ -58,11 +78,34 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
           ctx.clip();
           ctx.clearRect(0, 0, doc.width, doc.height);
         } else if (selection.width > 0 && selection.height > 0) {
+          bx = Math.max(0, Math.floor(selection.x));
+          by = Math.max(0, Math.floor(selection.y));
+          bw = Math.min(doc.width - bx, Math.ceil(selection.width));
+          bh = Math.min(doc.height - by, Math.ceil(selection.height));
           ctx.clearRect(selection.x, selection.y, selection.width, selection.height);
         }
         ctx.restore();
-        bumpCanvasRevision();
-        bridge.commitStrokeHistory('Clear (Delete)');
+
+        if (bw > 0 && bh > 0) {
+          const imgData = ctx.getImageData(bx, by, bw, bh);
+          bridge
+            .writeLayerPixels(
+              bx,
+              by,
+              bw,
+              bh,
+              new Uint8Array(imgData.data.buffer),
+              doc.active_layer_id
+            )
+            .then(() => {
+              useDocumentStore.getState().markLayerDirty(activeLayerId);
+              bridge.commitStrokeHistory('Clear (Delete)');
+              useDocumentStore.getState().requestRepaint();
+            })
+            .catch(() => {});
+        } else {
+          useDocumentStore.getState().markLayerDirty(activeLayerId);
+        }
       }
     }
     onClose();

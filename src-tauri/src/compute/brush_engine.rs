@@ -2,9 +2,10 @@ use crate::core::sparse_grid::SparseTileGrid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BrushType {
+    #[default]
     RoundSoft,
     RoundHard,
     Calligraphy,
@@ -15,12 +16,6 @@ pub enum BrushType {
     Spray,
     Marker,
     Pixel,
-}
-
-impl Default for BrushType {
-    fn default() -> Self {
-        Self::RoundSoft
-    }
 }
 
 fn default_true() -> bool {
@@ -88,6 +83,7 @@ impl Default for BrushSettings {
 }
 
 #[inline]
+#[allow(clippy::excessive_precision)]
 fn pseudo_noise(x: f32, y: f32, seed: f32) -> f32 {
     let n = ((x * 12.9898 + y * 78.233 + seed).sin() * 43758.5453).fract();
     n.abs()

@@ -4,6 +4,8 @@ pub mod ipc;
 pub mod native_menu;
 pub mod storage;
 
+use compute::blend_pipeline::BlendPipeline;
+use compute::context::GpuContext;
 use core::document::Document;
 use core::history::HistoryEngine;
 use ipc::*;
@@ -16,9 +18,20 @@ pub fn run() {
     let mut history = HistoryEngine::new(50);
     history.push_state("Initialize Document", &initial_doc);
 
+    // GPU init is best-effort: any failure leaves `None` and rendering falls
+    // back to the software compositor.
+    let gpu = pollster::block_on(GpuContext::init_headless())
+        .ok()
+        .map(Arc::new);
+    let blend_pipeline = gpu
+        .as_ref()
+        .map(|g| Arc::new(BlendPipeline::new(&g.device)));
+
     let engine_state: SharedEngineState = Arc::new(Mutex::new(AppEngineState {
         document: initial_doc,
         history,
+        gpu,
+        blend_pipeline,
     }));
 
     tauri::Builder::default()
@@ -26,7 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine_state)
-        .menu(|app| native_menu::build_native_menu(app))
+        .menu(native_menu::build_native_menu)
         .on_menu_event(|app, event| {
             native_menu::handle_menu_event(app, event);
         })
@@ -49,6 +62,16 @@ pub fn run() {
             apply_brush_stroke,
             apply_flood_fill,
             apply_shape,
+            apply_smudge,
+            apply_blur,
+            sample_color,
+            duplicate_layer,
+            merge_down,
+            clear_layer,
+            move_layer_region,
+            apply_gradient,
+            crop_document,
+            transform_layer,
             write_layer_pixels,
             commit_stroke_history,
             apply_layer_filter,
@@ -58,6 +81,9 @@ pub fn run() {
             undo,
             redo,
             get_history,
+            jump_to_history,
+            render_layer,
+            render_layer_thumbnail,
             render_viewport,
             read_file_binary
         ])

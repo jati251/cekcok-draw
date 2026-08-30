@@ -5,6 +5,7 @@ pub struct FloodFillEngine;
 impl FloodFillEngine {
     /// High-performance Scanline Flood Fill directly on SparseTileGrid
     /// Zero heap churn, bounded stack, and fast linear scanlines
+    #[allow(clippy::too_many_arguments)]
     pub fn fill(
         grid: &mut SparseTileGrid,
         doc_w: u32,

@@ -1,6 +1,7 @@
 import { toast } from '@/stores/toastStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
+import * as bridge from '@/services/tauriBridge';
 
 /**
  * Copies the current active selection (or entire active layer) to the system clipboard.
@@ -53,9 +54,19 @@ export async function copyActiveLayerSelection(cut = false): Promise<boolean> {
   if (cut) {
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      useDocumentStore.getState().pushCanvasSnapshot('Cut Selection');
       ctx.clearRect(sx, sy, sw, sh);
-      useDocumentStore.getState().bumpCanvasRevision();
+      const imgData = ctx.getImageData(sx, sy, sw, sh);
+      await bridge.writeLayerPixels(
+        sx,
+        sy,
+        sw,
+        sh,
+        new Uint8Array(imgData.data.buffer),
+        doc.active_layer_id
+      );
+      useDocumentStore.getState().pushCanvasSnapshot('Cut Selection');
+      useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
+      useDocumentStore.getState().requestRepaint();
     }
   }
 

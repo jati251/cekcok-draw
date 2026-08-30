@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { DocumentInfo, HistoryAction, BlendMode, BrushPoint, BrushSettings } from '@/types';
+import { toRustBrushPoint, toRustBrushSettings } from '@/services/brushContract';
 
 export const isTauriEnvironment = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -201,8 +202,8 @@ export async function applyBrushStroke(
   if (isTauriEnvironment()) {
     return await invoke<string>('apply_brush_stroke', {
       payload: {
-        points,
-        settings,
+        points: points.map(toRustBrushPoint),
+        settings: toRustBrushSettings(settings),
         layer_id: layerId || null,
       },
     });
@@ -236,11 +237,162 @@ export async function redo(): Promise<DocumentInfo> {
   return { ...mockDoc };
 }
 
-export async function getHistory(): Promise<HistoryAction[]> {
+export interface HistoryState {
+  entries: HistoryAction[];
+  current_index: number;
+}
+
+export async function getHistory(): Promise<HistoryState> {
   if (isTauriEnvironment()) {
-    return await invoke<HistoryAction[]>('get_history');
+    return await invoke<HistoryState>('get_history');
   }
-  return [...mockHistory];
+  return { entries: [...mockHistory], current_index: mockHistory.length - 1 };
+}
+
+export async function jumpToHistory(index: number): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('jump_to_history', { index });
+  }
+  return { ...mockDoc };
+}
+
+export async function renderLayer(layerId: string): Promise<Uint8Array | null> {
+  if (isTauriEnvironment()) {
+    const raw = await invoke<ArrayBuffer>('render_layer', { layerId });
+    return new Uint8Array(raw);
+  }
+  return null;
+}
+
+export async function renderLayerThumbnail(
+  layerId: string,
+  maxDim = 32
+): Promise<Uint8Array | null> {
+  if (isTauriEnvironment()) {
+    const raw = await invoke<ArrayBuffer>('render_layer_thumbnail', { layerId, maxDim });
+    return new Uint8Array(raw);
+  }
+  return null;
+}
+
+export async function sampleColor(
+  x: number,
+  y: number,
+  layerId?: string
+): Promise<[number, number, number, number]> {
+  if (isTauriEnvironment()) {
+    return await invoke<[number, number, number, number]>('sample_color', {
+      payload: {
+        layer_id: layerId || null,
+        x: Math.round(x),
+        y: Math.round(y),
+      },
+    });
+  }
+  return [0, 0, 0, 0];
+}
+
+export async function duplicateLayer(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('duplicate_layer', { layerId });
+  }
+  return { ...mockDoc };
+}
+
+export async function mergeDown(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('merge_down', { layerId });
+  }
+  return { ...mockDoc };
+}
+
+export async function clearLayer(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('clear_layer', { layerId });
+  }
+  return { ...mockDoc };
+}
+
+export async function moveLayerRegion(
+  layerId: string,
+  dx: number,
+  dy: number
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('move_layer_region', {
+      payload: { layer_id: layerId, dx, dy },
+    });
+  }
+  return { ...mockDoc };
+}
+
+export async function applyGradient(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color0: [number, number, number, number],
+  color1: [number, number, number, number],
+  opacity: number,
+  layerId?: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('apply_gradient', {
+      payload: {
+        layer_id: layerId || null,
+        x0,
+        y0,
+        x1,
+        y1,
+        color0,
+        color1,
+        opacity,
+      },
+    });
+  }
+  return 'Mock gradient applied';
+}
+
+export async function cropDocument(
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('crop_document', {
+      payload: {
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height),
+      },
+    });
+  }
+  return { ...mockDoc };
+}
+
+export async function transformLayer(
+  layerId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('transform_layer', {
+      payload: {
+        layer_id: layerId,
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height),
+        rotation,
+      },
+    });
+  }
+  return { ...mockDoc };
 }
 
 export async function renderViewport(
@@ -250,7 +402,7 @@ export async function renderViewport(
   vh: number
 ): Promise<Uint8Array | null> {
   if (isTauriEnvironment()) {
-    const raw = await invoke<number[]>('render_viewport', {
+    const raw = await invoke<ArrayBuffer>('render_viewport', {
       request: { vx, vy, vw, vh },
     });
     return new Uint8Array(raw);
@@ -298,7 +450,7 @@ export async function exportDocumentImage(
   quality = 90
 ): Promise<Uint8Array | null> {
   if (isTauriEnvironment()) {
-    const raw = await invoke<number[]>('export_document_image', {
+    const raw = await invoke<ArrayBuffer>('export_document_image', {
       format,
       quality,
     });
@@ -400,7 +552,7 @@ export async function getEngineStats(): Promise<{
 
 export async function readFileBinary(path: string): Promise<Uint8Array> {
   if (isTauriEnvironment()) {
-    const raw = await invoke<number[]>('read_file_binary', { path });
+    const raw = await invoke<ArrayBuffer>('read_file_binary', { path });
     return new Uint8Array(raw);
   }
   throw new Error('readFileBinary is only available in Tauri native mode');

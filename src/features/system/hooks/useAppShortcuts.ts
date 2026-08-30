@@ -137,9 +137,16 @@ export const useKeyboardShortcuts = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
-              useDocumentStore.getState().bumpCanvasRevision();
-              bridge.commitStrokeHistory('Invert Colors');
+              bridge
+                .applyLayerFilter({ type: 'invert' })
+                .then(async () => {
+                  useDocumentStore.getState().requestRepaint();
+                  await useDocumentStore.getState().refreshHistory();
+                })
+                .catch(() => {});
+              if (doc.active_layer_id) {
+                useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
+              }
             }
           }
         } else if (e.key.toLowerCase() === 'u' && e.shiftKey) {
@@ -148,9 +155,16 @@ export const useKeyboardShortcuts = ({
           if (canvas && doc) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
-              useDocumentStore.getState().bumpCanvasRevision();
-              bridge.commitStrokeHistory('Desaturate');
+              bridge
+                .applyLayerFilter({ type: 'desaturate' })
+                .then(async () => {
+                  useDocumentStore.getState().requestRepaint();
+                  await useDocumentStore.getState().refreshHistory();
+                })
+                .catch(() => {});
+              if (doc.active_layer_id) {
+                useDocumentStore.getState().markLayerDirty(doc.active_layer_id);
+              }
             }
           }
         } else if (e.key === '0') {
@@ -215,8 +229,9 @@ export const useKeyboardShortcuts = ({
                 );
               }
               ctx.restore();
-              useDocumentStore.getState().bumpCanvasRevision();
+              useDocumentStore.getState().markLayerDirty(currentDoc.active_layer_id);
               bridge.commitStrokeHistory('Clear Selection (Delete)');
+              useDocumentStore.getState().requestRepaint();
             }
           }
         }
@@ -446,9 +461,16 @@ export const useKeyboardShortcuts = ({
               if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                  bridge.applyLayerFilter({ type: 'invert' }).catch(() => {});
-                  useDocumentStore.getState().bumpCanvasRevision();
-                  bridge.commitStrokeHistory('Invert Colors');
+                  bridge
+                    .applyLayerFilter({ type: 'invert' })
+                    .then(async () => {
+                      useDocumentStore.getState().requestRepaint();
+                      await useDocumentStore.getState().refreshHistory();
+                    })
+                    .catch(() => {});
+                  if (currentDoc.active_layer_id) {
+                    useDocumentStore.getState().markLayerDirty(currentDoc.active_layer_id);
+                  }
                 }
               }
             }
@@ -461,9 +483,16 @@ export const useKeyboardShortcuts = ({
               if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                  bridge.applyLayerFilter({ type: 'desaturate' }).catch(() => {});
-                  useDocumentStore.getState().bumpCanvasRevision();
-                  bridge.commitStrokeHistory('Desaturate');
+                  bridge
+                    .applyLayerFilter({ type: 'desaturate' })
+                    .then(async () => {
+                      useDocumentStore.getState().requestRepaint();
+                      await useDocumentStore.getState().refreshHistory();
+                    })
+                    .catch(() => {});
+                  if (currentDoc.active_layer_id) {
+                    useDocumentStore.getState().markLayerDirty(currentDoc.active_layer_id);
+                  }
                 }
               }
             }

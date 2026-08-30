@@ -11,6 +11,32 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as bridge from '@/services/tauriBridge';
 
+function computeStrokeBounds(
+  points: BrushPoint[],
+  padding: number,
+  width: number,
+  height: number
+): { x: number; y: number; w: number; h: number } | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const x = Math.max(0, Math.floor(minX - padding));
+  const y = Math.max(0, Math.floor(minY - padding));
+  const x2 = Math.min(width, Math.ceil(maxX + padding));
+  const y2 = Math.min(height, Math.ceil(maxY + padding));
+  const w = x2 - x;
+  const h = y2 - y;
+  if (w <= 0 || h <= 0) return null;
+  return { x, y, w, h };
+}
+
 interface UseCanvasDrawingProps {
   doc: DocumentInfo | null;
   activeTool: ToolType;
@@ -30,7 +56,6 @@ export const useCanvasDrawing = ({
 }: UseCanvasDrawingProps) => {
   const [strokePoints, setStrokePoints] = useState<BrushPoint[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
-  const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
   const selection = useEditorStore((s) => s.selection);
   const stabilizerRef = useRef<StrokeStabilizer>(new StrokeStabilizer());
 
@@ -370,34 +395,16 @@ export const useCanvasDrawing = ({
         ) as HTMLCanvasElement | null)
       : null;
 
-    if (activeCanvas && strokeCanvas && doc) {
-      const mainCtx = activeCanvas.getContext('2d');
-      if (mainCtx) {
-        mainCtx.save();
-        applySelectionClip(mainCtx);
-        mainCtx.globalAlpha = 1.0;
-        if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
-        else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
-        else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';
-        else if (brushSettings.type === 'marker') mainCtx.globalCompositeOperation = 'multiply';
-        else mainCtx.globalCompositeOperation = 'source-over';
-
-        mainCtx.drawImage(strokeCanvas, 0, 0);
-        mainCtx.restore();
-      }
-
+    if (strokeCanvas && doc) {
       const sCtx = strokeCanvas.getContext('2d');
       if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
     }
 
-    bumpCanvasRevision();
+    if (activeLayerId) {
+      useDocumentStore.getState().markLayerDirty(activeLayerId);
+    }
 
-    if (strokePoints.length > 0) {
-      let color = brushSettings.color;
-      if (activeTool === 'eraser') color = [0, 0, 0, 0];
-      else if (activeTool === 'dodge') color = [255, 255, 255, 255];
-      else if (activeTool === 'burn') color = [0, 0, 0, 255];
-
+    if (strokePoints.length > 0 && doc) {
       const actionName =
         activeTool === 'eraser'
           ? 'Eraser'
@@ -411,21 +418,53 @@ export const useCanvasDrawing = ({
                   ? 'Blur Tool'
                   : `${brushSettings.type.replace('_', ' ')} Stroke`;
 
-      useDocumentStore.getState().pushCanvasSnapshot(actionName);
-      await bridge.applyBrushStroke(strokePoints, { ...brushSettings, color });
-      await bridge.commitStrokeHistory(actionName);
+      const usesSpecialComposite =
+        activeTool === 'eraser' ||
+        activeTool === 'dodge' ||
+        activeTool === 'burn' ||
+        activeTool === 'smudge' ||
+        activeTool === 'blur' ||
+        brushSettings.type === 'marker';
+
+      if (usesSpecialComposite && activeCanvas && activeLayerId) {
+        // Sync the exact composited result back to Rust so DOM and Rust stay
+        // pixel-identical for undo/redo and export.
+        const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
+        const blurPadding = activeTool === 'blur' ? Math.max(2, baseRadius * 0.25) : 0;
+        const bounds = computeStrokeBounds(
+          strokePoints,
+          baseRadius + blurPadding + 4,
+          doc.width,
+          doc.height
+        );
+        if (bounds) {
+          const mainCtx = activeCanvas.getContext('2d');
+          if (mainCtx) {
+            const imgData = mainCtx.getImageData(bounds.x, bounds.y, bounds.w, bounds.h);
+            await bridge.writeLayerPixels(
+              bounds.x,
+              bounds.y,
+              bounds.w,
+              bounds.h,
+              new Uint8Array(imgData.data.buffer),
+              activeLayerId
+            );
+          }
+        }
+        useDocumentStore.getState().pushCanvasSnapshot(actionName);
+      } else {
+        let color = brushSettings.color;
+        if (activeTool === 'dodge') color = [255, 255, 255, 255];
+        else if (activeTool === 'burn') color = [0, 0, 0, 255];
+        await bridge.applyBrushStroke(strokePoints, { ...brushSettings, color });
+        useDocumentStore.getState().pushCanvasSnapshot(actionName);
+      }
       setStrokePoints([]);
     }
-  }, [
-    activeTool,
-    applySelectionClip,
-    brushSettings,
-    bumpCanvasRevision,
-    doc,
-    layerCanvasesRef,
-    liveStrokeCanvasRef,
-    strokePoints,
-  ]);
+
+    // Repaint the single display canvas from the Rust composite.
+    useDocumentStore.getState().requestRepaint();
+  }, [activeTool, brushSettings, doc, layerCanvasesRef, liveStrokeCanvasRef, strokePoints]);
 
   const startStroke = useCallback(
     (rawPoint: BrushPoint) => {

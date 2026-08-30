@@ -2,9 +2,10 @@ use super::sparse_grid::SparseTileGrid;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlendMode {
+    #[default]
     Normal,
     Multiply,
     Screen,
@@ -25,25 +26,14 @@ pub enum BlendMode {
     Luminosity,
 }
 
-impl Default for BlendMode {
-    fn default() -> Self {
-        BlendMode::Normal
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerType {
+    #[default]
     Raster,
     Text,
     Shape,
     Background,
-}
-
-impl Default for LayerType {
-    fn default() -> Self {
-        LayerType::Raster
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -68,6 +58,8 @@ pub struct Layer {
     pub locked: bool,
     pub layer_type: LayerType,
     pub grid: SparseTileGrid,
+    /// Solid color used for unallocated tiles (lazy background fill).
+    pub fill: Option<[u8; 4]>,
 }
 
 impl Layer {
@@ -92,6 +84,7 @@ impl Layer {
             locked: false,
             layer_type,
             grid: SparseTileGrid::new(),
+            fill: None,
         }
     }
 

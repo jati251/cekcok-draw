@@ -13,6 +13,7 @@ pub enum ShapeType {
 pub struct ShapeRasterizer;
 
 impl ShapeRasterizer {
+    #[allow(clippy::too_many_arguments)]
     pub fn rasterize(
         grid: &mut SparseTileGrid,
         shape_type: ShapeType,
@@ -83,6 +84,7 @@ impl ShapeRasterizer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_rectangle(
         grid: &mut SparseTileGrid,
         x1: f32,
@@ -136,6 +138,7 @@ impl ShapeRasterizer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_ellipse(
         grid: &mut SparseTileGrid,
         x1: f32,

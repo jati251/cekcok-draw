@@ -29,17 +29,9 @@ pub struct Document {
 impl Document {
     pub fn new(title: impl Into<String>, width: u32, height: u32) -> Self {
         let mut base_layer = Layer::new("Background");
-
-        // Fill base layer background with white tiles
-        let tiles_x = (width + TILE_SIZE - 1) / TILE_SIZE;
-        let tiles_y = (height + TILE_SIZE - 1) / TILE_SIZE;
-        for ty in 0..tiles_y as i32 {
-            for tx in 0..tiles_x as i32 {
-                let coord = TileCoord::new(tx, ty, 0);
-                let tile = super::tile::Tile::new_filled(coord, 255, 255, 255, 255);
-                base_layer.grid.insert_tile(coord, tile);
-            }
-        }
+        // The background is a lazy solid-white fill rather than eagerly allocated
+        // white tiles, so large canvases no longer reserve gigabytes up front.
+        base_layer.fill = Some([255, 255, 255, 255]);
 
         let draw_layer = Layer::new("Layer 1");
         let active_id = draw_layer.id.clone();
@@ -118,186 +110,97 @@ impl Document {
         self.height = height;
     }
 
-    pub fn rotate_canvas_grid(grid: &mut SparseTileGrid, old_w: u32, old_h: u32, degrees: u16) {
-        let degrees = degrees % 360;
-        if degrees == 0 {
-            return;
-        }
-
-        let mut rotated_pixels = Vec::new();
-        let coords = grid.get_allocated_coords();
-        for coord in coords {
-            if let Some(tile) = grid.get_tile(&coord) {
-                let start_x = coord.x * (TILE_SIZE as i32);
-                let start_y = coord.y * (TILE_SIZE as i32);
-                for y in 0..TILE_SIZE {
-                    let orig_y = start_y + y as i32;
-                    if orig_y < 0 || orig_y >= old_h as i32 {
-                        continue;
-                    }
-                    for x in 0..TILE_SIZE {
-                        let orig_x = start_x + x as i32;
-                        if orig_x < 0 || orig_x >= old_w as i32 {
-                            continue;
-                        }
-                        let pixel = tile.get_pixel(x, y);
-                        if pixel[3] > 0 {
-                            let (new_x, new_y) = match degrees {
-                                90 => (old_h as i32 - 1 - orig_y, orig_x),
-                                180 => (old_w as i32 - 1 - orig_x, old_h as i32 - 1 - orig_y),
-                                270 => (orig_y, old_w as i32 - 1 - orig_x),
-                                _ => (orig_x, orig_y),
-                            };
-                            rotated_pixels.push((new_x, new_y, pixel));
-                        }
-                    }
+    pub fn sample_pixel(&self, layer_id: &str, x: i32, y: i32) -> [u8; 4] {
+        self.layers
+            .iter()
+            .find(|l| l.id == layer_id)
+            .map(|l| {
+                let coord = TileCoord::new(x / (TILE_SIZE as i32), y / (TILE_SIZE as i32), 0);
+                if l.grid.contains_tile(&coord) {
+                    l.grid.get_pixel(x, y)
+                } else {
+                    l.fill.unwrap_or([0, 0, 0, 0])
                 }
-            }
-        }
-
-        grid.clear();
-        for (x, y, color) in rotated_pixels {
-            grid.set_pixel_cow(x, y, color);
-        }
+            })
+            .unwrap_or([0, 0, 0, 0])
     }
 
-    pub fn rotate_layer_grid(grid: &mut SparseTileGrid, doc_w: u32, doc_h: u32, degrees: u16) {
-        let degrees = degrees % 360;
-        if degrees == 0 {
-            return;
-        }
-
-        let cx = (doc_w as f64 - 1.0) / 2.0;
-        let cy = (doc_h as f64 - 1.0) / 2.0;
-
-        let mut rotated_pixels = Vec::new();
-        let coords = grid.get_allocated_coords();
-        for coord in coords {
-            if let Some(tile) = grid.get_tile(&coord) {
-                let start_x = coord.x * (TILE_SIZE as i32);
-                let start_y = coord.y * (TILE_SIZE as i32);
-                for y in 0..TILE_SIZE {
-                    let orig_y = start_y + y as i32;
-                    if orig_y < 0 || orig_y >= doc_h as i32 {
-                        continue;
-                    }
-                    for x in 0..TILE_SIZE {
-                        let orig_x = start_x + x as i32;
-                        if orig_x < 0 || orig_x >= doc_w as i32 {
-                            continue;
-                        }
-                        let pixel = tile.get_pixel(x, y);
-                        if pixel[3] > 0 {
-                            let (new_x, new_y) = match degrees {
-                                90 => {
-                                    let dy = orig_y as f64 - cy;
-                                    let dx = orig_x as f64 - cx;
-                                    ((cx - dy).round() as i32, (cy + dx).round() as i32)
-                                }
-                                180 => (doc_w as i32 - 1 - orig_x, doc_h as i32 - 1 - orig_y),
-                                270 => {
-                                    let dy = orig_y as f64 - cy;
-                                    let dx = orig_x as f64 - cx;
-                                    ((cx + dy).round() as i32, (cy - dx).round() as i32)
-                                }
-                                _ => (orig_x, orig_y),
-                            };
-                            if new_x >= 0
-                                && new_x < doc_w as i32
-                                && new_y >= 0
-                                && new_y < doc_h as i32
-                            {
-                                rotated_pixels.push((new_x, new_y, pixel));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        grid.clear();
-        for (x, y, color) in rotated_pixels {
-            grid.set_pixel_cow(x, y, color);
-        }
-    }
-
-    pub fn flip_grid(grid: &mut SparseTileGrid, doc_w: u32, doc_h: u32, direction: &str) {
-        let mut flipped_pixels = Vec::new();
-        let coords = grid.get_allocated_coords();
-        for coord in coords {
-            if let Some(tile) = grid.get_tile(&coord) {
-                let start_x = coord.x * (TILE_SIZE as i32);
-                let start_y = coord.y * (TILE_SIZE as i32);
-                for y in 0..TILE_SIZE {
-                    let orig_y = start_y + y as i32;
-                    if orig_y < 0 || orig_y >= doc_h as i32 {
-                        continue;
-                    }
-                    for x in 0..TILE_SIZE {
-                        let orig_x = start_x + x as i32;
-                        if orig_x < 0 || orig_x >= doc_w as i32 {
-                            continue;
-                        }
-                        let pixel = tile.get_pixel(x, y);
-                        if pixel[3] > 0 {
-                            let (new_x, new_y) = match direction {
-                                "horizontal" => (doc_w as i32 - 1 - orig_x, orig_y),
-                                "vertical" => (orig_x, doc_h as i32 - 1 - orig_y),
-                                _ => (orig_x, orig_y),
-                            };
-                            flipped_pixels.push((new_x, new_y, pixel));
-                        }
-                    }
-                }
-            }
-        }
-
-        grid.clear();
-        for (x, y, color) in flipped_pixels {
-            grid.set_pixel_cow(x, y, color);
-        }
-    }
-
-    pub fn rotate(&mut self, degrees: u16) {
-        let old_w = self.width;
-        let old_h = self.height;
-        if degrees == 90 || degrees == 270 {
-            self.width = old_h;
-            self.height = old_w;
-        }
-
-        for layer in &mut self.layers {
-            Self::rotate_canvas_grid(&mut layer.grid, old_w, old_h, degrees);
-        }
-    }
-
-    pub fn flip(&mut self, direction: &str) {
-        let w = self.width;
-        let h = self.height;
-        for layer in &mut self.layers {
-            Self::flip_grid(&mut layer.grid, w, h, direction);
-        }
-    }
-
-    pub fn rotate_layer(&mut self, layer_id: &str, degrees: u16) -> bool {
-        let w = self.width;
-        let h = self.height;
+    pub fn clear_layer(&mut self, layer_id: &str) -> bool {
         if let Some(layer) = self.layers.iter_mut().find(|l| l.id == layer_id) {
-            Self::rotate_layer_grid(&mut layer.grid, w, h, degrees);
+            layer.grid.clear();
             true
         } else {
             false
         }
     }
 
-    pub fn flip_layer(&mut self, layer_id: &str, direction: &str) -> bool {
-        let w = self.width;
-        let h = self.height;
-        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == layer_id) {
-            Self::flip_grid(&mut layer.grid, w, h, direction);
-            true
-        } else {
-            false
+    pub fn duplicate_layer(&mut self, layer_id: &str) -> bool {
+        let Some(idx) = self.layers.iter().position(|l| l.id == layer_id) else {
+            return false;
+        };
+        let mut copy = self.layers[idx].clone();
+        copy.id = Uuid::new_v4().to_string();
+        copy.name = format!("{} Copy", copy.name);
+        let active_id = copy.id.clone();
+        self.layers.insert(idx + 1, copy);
+        self.active_layer_id = Some(active_id);
+        true
+    }
+
+    pub fn merge_down(&mut self, layer_id: &str) -> bool {
+        let Some(idx) = self.layers.iter().position(|l| l.id == layer_id) else {
+            return false;
+        };
+        if idx == 0 {
+            return false;
+        }
+
+        let upper = self.layers[idx].clone();
+        let opacity = upper.opacity;
+        let blend_mode = upper.blend_mode;
+        let upper_grid = upper.grid;
+        let dest_fill = self.layers[idx - 1].fill;
+
+        {
+            let lower = &mut self.layers[idx - 1];
+            Self::composite_grid_into(&mut lower.grid, &upper_grid, opacity, blend_mode, dest_fill);
+        }
+
+        self.layers.remove(idx);
+        if self.active_layer_id.as_deref() == Some(layer_id) {
+            self.active_layer_id = Some(self.layers[idx - 1].id.clone());
+        }
+        true
+    }
+
+    fn composite_grid_into(
+        dest: &mut SparseTileGrid,
+        src: &SparseTileGrid,
+        opacity: f32,
+        blend_mode: BlendMode,
+        dest_fill: Option<[u8; 4]>,
+    ) {
+        for coord in src.get_allocated_coords() {
+            let Some(src_tile) = src.get_tile(&coord) else {
+                continue;
+            };
+            let start_x = coord.x * (TILE_SIZE as i32);
+            let start_y = coord.y * (TILE_SIZE as i32);
+            for y in 0..TILE_SIZE {
+                for x in 0..TILE_SIZE {
+                    let top = src_tile.get_pixel(x, y);
+                    if top[3] == 0 {
+                        continue;
+                    }
+                    let bot = dest
+                        .get_tile(&coord)
+                        .map(|t| t.get_pixel(x, y))
+                        .or(dest_fill)
+                        .unwrap_or([0, 0, 0, 0]);
+                    let out = Self::composite_pixel(bot, top, opacity, blend_mode);
+                    dest.set_pixel_cow(start_x + x as i32, start_y + y as i32, out);
+                }
+            }
         }
     }
 
@@ -327,179 +230,5 @@ impl Document {
             }
         }
         coords
-    }
-
-    /// Software composite rendering of viewport rectangle
-    pub fn render_viewport_rgba(&self, vx: i32, vy: i32, vw: u32, vh: u32) -> Vec<u8> {
-        let buffer_size = (vw * vh * 4) as usize;
-        let mut buffer = vec![0u8; buffer_size];
-
-        for layer in &self.layers {
-            if !layer.visible || layer.opacity <= 0.0 {
-                continue;
-            }
-
-            let opacity = layer.opacity;
-            let blend_mode = layer.blend_mode;
-
-            // Iterate over pixels in viewport
-            for vy_offset in 0..vh {
-                let doc_y = vy + vy_offset as i32;
-                if doc_y < 0 || doc_y >= self.height as i32 {
-                    continue;
-                }
-
-                let tile_y = doc_y / (TILE_SIZE as i32);
-                let local_y = (doc_y % (TILE_SIZE as i32)) as u32;
-
-                for vx_offset in 0..vw {
-                    let doc_x = vx + vx_offset as i32;
-                    if doc_x < 0 || doc_x >= self.width as i32 {
-                        continue;
-                    }
-
-                    let tile_x = doc_x / (TILE_SIZE as i32);
-                    let local_x = (doc_x % (TILE_SIZE as i32)) as u32;
-
-                    let coord = TileCoord::new(tile_x, tile_y, 0);
-                    if let Some(tile) = layer.grid.get_tile(&coord) {
-                        let top_pixel = tile.get_pixel(local_x, local_y);
-                        let top_a = top_pixel[3] as f32 / 255.0 * opacity;
-                        if top_a <= 0.0 {
-                            continue;
-                        }
-
-                        let out_idx = ((vy_offset * vw + vx_offset) * 4) as usize;
-                        let bot_r = buffer[out_idx] as f32 / 255.0;
-                        let bot_g = buffer[out_idx + 1] as f32 / 255.0;
-                        let bot_b = buffer[out_idx + 2] as f32 / 255.0;
-                        let bot_a = buffer[out_idx + 3] as f32 / 255.0;
-
-                        let top_r = top_pixel[0] as f32 / 255.0;
-                        let top_g = top_pixel[1] as f32 / 255.0;
-                        let top_b = top_pixel[2] as f32 / 255.0;
-
-                        let (b_r, b_g, b_b) = match blend_mode {
-                            BlendMode::Normal => (top_r, top_g, top_b),
-                            BlendMode::Multiply => (bot_r * top_r, bot_g * top_g, bot_b * top_b),
-                            BlendMode::Screen => (
-                                1.0 - (1.0 - bot_r) * (1.0 - top_r),
-                                1.0 - (1.0 - bot_g) * (1.0 - top_g),
-                                1.0 - (1.0 - bot_b) * (1.0 - top_b),
-                            ),
-                            BlendMode::Overlay => (
-                                if bot_r < 0.5 {
-                                    2.0 * bot_r * top_r
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
-                                },
-                                if bot_g < 0.5 {
-                                    2.0 * bot_g * top_g
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
-                                },
-                                if bot_b < 0.5 {
-                                    2.0 * bot_b * top_b
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
-                                },
-                            ),
-                            BlendMode::Darken => {
-                                (bot_r.min(top_r), bot_g.min(top_g), bot_b.min(top_b))
-                            }
-                            BlendMode::Lighten => {
-                                (bot_r.max(top_r), bot_g.max(top_g), bot_b.max(top_b))
-                            }
-                            BlendMode::ColorDodge => (
-                                if top_r >= 1.0 {
-                                    1.0
-                                } else {
-                                    (bot_r / (1.0 - top_r)).min(1.0)
-                                },
-                                if top_g >= 1.0 {
-                                    1.0
-                                } else {
-                                    (bot_g / (1.0 - top_g)).min(1.0)
-                                },
-                                if top_b >= 1.0 {
-                                    1.0
-                                } else {
-                                    (bot_b / (1.0 - top_b)).min(1.0)
-                                },
-                            ),
-                            BlendMode::ColorBurn => (
-                                if top_r <= 0.0 {
-                                    0.0
-                                } else {
-                                    1.0 - ((1.0 - bot_r) / top_r).min(1.0)
-                                },
-                                if top_g <= 0.0 {
-                                    0.0
-                                } else {
-                                    1.0 - ((1.0 - bot_g) / top_g).min(1.0)
-                                },
-                                if top_b <= 0.0 {
-                                    0.0
-                                } else {
-                                    1.0 - ((1.0 - bot_b) / top_b).min(1.0)
-                                },
-                            ),
-                            BlendMode::LinearDodge => (
-                                (bot_r + top_r).min(1.0),
-                                (bot_g + top_g).min(1.0),
-                                (bot_b + top_b).min(1.0),
-                            ),
-                            BlendMode::HardLight => (
-                                if top_r < 0.5 {
-                                    2.0 * bot_r * top_r
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
-                                },
-                                if top_g < 0.5 {
-                                    2.0 * bot_g * top_g
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
-                                },
-                                if top_b < 0.5 {
-                                    2.0 * bot_b * top_b
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
-                                },
-                            ),
-                            BlendMode::SoftLight => (
-                                (1.0 - 2.0 * top_r) * bot_r * bot_r + 2.0 * top_r * bot_r,
-                                (1.0 - 2.0 * top_g) * bot_g * bot_g + 2.0 * top_g * bot_g,
-                                (1.0 - 2.0 * top_b) * bot_b * bot_b + 2.0 * top_b * bot_b,
-                            ),
-                            BlendMode::Difference => (
-                                (bot_r - top_r).abs(),
-                                (bot_g - top_g).abs(),
-                                (bot_b - top_b).abs(),
-                            ),
-                            BlendMode::Exclusion => (
-                                bot_r + top_r - 2.0 * bot_r * top_r,
-                                bot_g + top_g - 2.0 * bot_g * top_g,
-                                bot_b + top_b - 2.0 * bot_b * top_b,
-                            ),
-                            _ => (top_r, top_g, top_b),
-                        };
-
-                        let out_a = top_a + bot_a * (1.0 - top_a);
-                        if out_a > 0.0001 {
-                            let out_r = (b_r * top_a + bot_r * bot_a * (1.0 - top_a)) / out_a;
-                            let out_g = (b_g * top_a + bot_g * bot_a * (1.0 - top_a)) / out_a;
-                            let out_b = (b_b * top_a + bot_b * bot_a * (1.0 - top_a)) / out_a;
-
-                            buffer[out_idx] = (out_r.clamp(0.0, 1.0) * 255.0) as u8;
-                            buffer[out_idx + 1] = (out_g.clamp(0.0, 1.0) * 255.0) as u8;
-                            buffer[out_idx + 2] = (out_b.clamp(0.0, 1.0) * 255.0) as u8;
-                            buffer[out_idx + 3] = (out_a.clamp(0.0, 1.0) * 255.0) as u8;
-                        }
-                    }
-                }
-            }
-        }
-
-        buffer
     }
 }

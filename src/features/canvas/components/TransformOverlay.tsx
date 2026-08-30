@@ -3,6 +3,7 @@ import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { Check, X, Lock, Unlock, RotateCw } from 'lucide-react';
 import { TransformState } from '@/types';
+import * as bridge from '@/services/tauriBridge';
 
 interface Props {
   zoom: number;
@@ -12,7 +13,7 @@ type DragMode = 'move' | 'rotate' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' 
 
 export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
   const { transformState, setTransformState } = useEditorStore();
-  const { doc, pushCanvasSnapshot, bumpCanvasRevision } = useDocumentStore();
+  const doc = useDocumentStore((s) => s.doc);
 
   const [keepAspect, setKeepAspect] = useState<boolean>(true);
   const [dragMode, setDragMode] = useState<DragMode | null>(null);
@@ -49,40 +50,28 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
   }, [transformState]);
 
   const handleApply = useCallback(() => {
-    if (!transformState || !transformState.sourceCanvas || !doc) {
+    if (!transformState) {
       setTransformState(null);
       return;
     }
-
-    const targetCanvas = document.getElementById(
-      `layer-canvas-${transformState.layerId}`
-    ) as HTMLCanvasElement | null;
-
-    if (targetCanvas) {
-      pushCanvasSnapshot('Free Transform');
-      const ctx = targetCanvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-        ctx.save();
-        ctx.translate(
-          transformState.x + transformState.width / 2,
-          transformState.y + transformState.height / 2
-        );
-        ctx.rotate((transformState.rotation * Math.PI) / 180);
-        ctx.drawImage(
-          transformState.sourceCanvas,
-          -transformState.width / 2,
-          -transformState.height / 2,
-          transformState.width,
-          transformState.height
-        );
-        ctx.restore();
-      }
-      bumpCanvasRevision();
-    }
-
+    const layerId = transformState.layerId;
+    bridge
+      .transformLayer(
+        layerId,
+        transformState.x,
+        transformState.y,
+        transformState.width,
+        transformState.height,
+        transformState.rotation
+      )
+      .then(async () => {
+        useDocumentStore.getState().markLayerDirty(layerId);
+        useDocumentStore.getState().requestRepaint();
+        await useDocumentStore.getState().refreshHistory();
+      })
+      .catch(() => {});
     setTransformState(null);
-  }, [bumpCanvasRevision, doc, pushCanvasSnapshot, setTransformState, transformState]);
+  }, [setTransformState, transformState]);
 
   const handleCancel = useCallback(() => {
     if (!transformState || !transformState.sourceCanvas) {
@@ -100,11 +89,11 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
         ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
         ctx.drawImage(transformState.sourceCanvas, 0, 0);
       }
-      bumpCanvasRevision();
+      useDocumentStore.getState().markLayerDirty(transformState.layerId);
     }
 
     setTransformState(null);
-  }, [bumpCanvasRevision, setTransformState, transformState]);
+  }, [setTransformState, transformState]);
 
   // Handle keyboard shortcuts (Enter to Apply, Escape to Cancel)
   useEffect(() => {

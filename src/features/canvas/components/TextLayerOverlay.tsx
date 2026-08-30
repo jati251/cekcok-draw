@@ -7,7 +7,7 @@ import * as bridge from '@/services/tauriBridge';
 export const TextLayerOverlay: React.FC = () => {
   const { activeTool, activeTextNode, setActiveTextNode, textSettings, primaryColor } =
     useEditorStore();
-  const { doc, bumpCanvasRevision } = useDocumentStore();
+  const { doc } = useDocumentStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export const TextLayerOverlay: React.FC = () => {
   // Only render overlay when in text tool and node is open
   if (!activeTextNode || !doc || activeTool !== 'text') return null;
 
-  const commitTextToCanvas = () => {
+  const commitTextToCanvas = async () => {
     if (!activeTextNode.text.trim()) {
       setActiveTextNode(null);
       return;
@@ -38,7 +38,7 @@ export const TextLayerOverlay: React.FC = () => {
         (document.querySelector('canvas') as HTMLCanvasElement | null);
     }
 
-    if (activeCanvas) {
+    if (activeCanvas && doc) {
       const ctx = activeCanvas.getContext('2d');
       if (ctx) {
         ctx.save();
@@ -56,8 +56,30 @@ export const TextLayerOverlay: React.FC = () => {
         });
         ctx.restore();
 
-        bumpCanvasRevision();
+        // Sync the text region to Rust so the single display canvas shows it.
+        let maxWidth = 0;
+        for (const line of lines) {
+          maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
+        }
+        const tx = Math.max(0, Math.floor(activeTextNode.x));
+        const ty = Math.max(0, Math.floor(activeTextNode.y));
+        const tw = Math.min(doc.width - tx, Math.ceil(maxWidth) + 4);
+        const th = Math.min(doc.height - ty, Math.ceil(lines.length * lineHeight) + 4);
+        if (tw > 0 && th > 0) {
+          const imgData = ctx.getImageData(tx, ty, tw, th);
+          await bridge.writeLayerPixels(
+            tx,
+            ty,
+            tw,
+            th,
+            new Uint8Array(imgData.data.buffer),
+            activeId
+          );
+        }
+
+        useDocumentStore.getState().markLayerDirty(activeId);
         bridge.commitStrokeHistory(`Text: "${activeTextNode.text.slice(0, 15)}..."`);
+        useDocumentStore.getState().requestRepaint();
       }
     }
 

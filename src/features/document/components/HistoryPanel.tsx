@@ -1,10 +1,11 @@
 import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useHistoryStore } from '@/stores/historyStore';
 import { History, Undo, Redo } from 'lucide-react';
 
 export const HistoryPanel: React.FC = () => {
-  const { history, historyIndex, triggerUndo, triggerRedo, jumpToHistoryIndex } =
-    useDocumentStore();
+  const { triggerUndo, triggerRedo, jumpToHistoryIndex } = useDocumentStore();
+  const { history, historyIndex } = useHistoryStore();
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;

@@ -28,13 +28,16 @@ pub enum LayerFilter {
     FlipVertical {
         height: u32,
     },
+    GaussianBlur {
+        radius: f32,
+    },
 }
 
 pub struct FilterEngine;
 
 impl FilterEngine {
     /// Applies an in-place pixel transform across all allocated tiles in the SparseTileGrid using CoW
-    pub fn apply_filter(grid: &mut SparseTileGrid, filter: &LayerFilter) {
+    pub fn apply_filter(grid: &mut SparseTileGrid, filter: &LayerFilter, doc_w: u32, doc_h: u32) {
         match filter {
             LayerFilter::Invert => {
                 Self::map_pixels(grid, |r, g, b, a| (255 - r, 255 - g, 255 - b, a));
@@ -87,11 +90,11 @@ impl FilterEngine {
                 let inv_gamma = 1.0 / in_gamma.max(0.01);
 
                 let mut lut = [0u8; 256];
-                for i in 0..256 {
+                for (i, slot) in lut.iter_mut().enumerate() {
                     let norm = ((i as f32 - *in_black as f32) / in_diff).clamp(0.0, 1.0);
                     let gamma_adj = norm.powf(inv_gamma);
                     let res = *out_black as f32 + gamma_adj * out_diff;
-                    lut[i] = res.clamp(0.0, 255.0).round() as u8;
+                    *slot = res.clamp(0.0, 255.0).round() as u8;
                 }
 
                 Self::map_pixels(grid, |r, g, b, a| {
@@ -104,7 +107,106 @@ impl FilterEngine {
             LayerFilter::FlipVertical { height } => {
                 Self::flip_vertical(grid, *height);
             }
+            LayerFilter::GaussianBlur { radius } => {
+                Self::gaussian_blur(grid, doc_w, doc_h, *radius);
+            }
         }
+    }
+
+    fn gaussian_blur(grid: &mut SparseTileGrid, doc_w: u32, doc_h: u32, radius: f32) {
+        let sigma = radius.max(0.1);
+        let k = (sigma * 3.0).ceil() as i32;
+        if k < 1 {
+            return;
+        }
+
+        let coords = grid.get_allocated_coords();
+        if coords.is_empty() {
+            return;
+        }
+
+        let mut min_x = i32::MAX;
+        let mut min_y = i32::MAX;
+        let mut max_x = i32::MIN;
+        let mut max_y = i32::MIN;
+        for coord in coords {
+            let (x0, y0, x1, y1) = coord.to_pixel_bounds();
+            min_x = min_x.min(x0);
+            min_y = min_y.min(y0);
+            max_x = max_x.max(x1);
+            max_y = max_y.max(y1);
+        }
+
+        let bx0 = (min_x - k).max(0);
+        let by0 = (min_y - k).max(0);
+        let bx1 = (max_x + k).min(doc_w as i32);
+        let by1 = (max_y + k).min(doc_h as i32);
+        if bx1 <= bx0 || by1 <= by0 {
+            return;
+        }
+
+        let w = (bx1 - bx0) as u32;
+        let h = (by1 - by0) as u32;
+        let src = grid.read_region(bx0, by0, w, h);
+
+        let kernel: Vec<f32> = (-k..=k)
+            .map(|i| {
+                let x = i as f32;
+                (-(x * x) / (2.0 * sigma * sigma)).exp()
+            })
+            .collect();
+
+        // Horizontal pass
+        let mut horiz = vec![0u8; src.len()];
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let mut acc = [0.0f32; 4];
+                let mut wsum = 0.0f32;
+                for (ki, kw) in kernel.iter().enumerate() {
+                    let sx = x as i32 + ki as i32 - k;
+                    if sx < 0 || sx >= w as i32 {
+                        continue;
+                    }
+                    let si = (y * w as usize + sx as usize) * 4;
+                    for c in 0..4 {
+                        acc[c] += src[si + c] as f32 * kw;
+                    }
+                    wsum += kw;
+                }
+                let inv = 1.0 / wsum.max(1e-6);
+                let di = (y * w as usize + x) * 4;
+                for c in 0..4 {
+                    horiz[di + c] = (acc[c] * inv).round() as u8;
+                }
+            }
+        }
+
+        // Vertical pass
+        let mut out = vec![0u8; src.len()];
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let mut acc = [0.0f32; 4];
+                let mut wsum = 0.0f32;
+                for (ki, kw) in kernel.iter().enumerate() {
+                    let sy = y as i32 + ki as i32 - k;
+                    if sy < 0 || sy >= h as i32 {
+                        continue;
+                    }
+                    let si = (sy as usize * w as usize + x) * 4;
+                    for c in 0..4 {
+                        acc[c] += horiz[si + c] as f32 * kw;
+                    }
+                    wsum += kw;
+                }
+                let inv = 1.0 / wsum.max(1e-6);
+                let di = (y * w as usize + x) * 4;
+                for c in 0..4 {
+                    out[di + c] = (acc[c] * inv).round() as u8;
+                }
+            }
+        }
+
+        grid.write_region(bx0, by0, w, h, &out);
     }
 
     /// Parallel 256-bin luminance histogram computation across all allocated tiles
