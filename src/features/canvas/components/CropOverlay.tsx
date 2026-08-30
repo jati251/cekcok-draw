@@ -230,7 +230,11 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
           <span className="text-zinc-600">|</span>
           <button
             type="button"
-            onClick={handleCancel}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              handleCancel();
+            }}
             title="Cancel (Esc)"
             className="p-1 rounded hover:bg-rose-500/20 text-rose-400"
           >
@@ -238,7 +242,11 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
           </button>
           <button
             type="button"
-            onClick={handleApply}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              handleApply();
+            }}
             title="Commit Crop (Enter)"
             className="p-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-sm"
           >

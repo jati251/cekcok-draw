@@ -28,4 +28,5 @@ export interface LayerMetadata {
   opacity: number;
   blend_mode: BlendMode;
   layer_type?: LayerType;
+  is_clipped?: boolean;
 }

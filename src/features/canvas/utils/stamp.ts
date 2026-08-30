@@ -26,12 +26,42 @@ export const createStampCanvas = (
   stamp.height = size;
   const ctx = stamp.getContext('2d');
   if (!ctx) return stamp;
+  const center = size / 2;
+  const hardness = Math.min(0.999, Math.max(0, settings.hardness));
+  const radSq = radius * radius;
+
+  // Fast Hardware GPU path for standard round brushes when radius >= 24
+  // Direct radial gradient / arc blit is 100x faster than looping millions of ImageData pixels
+  if (brushType === 'round_soft' && radius >= 24) {
+    const colStr = `rgba(${color[0]}, ${color[1]}, ${color[2]},`;
+    const grad = ctx.createRadialGradient(
+      center,
+      center,
+      radius * hardness,
+      center,
+      center,
+      radius
+    );
+    grad.addColorStop(0, `${colStr} 1)`);
+    grad.addColorStop(0.5, `${colStr} 0.5)`);
+    grad.addColorStop(1, `${colStr} 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(center, center, radius, 0, Math.PI * 2);
+    ctx.fill();
+    return stamp;
+  }
+
+  if (brushType === 'round_hard' && radius >= 24) {
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+    ctx.beginPath();
+    ctx.arc(center, center, radius, 0, Math.PI * 2);
+    ctx.fill();
+    return stamp;
+  }
 
   const imgData = ctx.createImageData(size, size);
   const data = imgData.data;
-  const center = size / 2;
-  const radSq = radius * radius;
-  const hardness = Math.min(0.999, Math.max(0, settings.hardness));
   const angleRad = ((settings.angle ?? 45) * Math.PI) / 180;
   const cosA = Math.cos(angleRad);
   const sinA = Math.sin(angleRad);

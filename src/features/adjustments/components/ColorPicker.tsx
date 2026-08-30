@@ -10,7 +10,7 @@ export const ColorPicker: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'wheel' | 'swatches' | 'sliders'>('wheel');
 
   return (
-    <div className="flex flex-col bg-ps-panel border-b border-ps-border/60 text-xs select-none p-3 space-y-3">
+    <div className="flex flex-col bg-ps-panel text-xs select-none p-2 space-y-3">
       {/* Header & Mode Tabs */}
       <div className="flex items-center justify-between font-semibold text-zinc-300">
         <div className="flex items-center space-x-0.5 bg-ps-surface/80 p-0.5 rounded-lg border border-ps-border/60">

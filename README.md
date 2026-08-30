@@ -51,6 +51,7 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 ### 📑 Multi-Layer Canvas Stack & 18 Blend Modes
 
 - **Persistent Multi-Canvas Stack**: Zero-loss layer isolation (`Map<string, HTMLCanvasElement>`). Adding, hiding, or reordering layers never destroys raster pixel data.
+- **Clipping Masks**: Create Clipping Masks (`⌥⌘G`) to clip the contents of a layer to the boundaries of the base layer below it, utilizing live `destination-in` composition rendering.
 - **Photoshop Blend Modes**: Normal, Darken, Multiply, Color Burn, Lighten, Screen, Color Dodge, Linear Dodge (Add), Overlay, Soft Light, Hard Light, Vivid Light, Difference, Exclusion, Hue, Saturation, Color, and Luminosity.
 - **Layer Controls**: Opacity slider, Visibility toggling, Layer Duplication (`⌘J`), and Delete.
 
@@ -59,6 +60,7 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 - **Adaptive Dynamic Grid**: 1-2-5 decade progression (`⌘'`) that automatically scales grid spacing across zoom levels (50px/10px at 100%, 200px/500px on zoom out, 1px sub-pixel grid on $\ge 400\%$ zoom in).
 - **Precision Rulers (`⌘R`)**: Dual-axis dynamic pixel rulers with live cursor tracking hair-lines.
 - **Color Adjustment Studio (`⌘U`)**: Real-time HSL color grading dialog (Hue, Saturation, Lightness), Brightness/Contrast, Gaussian Blur, Invert (`⌘I`), Desaturate (`⌘⇧U`), and Canvas Flipping (Horizontal / Vertical).
+- **Advanced Color Wheel**: Professional HSV Color Picker with an outer Hue ring and inner Saturation/Value square, fully CSS-gradient hardware accelerated.
 
 ---
 

@@ -39,6 +39,16 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
           </span>
         </div>
 
+        {/* Canvas Resolution (DPI / PPI) */}
+        {doc && (
+          <div className="flex items-center space-x-1 border-l border-ps-border/60 pl-3 font-mono text-[10px]">
+            <span className="text-zinc-500 uppercase font-sans font-semibold">Res</span>
+            <span className="text-zinc-200 font-semibold px-1 py-0.2 rounded bg-ps-surface border border-ps-border/50">
+              {doc.dpi || 72} DPI
+            </span>
+          </div>
+        )}
+
         {/* Real-time Tablet / Stylus Telemetry */}
         <div className="flex items-center space-x-1.5 border-l border-ps-border/60 pl-3 font-mono text-[10px]">
           <PenTool size={10} className={isPen ? 'text-blue-400 animate-pulse' : 'text-zinc-500'} />

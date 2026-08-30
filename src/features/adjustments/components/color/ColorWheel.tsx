@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { hslToRgb, rgbToHsl, rgbaToHex, hexToRgba } from '@/utils/color';
+import React, { useRef, useState } from 'react';
+import { rgbaToHex, hexToRgba, rgbToHsv, hsvToRgb } from '@/utils/color';
 
 interface Props {
   primaryColor: string;
@@ -7,155 +7,145 @@ interface Props {
 }
 
 export const ColorWheel: React.FC<Props> = ({ primaryColor, onChangeColor }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const rgba = hexToRgba(primaryColor, 255);
-  const [h, s, l] = rgbToHsl(rgba[0], rgba[1], rgba[2]);
+  const [h, s, v] = rgbToHsv(rgba[0], rgba[1], rgba[2]);
 
-  // Draw vibrant Rainbow Chroma Wheel (Pelangi 360°)
-  const drawRainbowWheel = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const [activeThumb, setActiveThumb] = useState<'hue' | 'sv' | null>(null);
 
-    const width = canvas.width;
-    const height = canvas.height;
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = Math.min(cx, cy) - 3;
+  // Wheel layout constants
+  const size = 180;
+  const strokeWidth = 14;
+  const radius = size / 2;
+  const squareSize = Math.floor((radius - strokeWidth) * Math.SQRT2) - 4; // Max square fitting inside ring
 
-    ctx.clearRect(0, 0, width, height);
+  // Calculate pointer positions
+  const hueAngleRad = (h * Math.PI) / 180;
+  const hueX = radius + (radius - strokeWidth / 2) * Math.cos(hueAngleRad);
+  const hueY = radius - (radius - strokeWidth / 2) * Math.sin(hueAngleRad);
 
-    const imgData = ctx.createImageData(width, height);
-    const data = imgData.data;
+  const svX = s * squareSize;
+  const svY = (1 - v) * squareSize;
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const dx = x + 0.5 - cx;
-        const dy = y + 0.5 - cy;
-        const dist = Math.hypot(dx, dy);
-        const idx = (y * width + x) * 4;
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    handlePointerMove(e);
+  };
 
-        if (dist <= radius) {
-          // Angle in degrees (0 to 360)
-          let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-          if (angle < 0) angle += 360;
-
-          const sat = Math.min(1, Math.max(0, dist / radius));
-          // Rainbow Chroma generated at pure chromatic L=0.5
-          const [r, g, b] = hslToRgb(angle, sat, 0.5);
-
-          // Sub-pixel antialiasing edge
-          const edgeAlpha = Math.min(1.0, Math.max(0.0, radius - dist + 0.5));
-
-          data[idx] = r;
-          data[idx + 1] = g;
-          data[idx + 2] = b;
-          data[idx + 3] = Math.round(edgeAlpha * 255);
-        } else {
-          data[idx + 3] = 0;
-        }
-      }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
-
-    // Draw active color indicator ring
-    const angleRad = (h - 90) * (Math.PI / 180);
-    const indRadius = Math.min(radius, s * radius);
-    const indX = cx + indRadius * Math.cos(angleRad);
-    const indY = cy + indRadius * Math.sin(angleRad);
-
-    ctx.beginPath();
-    ctx.arc(indX, indY, 5.5, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(indX, indY, 4, 0, Math.PI * 2);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }, [h, s]);
-
-  useEffect(() => {
-    drawRainbowWheel();
-  }, [drawRainbowWheel]);
-
-  const handlePointer = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!containerRef.current || e.buttons !== 1) return;
+    const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 3;
-
-    const dx = x - cx;
-    const dy = y - cy;
+    const dx = x - radius;
+    const dy = y - radius;
     const dist = Math.hypot(dx, dy);
 
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-    if (angle < 0) angle += 360;
+    let target = activeThumb;
+    if (!target) {
+      if (dist >= radius - strokeWidth - 5) {
+        target = 'hue';
+      } else {
+        target = 'sv';
+      }
+      setActiveThumb(target);
+    }
 
-    const newSat = Math.min(1, Math.max(0, dist / radius));
-    // If current lightness is black (0) or white (1), pick a vibrant 0.5 lightness
-    const targetL = l < 0.05 || l > 0.95 ? 0.5 : l;
+    if (target === 'hue') {
+      let angle = Math.atan2(-dy, dx) * (180 / Math.PI);
+      if (angle < 0) angle += 360;
 
-    const [r, g, b] = hslToRgb(angle, newSat, targetL);
-    onChangeColor(rgbaToHex(r, g, b));
+      const newRgb = hsvToRgb(angle, s, v);
+      onChangeColor(rgbaToHex(newRgb[0], newRgb[1], newRgb[2]));
+    } else if (target === 'sv') {
+      const sqX = Math.max(0, Math.min(squareSize, x - (size - squareSize) / 2));
+      const sqY = Math.max(0, Math.min(squareSize, y - (size - squareSize) / 2));
+
+      const newS = sqX / squareSize;
+      const newV = 1 - sqY / squareSize;
+
+      const newRgb = hsvToRgb(h, newS, newV);
+      onChangeColor(rgbaToHex(newRgb[0], newRgb[1], newRgb[2]));
+    }
   };
 
-  const handleLightnessChange = (newL: number) => {
-    const [r, g, b] = hslToRgb(h, s, newL);
-    onChangeColor(rgbaToHex(r, g, b));
+  const handlePointerUp = () => {
+    setActiveThumb(null);
   };
 
   return (
-    <div className="flex flex-col items-center space-y-3">
-      {/* 360° Rainbow Color Disc */}
-      <div className="relative p-1 rounded-full bg-zinc-900 border border-zinc-700/80 shadow-md">
-        <canvas
-          ref={canvasRef}
-          width={130}
-          height={130}
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            setIsDragging(true);
-            handlePointer(e);
+    <div className="flex flex-col items-center justify-center p-4 bg-ps-surface rounded-xl select-none touch-none">
+      <div
+        ref={containerRef}
+        style={{ width: size, height: size, position: 'relative' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: 'conic-gradient(from 90deg, red, magenta, blue, cyan, lime, yellow, red)',
+            WebkitMask: `radial-gradient(transparent ${radius - strokeWidth}px, black ${radius - strokeWidth + 1}px)`,
+            mask: `radial-gradient(transparent ${radius - strokeWidth}px, black ${radius - strokeWidth + 1}px)`,
+            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.5)',
           }}
-          onPointerMove={(e) => {
-            if (isDragging) handlePointer(e);
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: (size - squareSize) / 2,
+            top: (size - squareSize) / 2,
+            width: squareSize,
+            height: squareSize,
+            background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${h}, 100%, 50%))`,
+            borderRadius: 2,
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
           }}
-          onPointerUp={(e) => {
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-              e.currentTarget.releasePointerCapture(e.pointerId);
-            }
-            setIsDragging(false);
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: hueX,
+            top: hueY,
+            width: strokeWidth + 6,
+            height: strokeWidth + 6,
+            transform: 'translate(-50%, -50%)',
+            border: '2px solid white',
+            borderRadius: '50%',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
           }}
-          className="rounded-full cursor-crosshair block"
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: (size - squareSize) / 2 + svX,
+            top: (size - squareSize) / 2 + svY,
+            width: 14,
+            height: 14,
+            transform: 'translate(-50%, -50%)',
+            border: '2px solid white',
+            borderRadius: '50%',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.8), inset 0 0 2px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
+            backgroundColor: primaryColor,
+          }}
         />
       </div>
 
-      {/* Lightness Slider with custom track gradient */}
-      <div className="w-full flex items-center space-x-2">
-        <span className="text-[10px] text-zinc-400 font-mono">L:</span>
-        <input
-          type="range"
-          min="0.0"
-          max="1.0"
-          step="0.01"
-          value={l}
-          onChange={(e) => handleLightnessChange(Number(e.target.value))}
-          className="flex-1 accent-blue-500 cursor-pointer h-2 bg-gradient-to-r from-black via-zinc-500 to-white rounded-lg appearance-none border border-zinc-700"
+      <div className="flex items-center space-x-2 mt-4 text-zinc-300 text-xs w-full px-2">
+        <div
+          className="w-6 h-6 rounded border border-ps-border shadow-sm flex-shrink-0"
+          style={{ backgroundColor: primaryColor }}
         />
-        <span className="text-[10px] font-mono text-zinc-300 w-7 text-right">
-          {Math.round(l * 100)}%
+        <span className="font-mono uppercase bg-ps-header px-2 py-1 rounded border border-ps-border flex-1 text-center">
+          {primaryColor}
         </span>
       </div>
     </div>

@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DocumentInfo } from '@/types';
-import { floodFill } from '@/features/tools/utils/floodFill';
 import { hexToRgba } from '@/utils/color';
 import * as bridge from '@/services/tauriBridge';
 
@@ -80,26 +79,24 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
 
       useDocumentStore.getState().pushCanvasSnapshot('Paint Bucket Fill');
       const fillColor = hexToRgba(primaryColor, Math.round(brushSettings.opacity * 255));
-      const filled = floodFill(ctx, doc.width, doc.height, pos.x, pos.y, fillColor, 32, selection);
+      const selBounds: [number, number, number, number] | undefined =
+        selection && selection.active
+          ? [
+              Math.floor(selection.x),
+              Math.floor(selection.y),
+              Math.ceil(selection.x + selection.width),
+              Math.ceil(selection.y + selection.height),
+            ]
+          : undefined;
+      const activeLayerId = doc.active_layer_id;
 
-      if (filled) {
-        bumpCanvasRevision();
-        const selBounds: [number, number, number, number] | undefined =
-          selection && selection.active
-            ? [
-                Math.floor(selection.x),
-                Math.floor(selection.y),
-                Math.ceil(selection.x + selection.width),
-                Math.ceil(selection.y + selection.height),
-              ]
-            : undefined;
-        const activeLayerId = doc.active_layer_id;
-        setTimeout(() => {
-          bridge
-            .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
-            .catch(() => {});
-        }, 0);
-      }
+      bridge
+        .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
+        .then(() => {
+          useDocumentStore.getState().refreshHistory();
+          bumpCanvasRevision();
+        })
+        .catch(() => {});
     },
     [brushSettings.opacity, bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, selection]
   );
@@ -272,7 +269,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         }
       }
     },
-    [doc, layerCanvasesRef]
+    [doc, layerCanvasesRef, selection]
   );
 
   const endMove = useCallback(() => {
@@ -358,7 +355,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
           .catch(() => {});
       }
     }
-  }, [bumpCanvasRevision, doc, moveDrag, selection]);
+  }, [bumpCanvasRevision, doc, moveDrag, selection, layerCanvasesRef]);
 
   const clearSelectionContent = useCallback(() => {
     if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
@@ -414,9 +411,11 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       useDocumentStore.getState().pushCanvasSnapshot(`Shape (${shapeSettings.type})`);
 
       try {
-        const updatedDoc = await bridge.addLayer(shapeLayerName);
-        targetLayerId = updatedDoc.active_layer_id || targetLayerId;
-        useDocumentStore.getState().bumpCanvasRevision();
+        await useDocumentStore.getState().addNewLayer(shapeLayerName);
+        const currentDoc = useDocumentStore.getState().doc;
+        if (currentDoc && currentDoc.active_layer_id) {
+          targetLayerId = currentDoc.active_layer_id;
+        }
       } catch {
         // Fallback to current layer if add fails
       }

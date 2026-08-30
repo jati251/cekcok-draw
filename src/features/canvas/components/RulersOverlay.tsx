@@ -208,7 +208,8 @@ export const RulersOverlay: React.FC = () => {
         // Label
         leftCtx.fillStyle = '#9ca3af';
         leftCtx.save();
-        leftCtx.translate(2, Math.round(screenY) + 2);
+        leftCtx.translate(12, Math.round(screenY) - 2);
+        leftCtx.rotate(-Math.PI / 2);
         leftCtx.fillText(`${y}`, 0, 0);
         leftCtx.restore();
       }

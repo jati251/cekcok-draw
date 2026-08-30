@@ -20,6 +20,7 @@ interface ShortcutActions {
   onOpenExport: () => void;
   onOpenHueSaturation: () => void;
   onOpenUpdateModal?: () => void;
+  onOpenHelpModal?: () => void;
 }
 
 export const useKeyboardShortcuts = ({
@@ -29,8 +30,9 @@ export const useKeyboardShortcuts = ({
   onOpenExport,
   onOpenHueSaturation,
   onOpenUpdateModal,
+  onOpenHelpModal,
 }: ShortcutActions) => {
-  const { initDocument, triggerUndo, triggerRedo, addNewLayer, doc } = useDocumentStore();
+  const { triggerUndo, triggerRedo, addNewLayer, doc } = useDocumentStore();
   const {
     setActiveTool,
     increaseBrushSize,
@@ -56,6 +58,7 @@ export const useKeyboardShortcuts = ({
     onOpenExport,
     onOpenHueSaturation,
     onOpenUpdateModal,
+    onOpenHelpModal,
   });
 
   useEffect(() => {
@@ -66,6 +69,7 @@ export const useKeyboardShortcuts = ({
       onOpenExport,
       onOpenHueSaturation,
       onOpenUpdateModal,
+      onOpenHelpModal,
     };
   });
 
@@ -179,14 +183,6 @@ export const useKeyboardShortcuts = ({
     }
   };
 
-  const isInitializedRef = useRef(false);
-  useEffect(() => {
-    if (!doc && !isInitializedRef.current) {
-      isInitializedRef.current = true;
-      initDocument('Untitled-1', 1920, 1080, false);
-    }
-  }, [doc, initDocument]);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
@@ -293,6 +289,12 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           setZoom((z) => Math.max(0.05, z / 1.25));
         }
+        return;
+      }
+
+      if (e.key === 'F1') {
+        e.preventDefault();
+        actionsRef.current.onOpenHelpModal?.();
         return;
       }
 
@@ -450,6 +452,8 @@ export const useKeyboardShortcuts = ({
             actionsRef.current.onOpenExport();
           } else if (action === 'check_updates' || action === 'check_updates_help') {
             actionsRef.current.onOpenUpdateModal?.();
+          } else if (action === 'help_docs') {
+            actionsRef.current.onOpenHelpModal?.();
           } else if (action === 'doc_github') {
             handleOpenGithub();
           } else if (action === 'free_transform' || action === 'free_transform_layer') {

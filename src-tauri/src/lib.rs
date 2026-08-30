@@ -68,6 +68,7 @@ pub fn run() {
             set_layer_lock,
             rename_layer,
             resize_document,
+            set_document_dpi,
             rotate_document,
             flip_document,
             rotate_layer,
@@ -95,7 +96,8 @@ pub fn run() {
             render_layer_viewport,
             read_file_binary,
             layer_via_copy,
-            move_selection_content
+            move_selection_content,
+            toggle_layer_clipping
         ])
         .run(tauri::generate_context!())
         .expect("error while running CekcokDraw application");

@@ -631,11 +631,12 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
           top: '50%',
           width: `${doc.width}px`,
           height: `${doc.height}px`,
-          transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${zoom})`,
+          transform: `translate3d(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px), 0) scale(${zoom})`,
           transformOrigin: 'center center',
           boxShadow: '0 25px 60px -15px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.08)',
+          willChange: isPanning || zoom !== 1 ? 'transform' : 'auto',
         }}
-        className="transition-none"
+        className="transition-none backface-hidden"
       >
         <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} viewport={nativeViewport} />
 

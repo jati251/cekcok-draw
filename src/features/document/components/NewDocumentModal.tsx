@@ -14,9 +14,10 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [title, setTitle] = useState('Untitled-1');
   const [width, setWidth] = useState(1920);
   const [height, setHeight] = useState(1080);
+  const [dpi, setDpi] = useState(72);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
+  const { handleBackdropClick, handleMouseDown } = useModalDismiss({ isOpen, onClose });
 
   if (!isOpen) return null;
 
@@ -40,16 +41,21 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   const handleCreate = () => {
-    initDocument(title, width, height, true);
+    initDocument(title, width, height, true, dpi);
     onClose();
   };
 
   return (
     <div
+      onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
     >
-      <div className="w-[740px] bg-ps-panel/95 backdrop-blur-xl border border-ps-border rounded-xl shadow-studio overflow-hidden flex flex-col">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-[740px] bg-ps-panel/95 backdrop-blur-xl border border-ps-border rounded-xl shadow-studio overflow-hidden flex flex-col"
+      >
         {/* Modal Header */}
         <div className="h-11 px-5 bg-ps-header/90 border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-100">
@@ -91,9 +97,12 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   onClick={() => {
                     setWidth(preset.width);
                     setHeight(preset.height);
+                    if (preset.dpi) setDpi(preset.dpi);
                   }}
                   className={`w-full p-2.5 rounded-lg border text-left flex items-center justify-between transition-all ${
-                    width === preset.width && height === preset.height
+                    width === preset.width &&
+                    height === preset.height &&
+                    (!preset.dpi || dpi === preset.dpi)
                       ? 'border-blue-500/70 bg-blue-500/10'
                       : 'border-ps-border/40 hover:border-ps-border/80 hover:bg-ps-surface/60'
                   }`}
@@ -105,7 +114,8 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     <div>
                       <div className="text-xs font-semibold text-zinc-100">{preset.name}</div>
                       <div className="text-[11px] text-zinc-400">
-                        {preset.width} × {preset.height} px
+                        {preset.width} × {preset.height} px{' '}
+                        {preset.dpi ? `@ ${preset.dpi} DPI` : ''}
                       </div>
                     </div>
                   </div>
@@ -132,7 +142,7 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Width (px)
@@ -155,6 +165,19 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    DPI
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1200"
+                    value={dpi}
+                    onChange={(e) => setDpi(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
               </div>
 
               <div className="p-3 bg-ps-surface/70 border border-ps-border/50 rounded-lg space-y-1.5 text-[11px] text-zinc-400">
@@ -163,8 +186,15 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <span className="text-zinc-200 font-medium">RGB 8-Bit (Hardware SRGB)</span>
                 </div>
                 <div className="flex justify-between">
+                  <span>Print Size:</span>
+                  <span className="text-zinc-200 font-medium font-mono">
+                    {(width / Math.max(1, dpi)).toFixed(2)}″ ×{' '}
+                    {(height / Math.max(1, dpi)).toFixed(2)}″
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span>Resolution:</span>
-                  <span className="text-zinc-200 font-medium">72 PPI</span>
+                  <span className="text-zinc-200 font-medium">{dpi} PPI / DPI</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Background:</span>

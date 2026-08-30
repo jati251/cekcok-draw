@@ -19,12 +19,23 @@ interface DocumentState {
   /** Pre-fetched layer pixels from combined undo/redo IPC — consumed once by LayerStack */
   pendingLayerPixels: Map<string, Uint8ClampedArray> | null;
 
+  /** Currently selected layer IDs for multi-selection */
+  selectedLayerIds: string[];
+
+  setSelectedLayerIds: (ids: string[]) => void;
+  toggleSelectLayer: (id: string) => void;
+  selectLayerRange: (toId: string) => void;
+  deleteSelectedLayers: () => Promise<void>;
+  mergeSelectedLayers: () => Promise<void>;
+
   initDocument: (
     title?: string,
     width?: number,
     height?: number,
-    showToast?: boolean
+    showToast?: boolean,
+    dpi?: number
   ) => Promise<void>;
+  setDocumentDpi: (dpi: number) => Promise<void>;
   addNewLayer: (name?: string) => Promise<void>;
   duplicateLayer: (id?: string) => Promise<void>;
   deleteLayer: (id: string) => Promise<void>;
@@ -34,8 +45,10 @@ interface DocumentState {
   toggleLayerLock: (id: string) => Promise<void>;
   renameLayer: (id: string, name: string) => Promise<void>;
   changeLayerBlendMode: (id: string, blendMode: BlendMode) => Promise<void>;
+  setActiveLayer: (id: string | null) => void;
+  toggleLayerClipping: (id: string) => Promise<void>;
   mergeDown: (id: string) => Promise<void>;
-  reorderLayer: (id: string, newIndex: number) => Promise<void>;
+  reorderLayer: (idOrFromIndex: string | number, newIndex: number) => Promise<void>;
   clearLayer: (id: string) => Promise<void>;
   pushCanvasSnapshot: (description: string) => void;
   triggerUndo: () => Promise<void>;
@@ -71,6 +84,110 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   canvasRevision: 0,
   rustSyncRevision: 0,
   pendingLayerPixels: null,
+  selectedLayerIds: [],
+
+  setSelectedLayerIds: (ids: string[]) => {
+    set({ selectedLayerIds: ids });
+  },
+
+  toggleSelectLayer: (id: string) => {
+    const current = get().selectedLayerIds;
+    if (current.includes(id)) {
+      const next = current.filter((layerId) => layerId !== id);
+      set({
+        selectedLayerIds: next,
+      });
+    } else {
+      set({
+        selectedLayerIds: [...current, id],
+      });
+    }
+  },
+
+  selectLayerRange: (toId: string) => {
+    const doc = get().doc;
+    if (!doc) return;
+    const layers = doc.layers;
+    const activeId = doc.active_layer_id || layers[0]?.id;
+    if (!activeId) return;
+
+    const fromIdx = layers.findIndex((l) => l.id === activeId);
+    const toIdx = layers.findIndex((l) => l.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const start = Math.min(fromIdx, toIdx);
+    const end = Math.max(fromIdx, toIdx);
+    const rangeIds = layers.slice(start, end + 1).map((l) => l.id);
+    set({ selectedLayerIds: rangeIds });
+  },
+
+  deleteSelectedLayers: async () => {
+    const doc = get().doc;
+    const selected = get().selectedLayerIds;
+    if (!doc || selected.length === 0) return;
+
+    if (doc.layers.length - selected.length < 1) {
+      toast.warning('Cannot Delete All Layers', 'Document must have at least one layer remaining.');
+      return;
+    }
+
+    try {
+      let lastDoc: DocumentInfo | null = null;
+      for (const id of selected) {
+        lastDoc = await bridge.removeLayer(id);
+      }
+      const history = await bridge.getHistory();
+      const currentDoc = lastDoc || (await bridge.getDocumentInfo());
+      set({
+        doc: currentDoc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: currentDoc?.active_layer_id ? [currentDoc.active_layer_id] : [],
+      });
+      get().syncLayersFromRust();
+      toast.success('Layers Deleted', `Deleted ${selected.length} layers.`);
+    } catch (err) {
+      set({ error: String(err) });
+      toast.error('Failed to delete layers', String(err));
+    }
+  },
+
+  mergeSelectedLayers: async () => {
+    const doc = get().doc;
+    const selected = get().selectedLayerIds;
+    if (!doc || selected.length < 2) {
+      toast.info('Select multiple layers to merge.');
+      return;
+    }
+
+    // Sort selected layers according to stack index top-to-bottom
+    const layerIndices = selected
+      .map((id) => ({ id, idx: doc.layers.findIndex((l) => l.id === id) }))
+      .filter((item) => item.idx !== -1)
+      .sort((a, b) => b.idx - a.idx); // highest index first (top layer downwards)
+
+    try {
+      let lastDoc: DocumentInfo | null = null;
+      for (let i = 0; i < layerIndices.length - 1; i++) {
+        lastDoc = await bridge.mergeDown(layerIndices[i].id);
+      }
+      const history = await bridge.getHistory();
+      const currentDoc = lastDoc || (await bridge.getDocumentInfo());
+      set({
+        doc: currentDoc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: currentDoc?.active_layer_id ? [currentDoc.active_layer_id] : [],
+      });
+      get().syncLayersFromRust();
+      toast.success('Layers Merged', `Merged ${selected.length} layers.`);
+    } catch (err) {
+      set({ error: String(err) });
+      toast.error('Failed to merge selected layers', String(err));
+    }
+  },
 
   bumpCanvasRevision: () => {
     set((state) => ({ canvasRevision: state.canvasRevision + 1 }));
@@ -89,10 +206,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     void description;
   },
 
-  initDocument: async (title = 'Untitled-1', width = 1920, height = 1080, showToast = false) => {
+  initDocument: async (
+    title = 'Untitled-1',
+    width = 1920,
+    height = 1080,
+    showToast = false,
+    dpi = 72
+  ) => {
     set({ isLoading: true, error: null });
     try {
-      const doc = await bridge.createDocument(title, width, height);
+      const doc = await bridge.createDocument(title, width, height, dpi);
       const history = await bridge.getHistory();
       set({
         doc,
@@ -101,13 +224,32 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         isLoading: false,
         canvasRevision: get().canvasRevision + 1,
         rustSyncRevision: get().rustSyncRevision + 1,
+        selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
       if (showToast) {
-        toast.success('Document Created', `${title} (${width}×${height}px)`);
+        toast.success('Document Created', `${title} (${width}×${height}px @ ${dpi} DPI)`);
       }
     } catch (err) {
       set({ error: String(err), isLoading: false });
       toast.error('Failed to create document', String(err));
+    }
+  },
+
+  setDocumentDpi: async (dpi: number) => {
+    if (!get().doc || dpi <= 0) return;
+    try {
+      const doc = await bridge.setDocumentDpi(dpi);
+      const history = await bridge.getHistory();
+      set({
+        doc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: get().canvasRevision + 1,
+      });
+      toast.success('Resolution Updated', `Canvas set to ${dpi} DPI`);
+    } catch (err) {
+      set({ error: String(err) });
+      toast.error('Failed to update resolution', String(err));
     }
   },
 
@@ -123,6 +265,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         history,
         historyIndex: history.length - 1,
         canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
     } catch (err) {
       set({ error: String(err) });
@@ -144,6 +287,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         history,
         historyIndex: history.length - 1,
         canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
     } catch (err) {
       set({ error: String(err) });
@@ -166,6 +310,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         history,
         historyIndex: history.length - 1,
         canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
     } catch (err) {
       set({ error: String(err) });
@@ -176,10 +321,24 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   selectLayer: async (id: string) => {
     try {
       const doc = await bridge.setActiveLayer(id);
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({
+        doc,
+        canvasRevision: get().canvasRevision + 1,
+        selectedLayerIds: [id],
+      });
     } catch (err) {
       set({ error: String(err) });
     }
+  },
+
+  setActiveLayer: (id: string | null) => {
+    set((state) => {
+      if (!state.doc) return state;
+      return {
+        doc: { ...state.doc, active_layer_id: id },
+        selectedLayerIds: id ? [id] : [],
+      };
+    });
   },
 
   changeLayerOpacity: async (id: string, opacity: number) => {
@@ -237,6 +396,21 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
   },
 
+  toggleLayerClipping: async (id: string) => {
+    try {
+      const doc = await bridge.toggleLayerClipping(id);
+      const history = await bridge.getHistory();
+      set({
+        doc,
+        history,
+        historyIndex: history.length - 1,
+      });
+    } catch (err) {
+      set({ error: String(err) });
+      toast.error('Could not toggle layer clipping mask', String(err));
+    }
+  },
+
   mergeDown: async (id: string) => {
     const currentDoc = get().doc;
     if (!currentDoc) return;
@@ -254,16 +428,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         historyIndex: history.length - 1,
         canvasRevision: get().canvasRevision + 1,
       });
+      get().syncLayersFromRust();
     } catch (err) {
       set({ error: String(err) });
       toast.error('Could not merge layer down', String(err));
     }
   },
 
-  reorderLayer: async (id: string, newIndex: number) => {
+  reorderLayer: async (idOrFromIndex: string | number, newIndex: number) => {
     const currentDoc = get().doc;
     if (!currentDoc) return;
-    const currentIndex = currentDoc.layers.findIndex((l) => l.id === id);
+    const currentIndex =
+      typeof idOrFromIndex === 'number'
+        ? idOrFromIndex
+        : currentDoc.layers.findIndex((l) => l.id === idOrFromIndex);
     if (currentIndex === -1 || newIndex < 0 || newIndex >= currentDoc.layers.length) return;
 
     try {

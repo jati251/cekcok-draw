@@ -223,7 +223,8 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
 
     // 9. Help Submenu
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(&MenuItemBuilder::with_id("doc_github", "Documentation & GitHub Source").build(app)?)
+        .item(&MenuItemBuilder::with_id("help_docs", "Help & Documentation").build(app)?)
+        .item(&MenuItemBuilder::with_id("doc_github", "GitHub Source").build(app)?)
         .item(&MenuItemBuilder::with_id("check_updates_help", "Check for Updates...").build(app)?)
         .build()?;
 

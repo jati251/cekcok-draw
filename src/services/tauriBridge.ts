@@ -44,14 +44,24 @@ const mockHistory: HistoryAction[] = [
 export async function createDocument(
   title: string,
   width: number,
-  height: number
+  height: number,
+  dpi: number = 72
 ): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('create_document', { title, width, height });
+    return await invoke<DocumentInfo>('create_document', { title, width, height, dpi });
   }
   mockDoc.title = title;
   mockDoc.width = width;
   mockDoc.height = height;
+  mockDoc.dpi = dpi;
+  return { ...mockDoc };
+}
+
+export async function setDocumentDpi(dpi: number): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('set_document_dpi', { dpi });
+  }
+  mockDoc.dpi = dpi;
   return { ...mockDoc };
 }
 
@@ -155,6 +165,13 @@ export async function mergeDown(layerId: string): Promise<DocumentInfo> {
   }
   return { ...mockDoc };
 }
+
+export const toggleLayerClipping = async (layerId: string): Promise<DocumentInfo> => {
+  if (isTauriEnvironment()) {
+    return await invoke('toggle_layer_clipping', { layerId });
+  }
+  throw new Error('Not implemented for browser mockup');
+};
 
 export async function reorderLayer(fromIndex: number, toIndex: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {

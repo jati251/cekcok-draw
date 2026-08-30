@@ -70,7 +70,11 @@ const getToolIcon = (iconName: string) => {
   }
 };
 
-export const ToolOptionsBar: React.FC = () => {
+interface Props {
+  onOpenHelp?: () => void;
+}
+
+export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
   const {
     activeTool,
     setActiveTool,
@@ -293,6 +297,18 @@ export const ToolOptionsBar: React.FC = () => {
               <span className="text-[10px]">Rulers</span>
             </button>
           </Tooltip>
+
+          {onOpenHelp && (
+            <Tooltip content="Help & Documentation" shortcut="F1">
+              <button
+                type="button"
+                onClick={onOpenHelp}
+                className="h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent"
+              >
+                <span className="text-[10px]">Help</span>
+              </button>
+            </Tooltip>
+          )}
         </div>
       </div>
 

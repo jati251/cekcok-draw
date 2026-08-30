@@ -16,6 +16,37 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
   const { activeTool, brushSettings, setBrushSettings, selection, setSelection } = useEditorStore();
   const { doc, addNewLayer, bumpCanvasRevision } = useDocumentStore();
 
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState<{ left: number; top: number }>({
+    left: Math.max(8, Math.min(window.innerWidth - 280, x)),
+    top: Math.max(8, Math.min(window.innerHeight - 350, y)),
+  });
+
+  React.useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const padding = 12;
+
+    let targetLeft = x;
+    let targetTop = y;
+
+    // Flip horizontally if extending beyond right edge
+    if (targetLeft + rect.width > window.innerWidth - padding) {
+      targetLeft = x - rect.width;
+    }
+
+    // Flip vertically if extending beyond bottom edge
+    if (targetTop + rect.height > window.innerHeight - padding) {
+      targetTop = y - rect.height;
+    }
+
+    // Clamp within viewport
+    targetLeft = Math.max(padding, Math.min(window.innerWidth - rect.width - padding, targetLeft));
+    targetTop = Math.max(padding, Math.min(window.innerHeight - rect.height - padding, targetTop));
+
+    setPos({ left: targetLeft, top: targetTop });
+  }, [x, y]);
+
   useModalDismiss({ onClose });
 
   const isBrushLike =
@@ -147,6 +178,33 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
     onClose();
   };
 
+  const handleFreeTransform = () => {
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (canvas) {
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = canvas.width;
+      sourceCanvas.height = canvas.height;
+      const sCtx = sourceCanvas.getContext('2d');
+      if (sCtx) sCtx.drawImage(canvas, 0, 0);
+
+      useEditorStore.getState().setTransformState({
+        x: 0,
+        y: 0,
+        width: doc.width,
+        height: doc.height,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        sourceCanvas,
+        layerId: doc.active_layer_id,
+      });
+    }
+    onClose();
+  };
+
   return (
     <>
       <div
@@ -158,12 +216,13 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
         }}
       />
       <div
+        ref={menuRef}
         style={{
-          left: `${Math.min(window.innerWidth - 260, x)}px`,
-          top: `${Math.min(window.innerHeight - 300, y)}px`,
+          left: `${pos.left}px`,
+          top: `${pos.top}px`,
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className="fixed z-50 w-64 bg-ps-surface border border-ps-border rounded-lg shadow-2xl p-2.5 text-xs select-none text-zinc-200"
+        className="fixed z-50 w-64 max-h-[calc(100vh-24px)] overflow-y-auto bg-ps-surface border border-ps-border rounded-lg shadow-2xl p-2.5 text-xs select-none text-zinc-200"
       >
         {/* Brush Quick Adjustments */}
         {isBrushLike && (
@@ -233,6 +292,13 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
         {/* Selection Actions */}
         {isSelectionActive ? (
           <div className="py-1 space-y-0.5">
+            <button
+              onClick={handleFreeTransform}
+              className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between"
+            >
+              <span>Free Transform</span>
+              <span className="text-zinc-500 text-[10px] font-mono">⌘T</span>
+            </button>
             <button
               onClick={handleDeselect}
               className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between"

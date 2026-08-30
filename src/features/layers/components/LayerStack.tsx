@@ -69,6 +69,25 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
             initializedLayersRef.current.add(layer.id);
           }
         }
+        // Apply clipping masks visually in the DOM for instant blit.
+        let currentBaseLayerId: string | null = null;
+        for (const layer of doc.layers) {
+          if (!layer.is_clipped) {
+            currentBaseLayerId = layer.id;
+          } else if (currentBaseLayerId) {
+            const clippedCanvas = layerCanvasesRef.current?.get(layer.id);
+            const baseCanvas = layerCanvasesRef.current?.get(currentBaseLayerId);
+            if (clippedCanvas && baseCanvas) {
+              const ctx = clippedCanvas.getContext('2d');
+              if (ctx) {
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(baseCanvas, 0, 0);
+                ctx.globalCompositeOperation = 'source-over';
+              }
+            }
+          }
+        }
+
         // Consume: clear pending pixels so they aren't re-applied
         useDocumentStore.setState({ pendingLayerPixels: null });
         return;
@@ -101,6 +120,28 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
           }
         })
       );
+
+      if (cancelled) return;
+
+      // Apply clipping masks visually in the DOM.
+      // We iterate from bottom to top to find base layers.
+      let currentBaseLayerId: string | null = null;
+      for (const layer of doc.layers) {
+        if (!layer.is_clipped) {
+          currentBaseLayerId = layer.id;
+        } else if (currentBaseLayerId) {
+          const clippedCanvas = layerCanvasesRef.current?.get(layer.id);
+          const baseCanvas = layerCanvasesRef.current?.get(currentBaseLayerId);
+          if (clippedCanvas && baseCanvas) {
+            const ctx = clippedCanvas.getContext('2d');
+            if (ctx) {
+              ctx.globalCompositeOperation = 'destination-in';
+              ctx.drawImage(baseCanvas, 0, 0);
+              ctx.globalCompositeOperation = 'source-over';
+            }
+          }
+        }
+      }
     };
 
     hydrate().catch((error) => console.error('Failed to hydrate layer cache:', error));

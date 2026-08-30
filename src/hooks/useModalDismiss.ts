@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 
 interface UseModalDismissProps {
   isOpen?: boolean;
@@ -30,14 +30,23 @@ export function useModalDismiss({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, closeOnEscape]);
 
+  const mouseDownTargetRef = useRef<EventTarget | null>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    mouseDownTargetRef.current = e.target;
+  }, []);
+
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
-      if (e.target === e.currentTarget) {
+      // Only close if BOTH mousedown and mouseup (click) originated directly on the backdrop itself.
+      // This completely prevents accidental closes when selecting text, dragging inputs, or releasing mouse near dialog borders.
+      if (e.target === e.currentTarget && mouseDownTargetRef.current === e.currentTarget) {
         onClose();
       }
+      mouseDownTargetRef.current = null;
     },
     [onClose]
   );
 
-  return { handleBackdropClick };
+  return { handleBackdropClick, handleMouseDown };
 }

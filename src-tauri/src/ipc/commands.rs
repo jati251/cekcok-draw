@@ -14,14 +14,26 @@ pub fn create_document(
     title: String,
     width: u32,
     height: u32,
+    dpi: Option<f32>,
     state: State<'_, SharedEngineState>,
 ) -> DocumentInfo {
     let mut guard = state.lock();
-    let new_doc = Document::new(title, width, height);
+    let new_doc = Document::with_dpi(title, width, height, dpi.unwrap_or(72.0));
     guard.document = new_doc.clone();
     guard.history = HistoryEngine::new(50);
     guard.history.push_state("Initialize Document", &new_doc);
     guard.document.get_info()
+}
+
+#[tauri::command]
+pub fn set_document_dpi(
+    dpi: f32,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Set Resolution to {} DPI", dpi));
+    guard.document.set_dpi(dpi);
+    Ok(guard.document.get_info())
 }
 
 #[tauri::command]
@@ -77,6 +89,17 @@ pub fn merge_down(
         .unwrap_or_else(|| "Layer".to_string());
     guard.push_history(format!("Merge Down '{}'", layer_name));
     guard.document.merge_down(&layer_id)?;
+    Ok(guard.document.get_info())
+}
+
+#[tauri::command]
+pub fn toggle_layer_clipping(
+    layer_id: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.document.toggle_layer_clipping(&layer_id)?;
+    guard.push_history("Toggle Clipping Mask");
     Ok(guard.document.get_info())
 }
 

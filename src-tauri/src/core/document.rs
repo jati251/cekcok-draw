@@ -28,6 +28,10 @@ pub struct Document {
 
 impl Document {
     pub fn new(title: impl Into<String>, width: u32, height: u32) -> Self {
+        Self::with_dpi(title, width, height, 72.0)
+    }
+
+    pub fn with_dpi(title: impl Into<String>, width: u32, height: u32, dpi: f32) -> Self {
         let mut base_layer = Layer::new("Background");
 
         // Fill base layer background with white tiles
@@ -49,9 +53,15 @@ impl Document {
             title: title.into(),
             width,
             height,
-            dpi: 72.0,
+            dpi: if dpi > 0.0 { dpi } else { 72.0 },
             layers: vec![base_layer, draw_layer],
             active_layer_id: Some(active_id),
+        }
+    }
+
+    pub fn set_dpi(&mut self, dpi: f32) {
+        if dpi > 0.0 {
+            self.dpi = dpi;
         }
     }
 
@@ -62,7 +72,7 @@ impl Document {
             width: self.width,
             height: self.height,
             dpi: self.dpi,
-            layers: self.layers.iter().map(|l| l.to_metadata()).collect(),
+            layers: self.layers.iter().map(|l| l.get_metadata()).collect(),
             active_layer_id: self.active_layer_id.clone(),
         }
     }
@@ -342,6 +352,21 @@ impl Document {
         } else {
             false
         }
+    }
+
+    pub fn toggle_layer_clipping(&mut self, id: &str) -> Result<(), String> {
+        let idx = self
+            .layers
+            .iter()
+            .position(|l| l.id == id)
+            .ok_or_else(|| "Layer not found".to_string())?;
+
+        if idx == 0 {
+            return Err("Bottommost layer cannot be clipped".to_string());
+        }
+
+        self.layers[idx].is_clipped = !self.layers[idx].is_clipped;
+        Ok(())
     }
 
     pub fn reorder_layers(&mut self, from_idx: usize, to_idx: usize) -> bool {

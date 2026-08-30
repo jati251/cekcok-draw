@@ -174,15 +174,15 @@ export const StudioSidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Vertical Stacked Panels Container */}
-      <div className="flex-1 flex flex-col overflow-hidden divide-y divide-ps-border/70">
+      {/* Vertical Stacked Panels Container - Scrollable entire sidebar */}
+      <div className="flex-1 flex flex-col overflow-y-auto divide-y divide-ps-border/70 no-scrollbar">
         {/* Panel 1: Color Palette */}
         {(activePanel === 'all' || activePanel === 'color') && (
-          <div className={`flex flex-col ${expandColor ? 'max-h-64' : 'flex-shrink-0'}`}>
+          <div className="flex flex-col flex-shrink-0">
             <button
               type="button"
               onClick={() => setExpandColor(!expandColor)}
-              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40"
+              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40 flex-shrink-0"
             >
               <div className="flex items-center space-x-1.5">
                 {expandColor ? (
@@ -202,7 +202,7 @@ export const StudioSidebar: React.FC = () => {
               </div>
             </button>
             {expandColor && (
-              <div className="overflow-y-auto p-2 bg-ps-panel">
+              <div className="p-2 bg-ps-panel">
                 <ColorPicker />
               </div>
             )}

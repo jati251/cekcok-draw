@@ -56,6 +56,8 @@ pub struct LayerMetadata {
     pub locked: bool,
     #[serde(default)]
     pub layer_type: Option<LayerType>,
+    #[serde(default)]
+    pub is_clipped: bool,
 }
 
 #[derive(Clone)]
@@ -67,6 +69,7 @@ pub struct Layer {
     pub visible: bool,
     pub locked: bool,
     pub layer_type: LayerType,
+    pub is_clipped: bool,
     pub grid: SparseTileGrid,
 }
 
@@ -91,11 +94,12 @@ impl Layer {
             visible: true,
             locked: false,
             layer_type,
+            is_clipped: false,
             grid: SparseTileGrid::new(),
         }
     }
 
-    pub fn to_metadata(&self) -> LayerMetadata {
+    pub fn get_metadata(&self) -> LayerMetadata {
         LayerMetadata {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -104,6 +108,7 @@ impl Layer {
             visible: self.visible,
             locked: self.locked,
             layer_type: Some(self.layer_type),
+            is_clipped: self.is_clipped,
         }
     }
 }

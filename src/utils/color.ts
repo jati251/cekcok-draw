@@ -87,3 +87,75 @@ export const hslToRgb = (h: number, s: number, l: number): [number, number, numb
 
   return [r, g, b];
 };
+export const rgbToHsv = (r: number, g: number, b: number): [number, number, number] => {
+  const rf = r / 255;
+  const gf = g / 255;
+  const bf = b / 255;
+  const max = Math.max(rf, gf, bf);
+  const min = Math.min(rf, gf, bf);
+  const d = max - min;
+  let h = 0;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+
+  if (max !== min) {
+    switch (max) {
+      case rf:
+        h = (gf - bf) / d + (gf < bf ? 6 : 0);
+        break;
+      case gf:
+        h = (bf - rf) / d + 2;
+        break;
+      case bf:
+        h = (rf - gf) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+  return [Math.round(h * 360), s, v];
+};
+
+export const hsvToRgb = (h: number, s: number, v: number): [number, number, number] => {
+  const hf = (((h % 360) + 360) % 360) / 360;
+  const i = Math.floor(hf * 6);
+  const f = hf * 6 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  let r = 0,
+    g = 0,
+    b = 0;
+  switch (i % 6) {
+    case 0:
+      r = v;
+      g = t;
+      b = p;
+      break;
+    case 1:
+      r = q;
+      g = v;
+      b = p;
+      break;
+    case 2:
+      r = p;
+      g = v;
+      b = t;
+      break;
+    case 3:
+      r = p;
+      g = q;
+      b = v;
+      break;
+    case 4:
+      r = t;
+      g = p;
+      b = v;
+      break;
+    case 5:
+      r = v;
+      g = p;
+      b = q;
+      break;
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+};

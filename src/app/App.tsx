@@ -9,8 +9,10 @@ import { ExportModal } from '@/features/document/components/ExportModal';
 import { UpdateModal } from '@/features/document/components/UpdateModal';
 import { CanvasSizeModal } from '@/features/document/components/CanvasSizeModal';
 import { ToastContainer } from '@/components/ui/ToastContainer';
+import { HomeScreen } from '@/features/system/components/HomeScreen';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
+import { HelpDialog } from '@/features/system/components/HelpDialog';
 import { useKeyboardShortcuts } from '@/features/system/hooks/useAppShortcuts';
 import { checkForAppUpdate } from '@/services/updaterService';
 export const App: React.FC = () => {
@@ -18,6 +20,7 @@ export const App: React.FC = () => {
   const [isCanvasSizeOpen, setIsCanvasSizeOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { openImageAsDocument, importImageAsLayer, doc } = useDocumentStore();
@@ -47,6 +50,7 @@ export const App: React.FC = () => {
     onOpenExport: () => setIsExportOpen(true),
     onOpenHueSaturation: () => useEditorStore.getState().setActiveAdjustmentTab('huesat'),
     onOpenUpdateModal: () => setIsUpdateOpen(true),
+    onOpenHelpModal: () => setIsHelpOpen(true),
   });
 
   // Automatic silent check for app update on startup
@@ -69,21 +73,34 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-ps-bg text-ps-text select-none">
       {/* 1. Top Menu Navigation (Native OS Handled) */}
 
-      {/* 2. Contextual Tool Options Bar */}
-      <ToolOptionsBar />
+      {/* When no document is open, show full-screen uncluttered Workstation Home */}
+      {!doc ? (
+        <div className="flex-1 overflow-hidden relative">
+          <HomeScreen
+            onNewDoc={() => setIsNewDocOpen(true)}
+            onOpenDoc={handleOpenFileDialog}
+            onOpenHelp={() => setIsHelpOpen(true)}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Contextual Tool Options Bar */}
+          <ToolOptionsBar onOpenHelp={() => setIsHelpOpen(true)} />
 
-      {/* 3. Main Workspace Area */}
-      <div className="flex flex-1 overflow-hidden relative">
-        <ToolBar />
-        <CanvasViewport
-          onOpenNewDoc={() => setIsNewDocOpen(true)}
-          onOpenOpenFile={handleOpenFileDialog}
-        />
-        <StudioSidebar />
-      </div>
+          {/* Main Workspace Area */}
+          <div className="flex flex-1 overflow-hidden relative">
+            <ToolBar />
+            <CanvasViewport
+              onOpenNewDoc={() => setIsNewDocOpen(true)}
+              onOpenOpenFile={handleOpenFileDialog}
+            />
+            <StudioSidebar />
+          </div>
 
-      {/* 4. Bottom Metrics Status Bar */}
-      <StatusBar onOpenUpdateModal={() => setIsUpdateOpen(true)} />
+          {/* Bottom Metrics Status Bar */}
+          <StatusBar onOpenUpdateModal={() => setIsUpdateOpen(true)} />
+        </>
+      )}
 
       {/* Hidden File Picker Input for Open Image */}
       <input
@@ -99,6 +116,7 @@ export const App: React.FC = () => {
       <CanvasSizeModal isOpen={isCanvasSizeOpen} onClose={() => setIsCanvasSizeOpen(false)} />
       <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
       <UpdateModal isOpen={isUpdateOpen} onClose={() => setIsUpdateOpen(false)} />
+      <HelpDialog isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       <ToastContainer />
     </div>
   );

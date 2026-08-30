@@ -77,7 +77,7 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [quality, setQuality] = useState(0.92);
   const [transparentBg, setTransparentBg] = useState(true);
 
-  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
+  const { handleBackdropClick, handleMouseDown } = useModalDismiss({ isOpen, onClose });
 
   const previewUrl = useMemo(() => {
     if (!isOpen || !doc) return null;
@@ -119,10 +119,15 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div
+      onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
     >
-      <div className="w-[540px] bg-ps-panel border border-ps-border rounded-xl shadow-2xl overflow-hidden flex flex-col">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-[540px] bg-ps-panel border border-ps-border rounded-xl shadow-2xl overflow-hidden flex flex-col"
+      >
         {/* Header */}
         <div className="h-11 px-5 bg-ps-header border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-200">

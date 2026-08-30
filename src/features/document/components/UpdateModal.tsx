@@ -37,7 +37,7 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
     total: 0,
   });
 
-  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
+  const { handleBackdropClick, handleMouseDown } = useModalDismiss({ isOpen, onClose });
 
   const runCheck = () => {
     setStatus('checking');
@@ -117,10 +117,15 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div
+      onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm select-none animate-in fade-in duration-150"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-sm select-none animate-in fade-in duration-150"
     >
-      <div className="bg-ps-panel border border-ps-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-ps-text flex flex-col">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="bg-ps-panel border border-ps-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-ps-text flex flex-col"
+      >
         {/* Modal Header */}
         <div className="h-11 px-4 bg-ps-header border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2">

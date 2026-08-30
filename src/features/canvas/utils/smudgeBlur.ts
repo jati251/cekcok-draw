@@ -11,8 +11,8 @@ export const applyLocalBlur = (
   cx: number,
   cy: number,
   radius: number,
-  blurRadius = 3,
-  opacity = 0.5
+  blurRadius = 4,
+  opacity = 0.7
 ) => {
   const rInt = Math.ceil(radius);
   const pad = Math.ceil(blurRadius * 2);
@@ -23,58 +23,109 @@ export const applyLocalBlur = (
   const w = maxX - minX;
   const h = maxY - minY;
 
-  if (w <= 0 || h <= 0) return;
+  if (w <= 1 || h <= 1) return;
 
-  // 1. Create a mask canvas with a soft radial gradient
-  const maskCanvas = document.createElement('canvas');
-  maskCanvas.width = w;
-  maskCanvas.height = h;
-  const maskCtx = maskCanvas.getContext('2d');
-  if (!maskCtx) return;
+  // 1. Get raw pixel buffer
+  const imgData = ctx.getImageData(minX, minY, w, h);
+  const data = imgData.data;
+  const copy = new Uint8ClampedArray(data);
 
-  const grad = maskCtx.createRadialGradient(cx - minX, cy - minY, 0, cx - minX, cy - minY, radius);
-  grad.addColorStop(0, `rgba(0, 0, 0, ${opacity})`);
-  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  maskCtx.fillStyle = grad;
-  maskCtx.fillRect(0, 0, w, h);
+  // 2. Perform fast separable box blur passes
+  const boxR = Math.max(1, Math.min(8, Math.round(blurRadius)));
+  const boxSize = boxR * 2 + 1;
 
-  // 2. Extract original sharp region
-  const origCanvas = document.createElement('canvas');
-  origCanvas.width = w;
-  origCanvas.height = h;
-  const origCtx = origCanvas.getContext('2d');
-  if (!origCtx) return;
-  origCtx.drawImage(ctx.canvas, minX, minY, w, h, 0, 0, w, h);
+  // Horizontal blur pass
+  const temp = new Float32Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    let rSum = 0,
+      gSum = 0,
+      bSum = 0,
+      aSum = 0;
+    const rowOffset = y * w * 4;
 
-  // Punch hole in original where mask is (Orig * (1 - Mask))
-  origCtx.globalCompositeOperation = 'destination-out';
-  origCtx.drawImage(maskCanvas, 0, 0);
+    // Pre-fill window
+    for (let x = -boxR; x <= boxR; x++) {
+      const px = Math.max(0, Math.min(w - 1, x));
+      const idx = rowOffset + px * 4;
+      rSum += copy[idx];
+      gSum += copy[idx + 1];
+      bSum += copy[idx + 2];
+      aSum += copy[idx + 3];
+    }
 
-  // 3. Create blurred region
-  const blurCanvas = document.createElement('canvas');
-  blurCanvas.width = w;
-  blurCanvas.height = h;
-  const blurCtx = blurCanvas.getContext('2d');
-  if (!blurCtx) return;
+    for (let x = 0; x < w; x++) {
+      const idx = rowOffset + x * 4;
+      temp[idx] = rSum / boxSize;
+      temp[idx + 1] = gSum / boxSize;
+      temp[idx + 2] = bSum / boxSize;
+      temp[idx + 3] = aSum / boxSize;
 
-  blurCtx.filter = `blur(${blurRadius}px)`;
-  blurCtx.drawImage(ctx.canvas, minX, minY, w, h, 0, 0, w, h);
-  blurCtx.filter = 'none';
+      const pNext = Math.min(w - 1, x + boxR + 1);
+      const pPrev = Math.max(0, x - boxR);
+      const idxNext = rowOffset + pNext * 4;
+      const idxPrev = rowOffset + pPrev * 4;
 
-  // Keep only blurred pixels where mask is (Blur * Mask)
-  blurCtx.globalCompositeOperation = 'destination-in';
-  blurCtx.drawImage(maskCanvas, 0, 0);
+      rSum += copy[idxNext] - copy[idxPrev];
+      gSum += copy[idxNext + 1] - copy[idxPrev + 1];
+      bSum += copy[idxNext + 2] - copy[idxPrev + 2];
+      aSum += copy[idxNext + 3] - copy[idxPrev + 3];
+    }
+  }
 
-  // 4. Combine them (Lighter = Plus blending)
-  origCtx.globalCompositeOperation = 'lighter';
-  origCtx.drawImage(blurCanvas, 0, 0);
+  // Vertical blur pass & cosine falloff alpha blend
+  const blendStrength = Math.min(1.0, Math.max(0.1, opacity));
+  for (let x = 0; x < w; x++) {
+    let rSum = 0,
+      gSum = 0,
+      bSum = 0,
+      aSum = 0;
 
-  // 5. Draw back to main context
-  ctx.save();
-  // Clear the original area so we don't double-draw
-  ctx.clearRect(minX, minY, w, h);
-  ctx.drawImage(origCanvas, minX, minY);
-  ctx.restore();
+    for (let y = -boxR; y <= boxR; y++) {
+      const py = Math.max(0, Math.min(h - 1, y));
+      const idx = (py * w + x) * 4;
+      rSum += temp[idx];
+      gSum += temp[idx + 1];
+      bSum += temp[idx + 2];
+      aSum += temp[idx + 3];
+    }
+
+    for (let y = 0; y < h; y++) {
+      const idx = (y * w + x) * 4;
+      const blurR = rSum / boxSize;
+      const blurG = gSum / boxSize;
+      const blurB = bSum / boxSize;
+      const blurA = aSum / boxSize;
+
+      const pNext = Math.min(h - 1, y + boxR + 1);
+      const pPrev = Math.max(0, y - boxR);
+      const idxNext = (pNext * w + x) * 4;
+      const idxPrev = (pPrev * w + x) * 4;
+
+      rSum += temp[idxNext] - temp[idxPrev];
+      gSum += temp[idxNext + 1] - temp[idxPrev + 1];
+      bSum += temp[idxNext + 2] - temp[idxPrev + 2];
+      aSum += temp[idxNext + 3] - temp[idxPrev + 3];
+
+      // Distance from brush center
+      const curGlobalX = minX + x;
+      const curGlobalY = minY + y;
+      const dist = Math.hypot(curGlobalX - cx, curGlobalY - cy);
+
+      if (dist <= radius) {
+        // Cosine bell falloff
+        const falloff = 0.5 * (1 + Math.cos((Math.PI * dist) / radius));
+        const factor = falloff * blendStrength;
+        const invFactor = 1 - factor;
+
+        data[idx] = Math.round(copy[idx] * invFactor + blurR * factor);
+        data[idx + 1] = Math.round(copy[idx + 1] * invFactor + blurG * factor);
+        data[idx + 2] = Math.round(copy[idx + 2] * invFactor + blurB * factor);
+        data[idx + 3] = Math.round(copy[idx + 3] * invFactor + blurA * factor);
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, minX, minY);
 };
 
 export const applyLocalSmudge = (

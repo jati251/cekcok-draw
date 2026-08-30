@@ -26,18 +26,19 @@ interface Props {
 type Unit = 'pixels' | 'percent' | 'inches' | 'cm';
 
 export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { doc, resizeCanvas } = useDocumentStore();
+  const { doc, resizeCanvas, setDocumentDpi } = useDocumentStore();
   const { primaryColor, secondaryColor } = useEditorStore();
 
   const [unit, setUnit] = useState<Unit>('pixels');
   const [widthVal, setWidthVal] = useState<number>(doc?.width || 1920);
   const [heightVal, setHeightVal] = useState<number>(doc?.height || 1080);
+  const [dpiVal, setDpiVal] = useState<number>(doc?.dpi || 72);
   const [isRelative, setIsRelative] = useState<boolean>(false);
   const [anchor, setAnchor] = useState<[number, number]>([0.5, 0.5]); // [x, y] in [0, 0.5, 1]
   const [extensionColor, setExtensionColor] = useState<string>('white');
   const [showClippingWarning, setShowClippingWarning] = useState<boolean>(false);
 
-  const { handleBackdropClick } = useModalDismiss({ isOpen, onClose });
+  const { handleBackdropClick, handleMouseDown } = useModalDismiss({ isOpen, onClose });
 
   if (!isOpen || !doc) return null;
 
@@ -46,15 +47,16 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
     let w = widthVal;
     let h = heightVal;
 
+    const activeDpi = dpiVal > 0 ? dpiVal : doc.dpi || 72;
+
     if (unit === 'percent') {
       w = Math.round((doc.width * widthVal) / 100);
       h = Math.round((doc.height * heightVal) / 100);
     } else if (unit === 'inches') {
-      const dpi = doc.dpi || 72;
-      w = Math.round(widthVal * dpi);
-      h = Math.round(heightVal * dpi);
+      w = Math.round(widthVal * activeDpi);
+      h = Math.round(heightVal * activeDpi);
     } else if (unit === 'cm') {
-      const dpcm = (doc.dpi || 72) / 2.54;
+      const dpcm = activeDpi / 2.54;
       w = Math.round(widthVal * dpcm);
       h = Math.round(heightVal * dpcm);
     }
@@ -79,13 +81,19 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
       return;
     }
 
-    let fillColor = 'transparent';
-    if (extensionColor === 'white') fillColor = '#ffffff';
-    else if (extensionColor === 'black') fillColor = '#000000';
-    else if (extensionColor === 'foreground') fillColor = primaryColor;
-    else if (extensionColor === 'background') fillColor = secondaryColor;
+    if (dpiVal > 0 && dpiVal !== (doc.dpi || 72)) {
+      setDocumentDpi(dpiVal);
+    }
 
-    resizeCanvas(targetW, targetH, anchor[0], anchor[1], fillColor);
+    if (targetW !== doc.width || targetH !== doc.height) {
+      let fillColor = 'transparent';
+      if (extensionColor === 'white') fillColor = '#ffffff';
+      else if (extensionColor === 'black') fillColor = '#000000';
+      else if (extensionColor === 'foreground') fillColor = primaryColor;
+      else if (extensionColor === 'background') fillColor = secondaryColor;
+
+      resizeCanvas(targetW, targetH, anchor[0], anchor[1], fillColor);
+    }
     setShowClippingWarning(false);
     onClose();
   };
@@ -104,10 +112,15 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div
+      onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-150"
     >
-      <div className="w-[460px] bg-ps-panel/95 backdrop-blur-xl border border-ps-border rounded-xl shadow-studio overflow-hidden flex flex-col">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-[460px] bg-ps-panel/95 backdrop-blur-xl border border-ps-border rounded-xl shadow-studio overflow-hidden flex flex-col"
+      >
         {/* Header */}
         <div className="h-11 px-5 bg-ps-header/90 border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-100">
@@ -127,9 +140,15 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
           {/* Current Dimensions */}
           <div className="p-3 bg-ps-surface/60 border border-ps-border/50 rounded-lg flex justify-between items-center text-xs">
             <span className="text-zinc-400">Current Canvas Dimensions:</span>
-            <span className="font-semibold text-zinc-200">
-              {doc.width} × {doc.height} px
-            </span>
+            <div className="text-right">
+              <div className="font-semibold text-zinc-200">
+                {doc.width} × {doc.height} px
+              </div>
+              <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                {(doc.width / (doc.dpi || 72)).toFixed(2)}″ ×{' '}
+                {(doc.height / (doc.dpi || 72)).toFixed(2)}″ @ {doc.dpi || 72} DPI
+              </div>
+            </div>
           </div>
 
           {/* New Dimensions */}
@@ -153,7 +172,7 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2.5">
               <div>
                 <label className="block text-[11px] text-zinc-400 mb-1">Width</label>
                 <input
@@ -172,6 +191,17 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1">Resolution (DPI)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1200"
+                  value={dpiVal}
+                  onChange={(e) => setDpiVal(Math.max(1, Number(e.target.value)))}
+                  className="w-full bg-ps-surface border border-ps-border rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-1">
@@ -185,11 +215,10 @@ export const CanvasSizeModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <span>Relative Adjustment</span>
               </label>
 
-              {unit !== 'pixels' && (
-                <span className="text-[11px] text-zinc-400 font-mono">
-                  = {targetW} × {targetH} px
-                </span>
-              )}
+              <span className="text-[11px] text-zinc-400 font-mono">
+                = {targetW} × {targetH} px ({(targetW / Math.max(1, dpiVal)).toFixed(2)}″ ×{' '}
+                {(targetH / Math.max(1, dpiVal)).toFixed(2)}″)
+              </span>
             </div>
           </div>
 

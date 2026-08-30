@@ -33,6 +33,11 @@ export const LayerPanel: React.FC = () => {
     changeLayerBlendMode,
     mergeDown,
     reorderLayer,
+    selectedLayerIds,
+    toggleSelectLayer,
+    selectLayerRange,
+    deleteSelectedLayers,
+    mergeSelectedLayers,
   } = useDocumentStore();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -122,31 +127,68 @@ export const LayerPanel: React.FC = () => {
       {/* Layer Stack List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-[140px]">
         {[...doc.layers].reverse().map((layer) => {
-          const isSelected = layer.id === doc.active_layer_id;
+          const isPrimaryActive = layer.id === doc.active_layer_id;
+          const isSelected = selectedLayerIds.includes(layer.id) || isPrimaryActive;
           const isText = layer.name.startsWith('Text') || layer.layer_type === 'text';
           const isShape = layer.name.startsWith('Shape') || layer.layer_type === 'shape';
+
+          const handleLayerCardClick = (e: React.MouseEvent) => {
+            if (e.shiftKey) {
+              selectLayerRange(layer.id);
+            } else if (e.metaKey || e.ctrlKey) {
+              toggleSelectLayer(layer.id);
+            } else {
+              selectLayer(layer.id);
+            }
+          };
 
           return (
             <div
               key={layer.id}
-              onClick={() => selectLayer(layer.id)}
-              onDoubleClick={() => handleStartRename(layer)}
+              onClick={handleLayerCardClick}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, layer });
               }}
               className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer border transition-all duration-150 relative ${
-                isSelected
-                  ? 'bg-blue-600/15 border-blue-500/70 text-white shadow-sm ring-1 ring-blue-500/20'
-                  : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-white hover:border-ps-border/80'
+                isPrimaryActive
+                  ? 'bg-blue-600/20 border-blue-500/80 text-white shadow-sm ring-1 ring-blue-500/25'
+                  : isSelected
+                    ? 'bg-blue-600/10 border-blue-500/40 text-zinc-100 shadow-xs'
+                    : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-white hover:border-ps-border/80'
               }`}
             >
-              {/* Active Layer Left Accent Bar */}
+              {/* Active / Selected Layer Left Accent Bar */}
               {isSelected && (
-                <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-blue-500 rounded-r" />
+                <div
+                  className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r ${
+                    isPrimaryActive ? 'bg-blue-500' : 'bg-blue-400/50'
+                  }`}
+                />
               )}
 
               <div className="flex items-center space-x-2.5 min-w-0 flex-1 pl-1">
+                {/* Clipping Indicator & Indent */}
+                {layer.is_clipped ? (
+                  <div className="flex items-center justify-center w-3 h-full text-zinc-500">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="15 10 20 15 15 20"></polyline>
+                      <path d="M4 4v7a4 4 0 0 0 4 4h12"></path>
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="w-1" />
+                )}
+
                 {/* Visibility Toggle */}
                 <Tooltip content={layer.visible ? 'Hide Layer' : 'Show Layer'} position="right">
                   <button
@@ -193,7 +235,7 @@ export const LayerPanel: React.FC = () => {
                   </span>
                 )}
 
-                {/* Layer Name / Inline Rename Input */}
+                {/* Layer Name / Inline Rename Input: strictly only renames on double clicking the text label */}
                 {renamingId === layer.id ? (
                   <input
                     ref={inputRef}
@@ -209,7 +251,14 @@ export const LayerPanel: React.FC = () => {
                     className="bg-zinc-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-white outline-none w-full max-w-[110px]"
                   />
                 ) : (
-                  <span className="font-medium text-[11px] truncate max-w-[90px]">
+                  <span
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleStartRename(layer);
+                    }}
+                    title="Double-click to rename"
+                    className="font-medium text-[11px] truncate max-w-[90px] hover:text-white select-none cursor-text py-0.5"
+                  >
                     {layer.name}
                   </span>
                 )}
@@ -254,12 +303,28 @@ export const LayerPanel: React.FC = () => {
             </button>
           </Tooltip>
 
-          <Tooltip content="Merge Down" shortcut={`${modKey}E`} position="top">
+          <Tooltip
+            content={
+              selectedLayerIds.length > 1
+                ? `Merge Selected Layers (${selectedLayerIds.length})`
+                : 'Merge Down'
+            }
+            shortcut={`${modKey}E`}
+            position="top"
+          >
             <button
               onClick={() => {
-                if (activeLayer) mergeDown(activeLayer.id);
+                if (selectedLayerIds.length > 1) {
+                  mergeSelectedLayers();
+                } else if (activeLayer) {
+                  mergeDown(activeLayer.id);
+                }
               }}
-              disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
+              disabled={
+                selectedLayerIds.length > 1
+                  ? false
+                  : !activeLayer || doc.layers[0]?.id === activeLayer.id
+              }
               className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
             >
               <ArrowDown size={13} />
@@ -309,10 +374,22 @@ export const LayerPanel: React.FC = () => {
             </button>
           </Tooltip>
 
-          <Tooltip content="Delete Layer" shortcut="Delete" position="top">
+          <Tooltip
+            content={
+              selectedLayerIds.length > 1
+                ? `Delete Selected Layers (${selectedLayerIds.length})`
+                : 'Delete Layer'
+            }
+            shortcut="Delete"
+            position="top"
+          >
             <button
               onClick={() => {
-                if (activeLayer) deleteLayer(activeLayer.id);
+                if (selectedLayerIds.length > 1) {
+                  deleteSelectedLayers();
+                } else if (activeLayer) {
+                  deleteLayer(activeLayer.id);
+                }
               }}
               disabled={doc.layers.length <= 1}
               className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
