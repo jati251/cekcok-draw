@@ -1,0 +1,476 @@
+import React, { useState, useCallback } from 'react';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorStore } from '@/stores/editorStore';
+import { RotateCcw, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { expandSelection, contractSelection } from '@/utils/coordinates';
+import * as bridge from '@/services/tauriBridge';
+import { isTauriEnvironment } from '@/services/tauriBridge';
+import { copyActiveLayerSelection } from '@/utils/clipboard';
+import * as filters from '@/features/adjustments/utils/filters';
+
+interface Props {
+  onOpenNewDoc: () => void;
+  onOpenOpenFile: () => void;
+  onOpenCanvasSize: () => void;
+  onOpenExport: () => void;
+  onOpenFilter?: (type: 'brightness_contrast' | 'gaussian_blur') => void;
+  onOpenHueSaturation?: () => void;
+  onOpenLevels?: () => void;
+  onOpenUpdateModal: () => void;
+}
+
+export const TopMenuBar: React.FC<Props> = ({
+  onOpenNewDoc,
+  onOpenOpenFile,
+  onOpenCanvasSize,
+  onOpenExport,
+  onOpenUpdateModal,
+}) => {
+  const { doc, triggerUndo, triggerRedo, addNewLayer } = useDocumentStore();
+  const {
+    zoom,
+    setZoom,
+    resetView,
+    showGrid,
+    setShowGrid,
+    showRulers,
+    setShowRulers,
+    setActivePanel,
+    selection,
+    setSelection,
+  } = useEditorStore();
+
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
+  const modKey = isMac ? '⌘' : 'Ctrl+';
+
+  // Manual window drag — reliable fallback for macOS Overlay titlebar
+  const handleTitleBarDrag = useCallback((e: React.MouseEvent) => {
+    // Only drag if clicking on the header background itself, not on buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('select') || target.closest('input')) return;
+    if (!isTauriEnvironment()) return;
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().startDragging();
+    });
+  }, []);
+
+  const handleStartTransform = () => {
+    if (!doc || !doc.active_layer_id) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (!canvas) return;
+
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = canvas.width;
+    sourceCanvas.height = canvas.height;
+    const sCtx = sourceCanvas.getContext('2d');
+    if (sCtx) {
+      sCtx.drawImage(canvas, 0, 0);
+    }
+
+    useEditorStore.getState().setTransformState({
+      x: 0,
+      y: 0,
+      width: doc.width,
+      height: doc.height,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+      sourceCanvas,
+      layerId: doc.active_layer_id,
+    });
+  };
+
+  const handleCropToSelection = () => {
+    if (!doc || !selection || !selection.active || selection.width <= 0 || selection.height <= 0)
+      return;
+    useDocumentStore
+      .getState()
+      .cropCanvas(selection.x, selection.y, selection.width, selection.height);
+    useEditorStore.getState().setSelection(null);
+  };
+
+  const menus: Record<string, { label: string; action: () => void; shortcut?: string }[]> = {
+    File: [
+      { label: 'New Document...', action: onOpenNewDoc, shortcut: `${modKey}N` },
+      { label: 'Open Image...', action: onOpenOpenFile, shortcut: `${modKey}O` },
+      { label: 'Export Image...', action: onOpenExport, shortcut: `${modKey}E` },
+    ],
+    Edit: [
+      { label: 'Undo', action: () => triggerUndo(), shortcut: `${modKey}Z` },
+      { label: 'Redo', action: () => triggerRedo(), shortcut: `${modKey}⇧Z` },
+      { label: 'Cut', action: () => copyActiveLayerSelection(true), shortcut: `${modKey}X` },
+      { label: 'Copy', action: () => copyActiveLayerSelection(false), shortcut: `${modKey}C` },
+      { label: 'Free Transform', action: handleStartTransform, shortcut: `${modKey}T` },
+      {
+        label: 'Select All',
+        action: () => {
+          if (doc) setSelection({ x: 0, y: 0, width: doc.width, height: doc.height, active: true });
+        },
+        shortcut: `${modKey}A`,
+      },
+      { label: 'Deselect', action: () => setSelection(null), shortcut: `${modKey}D` },
+      {
+        label: 'Expand Selection (+10px)',
+        action: () => {
+          if (selection && selection.active && doc) {
+            setSelection(expandSelection(selection, 10, doc.width, doc.height));
+          }
+        },
+      },
+      {
+        label: 'Contract Selection (-10px)',
+        action: () => {
+          if (selection && selection.active) {
+            setSelection(contractSelection(selection, 10));
+          }
+        },
+      },
+    ],
+    Image: [
+      {
+        label: 'Canvas Size...',
+        action: onOpenCanvasSize,
+        shortcut: `${isMac ? '⌥⌘C' : 'Alt+Ctrl+C'}`,
+      },
+      { label: 'Crop to Selection', action: handleCropToSelection },
+      { label: 'Rotate Canvas 90° CW', action: () => useDocumentStore.getState().rotateCanvas(90) },
+      {
+        label: 'Rotate Canvas 90° CCW',
+        action: () => useDocumentStore.getState().rotateCanvas(270),
+      },
+      { label: 'Rotate Canvas 180°', action: () => useDocumentStore.getState().rotateCanvas(180) },
+      {
+        label: 'Flip Canvas Horizontal',
+        action: () => useDocumentStore.getState().flipCanvas('horizontal'),
+      },
+      {
+        label: 'Flip Canvas Vertical',
+        action: () => useDocumentStore.getState().flipCanvas('vertical'),
+      },
+      {
+        label: 'Levels (Histogram)...',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('levels'),
+        shortcut: `${modKey}L`,
+      },
+      {
+        label: 'Hue / Saturation...',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('huesat'),
+        shortcut: `${modKey}U`,
+      },
+      {
+        label: 'Brightness / Contrast...',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('brightness'),
+      },
+      {
+        label: 'Invert Colors',
+        action: async () => {
+          if (!doc || !doc.active_layer_id) return;
+          const canvas = document.getElementById(
+            `layer-canvas-${doc.active_layer_id}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              useDocumentStore.getState().pushCanvasSnapshot('Invert Colors');
+              filters.applyInvert(ctx, doc.width, doc.height);
+              useDocumentStore.getState().bumpCanvasRevision();
+              bridge
+                .applyLayerFilter({ type: 'invert', layer_id: doc.active_layer_id })
+                .catch(() => {});
+              bridge.commitStrokeHistory('Invert Colors');
+            }
+          }
+        },
+        shortcut: `${modKey}I`,
+      },
+      {
+        label: 'Desaturate',
+        action: async () => {
+          if (!doc || !doc.active_layer_id) return;
+          const canvas = document.getElementById(
+            `layer-canvas-${doc.active_layer_id}`
+          ) as HTMLCanvasElement | null;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              useDocumentStore.getState().pushCanvasSnapshot('Desaturate');
+              filters.applyDesaturate(ctx, doc.width, doc.height);
+              useDocumentStore.getState().bumpCanvasRevision();
+              bridge
+                .applyLayerFilter({ type: 'desaturate', layer_id: doc.active_layer_id })
+                .catch(() => {});
+              bridge.commitStrokeHistory('Desaturate');
+            }
+          }
+        },
+        shortcut: `${modKey}⇧U`,
+      },
+    ],
+    Layer: [
+      { label: 'New Layer', action: () => addNewLayer(), shortcut: `${modKey}⇧N` },
+      {
+        label: 'Duplicate Layer',
+        action: () => useDocumentStore.getState().duplicateLayer(),
+        shortcut: `${modKey}J`,
+      },
+      { label: 'Free Transform Layer', action: handleStartTransform, shortcut: `${modKey}T` },
+      {
+        label: 'Rotate Layer 90° CW',
+        action: () => useDocumentStore.getState().rotateActiveLayer(90),
+      },
+      {
+        label: 'Rotate Layer 90° CCW',
+        action: () => useDocumentStore.getState().rotateActiveLayer(270),
+      },
+      {
+        label: 'Rotate Layer 180°',
+        action: () => useDocumentStore.getState().rotateActiveLayer(180),
+      },
+      {
+        label: 'Flip Layer Horizontal',
+        action: () => useDocumentStore.getState().flipActiveLayer('horizontal'),
+      },
+      {
+        label: 'Flip Layer Vertical',
+        action: () => useDocumentStore.getState().flipActiveLayer('vertical'),
+      },
+      {
+        label: 'Merge Down',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().mergeDown(doc.active_layer_id);
+        },
+        shortcut: `${modKey}E`,
+      },
+      {
+        label: 'Clear Layer',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().clearLayer(doc.active_layer_id);
+        },
+      },
+      {
+        label: 'Delete Layer',
+        action: () => {
+          if (doc?.active_layer_id) useDocumentStore.getState().deleteLayer(doc.active_layer_id);
+        },
+      },
+    ],
+    Filter: [
+      {
+        label: 'Gaussian Blur...',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('blur'),
+      },
+      {
+        label: 'Brightness / Contrast...',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('brightness'),
+      },
+      {
+        label: 'Auto Tone (Levels)',
+        action: () => useEditorStore.getState().setActiveAdjustmentTab('levels'),
+      },
+    ],
+    View: [
+      {
+        label: showGrid ? 'Hide Grid' : 'Show Pixel Grid',
+        action: () => setShowGrid(!showGrid),
+        shortcut: `${modKey}'`,
+      },
+      {
+        label: showRulers ? 'Hide Rulers' : 'Show Rulers',
+        action: () => setShowRulers(!showRulers),
+        shortcut: `${modKey}R`,
+      },
+      {
+        label: 'Zoom In',
+        action: () => setZoom((z) => Math.min(32, z * 1.25)),
+        shortcut: `${modKey}+`,
+      },
+      {
+        label: 'Zoom Out',
+        action: () => setZoom((z) => Math.max(0.05, z / 1.25)),
+        shortcut: `${modKey}-`,
+      },
+      { label: 'Fit on Screen (100%)', action: () => resetView(), shortcut: `${modKey}0` },
+    ],
+    Window: [
+      { label: 'Show All Panels', action: () => setActivePanel('all') },
+      { label: 'Layers Panel Only', action: () => setActivePanel('layers') },
+      { label: 'Color Picker Only', action: () => setActivePanel('color') },
+      { label: 'History Panel Only', action: () => setActivePanel('history') },
+    ],
+    Help: [
+      { label: 'Check for Updates...', action: onOpenUpdateModal },
+      {
+        label: 'Documentation & GitHub',
+        action: () => {
+          if (typeof window !== 'undefined') {
+            window.open('https://github.com/jati251/cekcok-draw', '_blank');
+          }
+        },
+      },
+    ],
+  };
+
+  return (
+    <header
+      data-tauri-drag-region
+      onMouseDown={handleTitleBarDrag}
+      className={`h-9 bg-ps-header/95 backdrop-blur-md border-b border-ps-border flex items-center justify-between pr-3 text-xs select-none z-40 relative shadow-inner-light ${
+        isMac ? 'pl-20' : 'pl-3'
+      }`}
+    >
+      {/* Left: Brand & In-Window Menus */}
+      <div className="flex items-center space-x-2.5" data-tauri-drag-region>
+        <div
+          className="flex items-center space-x-2 font-medium text-xs tracking-wide"
+          data-tauri-drag-region
+        >
+          <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 p-[1px] shadow-sm flex items-center justify-center pointer-events-none">
+            <img
+              src="/app-logo.png"
+              alt="Cekcok Draw"
+              className="w-full h-full rounded-[5px] object-cover pointer-events-none"
+            />
+          </div>
+          <span
+            className="text-zinc-200 font-semibold tracking-tight text-[11px] pointer-events-none flex items-center gap-1"
+            data-tauri-drag-region
+          >
+            Cekcok<span className="text-blue-400 font-bold">Draw</span>
+            <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 font-mono border border-blue-500/20">
+              PRO
+            </span>
+          </span>
+        </div>
+
+        {/* On Windows / Linux / Web: Inline horizontal menu bar */}
+        {!isMac && (
+          <div className="flex items-center space-x-0.5 ml-2">
+            {Object.entries(menus).map(([menuName, items]) => (
+              <div key={menuName} className="relative">
+                <button
+                  onClick={() => setActiveMenu(activeMenu === menuName ? null : menuName)}
+                  onMouseEnter={() => {
+                    if (activeMenu) setActiveMenu(menuName);
+                  }}
+                  className={`px-2.5 py-1 rounded-md transition-all text-[11px] font-medium ${
+                    activeMenu === menuName
+                      ? 'bg-ps-surface text-white shadow-sm border border-ps-border/80'
+                      : 'hover:bg-ps-surface/70 text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  {menuName}
+                </button>
+
+                {activeMenu === menuName && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
+                    <div className="absolute left-0 top-full mt-1.5 w-60 bg-ps-surface/95 backdrop-blur-xl border border-ps-border rounded-lg shadow-studio py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                      {items.map((item, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            item.action();
+                            setActiveMenu(null);
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-blue-600 hover:text-white flex items-center justify-between text-zinc-200 transition-colors group"
+                        >
+                          <span className="text-[11px] font-medium">{item.label}</span>
+                          {item.shortcut && (
+                            <span className="text-zinc-400 group-hover:text-blue-100 text-[10px] ml-4 font-mono px-1 py-0.5 rounded bg-zinc-800/60 group-hover:bg-blue-700/60 border border-zinc-700/50 group-hover:border-blue-500/50">
+                              {item.shortcut}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Center: Document Title — fully draggable */}
+      {doc && (
+        <div
+          data-tauri-drag-region
+          className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+        >
+          <div
+            data-tauri-drag-region
+            className="flex items-center space-x-2 bg-ps-surface/80 px-3 py-0.5 rounded-full border border-ps-border/70 text-[11px] shadow-sm backdrop-blur-sm pointer-events-none"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] pointer-events-none" />
+            <span className="text-zinc-200 font-medium tracking-tight pointer-events-none">
+              {doc.title}
+            </span>
+            <span className="text-zinc-500 pointer-events-none">·</span>
+            <span className="text-blue-400 font-mono text-[10px] font-semibold pointer-events-none">
+              {Math.round(zoom * 100)}%
+            </span>
+            <span className="text-zinc-500 font-mono text-[10px] pointer-events-none">
+              {doc.width}×{doc.height}px
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Right: Quick Tools & Export Button */}
+      <div className="flex items-center space-x-1 text-zinc-400">
+        <div className="flex items-center space-x-0.5 bg-ps-surface/60 rounded-md p-0.5 border border-ps-border/50">
+          <button
+            onClick={() => triggerUndo()}
+            title={`Undo (${modKey}Z)`}
+            className="p-1 hover:bg-ps-hover rounded text-zinc-300 hover:text-white transition-all active:scale-95"
+          >
+            <RotateCcw size={13} />
+          </button>
+          <button
+            onClick={() => triggerRedo()}
+            title={`Redo (${modKey}⇧Z)`}
+            className="p-1 hover:bg-ps-hover rounded text-zinc-300 hover:text-white transition-all active:scale-95"
+          >
+            <RotateCw size={13} />
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-0.5 bg-ps-surface/60 rounded-md p-0.5 border border-ps-border/50">
+          <button
+            onClick={() => setZoom((z) => Math.max(0.05, z / 1.25))}
+            title={`Zoom Out (${modKey}-)`}
+            className="p-1 hover:bg-ps-hover rounded text-zinc-300 hover:text-white transition-all active:scale-95"
+          >
+            <ZoomOut size={13} />
+          </button>
+          <button
+            onClick={() => setZoom((z) => Math.min(32, z * 1.25))}
+            title={`Zoom In (${modKey}+)`}
+            className="p-1 hover:bg-ps-hover rounded text-zinc-300 hover:text-white transition-all active:scale-95"
+          >
+            <ZoomIn size={13} />
+          </button>
+          <button
+            onClick={() => resetView()}
+            title={`Fit to Screen (${modKey}0)`}
+            className="p-1 hover:bg-ps-hover rounded text-zinc-300 hover:text-white transition-all active:scale-95"
+          >
+            <Maximize2 size={13} />
+          </button>
+        </div>
+
+        <button
+          onClick={onOpenExport}
+          title={`Export Canvas (${modKey}E)`}
+          className="ml-1 px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium shadow-sm transition-all active:scale-95 flex items-center space-x-1 border border-blue-400/30"
+        >
+          <span>Export</span>
+        </button>
+      </div>
+    </header>
+  );
+};

@@ -1,4 +1,4 @@
-import { LayerMetadata } from './layer';
+import { LayerMetadata } from '@/types/layer';
 
 export interface DocumentInfo {
   id: string;

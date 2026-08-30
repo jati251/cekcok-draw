@@ -3,15 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --ps-bg: #18181b;
-  --ps-surface: #27272a;
-  --ps-panel: #202023;
-  --ps-header: #1c1c1f;
-  --ps-border: #38383f;
+  --ps-bg: #101114;
+  --ps-surface: #1c1e24;
+  --ps-panel: #16171c;
+  --ps-header: #131418;
+  --ps-border: #282b35;
+  --ps-border-subtle: #20222a;
   --ps-active: #3b82f6;
-  --ps-hover: #2f2f35;
-  --ps-text: #f4f4f5;
-  --ps-muted: #a1a1aa;
+  --ps-hover: #22252e;
+  --ps-text: #f3f4f6;
+  --ps-muted: #9ca3af;
+  --ps-dim: #6b7280;
+  --ps-accent: #6366f1;
 }
 
 body {
@@ -22,32 +25,69 @@ body {
   color: var(--ps-text);
   user-select: none;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Photoshop-like dark scrollbar */
+/* Custom Sleek Dark Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #1e1e22;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 3px;
+  background: #2a2d37;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #3b3f4d;
+}
+
+/* Modern Input Range Slider Styling */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #232630;
+  height: 5px;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #ffffff;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.5);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.8);
+}
+
+input[type='range']::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  background: #60a5fa;
 }
 
 /* Checkerboard pattern for transparency */
 .bg-transparency-grid {
-  background-color: #262626;
+  background-color: #1a1a1f;
   background-image:
-    linear-gradient(45deg, #1f1f1f 25%, transparent 25%),
-    linear-gradient(-45deg, #1f1f1f 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1f1f1f 75%),
-    linear-gradient(-45deg, transparent 75%, #1f1f1f 75%);
+    linear-gradient(45deg, #131317 25%, transparent 25%),
+    linear-gradient(-45deg, #131317 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #131317 75%),
+    linear-gradient(-45deg, transparent 75%, #131317 75%);
   background-size: 16px 16px;
   background-position:
     0 0,

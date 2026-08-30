@@ -25,7 +25,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
       AWS_DEFAULT_REGION: us-east-1
-      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_EC2_METADATA_DISABLED: 'true'
       MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
 
     steps:
@@ -55,15 +55,22 @@ jobs:
       - name: Build Tauri Desktop App
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: pnpm tauri build
 
       - name: Upload Artifacts (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
-        env:
-          RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
+          # Extract release notes from RELEASE_NOTES.md (first section only, up to the next "---")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -f "RELEASE_NOTES.md" ]; then
+            RELEASE_NOTES=$(sed -n '1,/^---$/{ /^---$/d; p; }' RELEASE_NOTES.md | head -50)
+          fi
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="CekcokDraw v${VERSION} release."
+          fi
+          export RELEASE_NOTES
           if [ -z "$MINIO_ENDPOINT" ]; then
             echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
             echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."
@@ -121,9 +128,16 @@ jobs:
       - name: Upload Artifacts (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
-        env:
-          RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
+          # Extract release notes from RELEASE_NOTES.md (first section only, up to the next "---")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -f "RELEASE_NOTES.md" ]; then
+            RELEASE_NOTES=$(sed -n '1,/^---$/{ /^---$/d; p; }' RELEASE_NOTES.md | head -50)
+          fi
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="CekcokDraw v${VERSION} release."
+          fi
+          export RELEASE_NOTES
           if [ -z "$MINIO_ENDPOINT" ]; then
             echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
             echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."

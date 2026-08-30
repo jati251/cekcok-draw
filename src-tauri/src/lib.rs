@@ -44,6 +44,8 @@ pub fn run() {
             resize_document,
             rotate_document,
             flip_document,
+            rotate_layer,
+            flip_layer,
             apply_brush_stroke,
             apply_flood_fill,
             apply_shape,

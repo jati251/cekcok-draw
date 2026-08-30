@@ -6,16 +6,25 @@ export default {
     extend: {
       colors: {
         ps: {
-          bg: '#18181b',
-          surface: '#27272a',
-          panel: '#202023',
-          border: '#3f3f46',
-          header: '#1e1e22',
+          bg: '#101114',
+          panel: '#16171c',
+          surface: '#1c1e24',
+          header: '#131418',
+          border: '#282b35',
+          'border-subtle': '#20222a',
           active: '#3b82f6',
-          hover: '#333338',
-          text: '#e4e4e7',
-          muted: '#a1a1aa',
+          'active-hover': '#2563eb',
+          hover: '#22252e',
+          text: '#f3f4f6',
+          muted: '#9ca3af',
+          dim: '#6b7280',
+          accent: '#6366f1',
         },
+      },
+      boxShadow: {
+        studio: '0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.3)',
+        'studio-subtle': '0 2px 10px rgba(0, 0, 0, 0.3)',
+        'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
       },
       fontFamily: {
         sans: [

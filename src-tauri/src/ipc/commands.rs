@@ -375,6 +375,41 @@ pub fn flip_document(
 }
 
 #[tauri::command]
+pub fn rotate_layer(
+    layer_id: String,
+    degrees: u16,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    guard.push_history(format!("Rotate Layer {}°", degrees));
+    if guard.document.rotate_layer(&layer_id, degrees) {
+        Ok(guard.document.get_info())
+    } else {
+        Err("Layer not found".into())
+    }
+}
+
+#[tauri::command]
+pub fn flip_layer(
+    layer_id: String,
+    direction: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    let cap_dir = if direction == "horizontal" {
+        "Horizontal"
+    } else {
+        "Vertical"
+    };
+    guard.push_history(format!("Flip Layer {}", cap_dir));
+    if guard.document.flip_layer(&layer_id, &direction) {
+        Ok(guard.document.get_info())
+    } else {
+        Err("Layer not found".into())
+    }
+}
+
+#[tauri::command]
 pub fn undo(state: State<'_, SharedEngineState>) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
     let mut current_doc = guard.document.clone();

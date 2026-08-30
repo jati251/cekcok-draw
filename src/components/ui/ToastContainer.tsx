@@ -1,5 +1,5 @@
 import React from 'react';
-import { useToastStore, ToastType } from '../../stores/toastStore';
+import { useToastStore, ToastType } from '@/stores/toastStore';
 import { Info, CheckCircle2, AlertTriangle, AlertCircle, X } from 'lucide-react';
 
 const icons: Record<ToastType, React.ReactNode> = {

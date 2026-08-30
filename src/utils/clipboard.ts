@@ -1,6 +1,6 @@
-import { toast } from '../stores/toastStore';
-import { useDocumentStore } from '../stores/documentStore';
-import { useEditorStore } from '../stores/editorStore';
+import { toast } from '@/stores/toastStore';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorStore } from '@/stores/editorStore';
 
 /**
  * Copies the current active selection (or entire active layer) to the system clipboard.

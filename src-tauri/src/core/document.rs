@@ -1,4 +1,5 @@
 use super::layer::{BlendMode, Layer, LayerMetadata};
+use super::sparse_grid::SparseTileGrid;
 use super::tile::{TileCoord, TILE_SIZE};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -117,87 +118,186 @@ impl Document {
         self.height = height;
     }
 
-    pub fn rotate(&mut self, degrees: u16) {
-        let old_w = self.width;
-        let old_h = self.height;
-
+    pub fn rotate_canvas_grid(grid: &mut SparseTileGrid, old_w: u32, old_h: u32, degrees: u16) {
         let degrees = degrees % 360;
-        if degrees == 90 || degrees == 270 {
-            self.width = old_h;
-            self.height = old_w;
-        }
-
         if degrees == 0 {
             return;
         }
 
-        for layer in &mut self.layers {
-            let mut rotated_pixels = Vec::new();
-            let coords = layer.grid.get_allocated_coords();
-            for coord in coords {
-                if let Some(tile) = layer.grid.get_tile(&coord) {
-                    let start_x = coord.x * 512;
-                    let start_y = coord.y * 512;
-                    for y in 0..512 {
-                        for x in 0..512 {
-                            let pixel = tile.get_pixel(x, y);
-                            if pixel[3] > 0 {
-                                let orig_x = start_x + x as i32;
-                                let orig_y = start_y + y as i32;
+        let mut rotated_pixels = Vec::new();
+        let coords = grid.get_allocated_coords();
+        for coord in coords {
+            if let Some(tile) = grid.get_tile(&coord) {
+                let start_x = coord.x * (TILE_SIZE as i32);
+                let start_y = coord.y * (TILE_SIZE as i32);
+                for y in 0..TILE_SIZE {
+                    let orig_y = start_y + y as i32;
+                    if orig_y < 0 || orig_y >= old_h as i32 {
+                        continue;
+                    }
+                    for x in 0..TILE_SIZE {
+                        let orig_x = start_x + x as i32;
+                        if orig_x < 0 || orig_x >= old_w as i32 {
+                            continue;
+                        }
+                        let pixel = tile.get_pixel(x, y);
+                        if pixel[3] > 0 {
+                            let (new_x, new_y) = match degrees {
+                                90 => (old_h as i32 - 1 - orig_y, orig_x),
+                                180 => (old_w as i32 - 1 - orig_x, old_h as i32 - 1 - orig_y),
+                                270 => (orig_y, old_w as i32 - 1 - orig_x),
+                                _ => (orig_x, orig_y),
+                            };
+                            rotated_pixels.push((new_x, new_y, pixel));
+                        }
+                    }
+                }
+            }
+        }
 
-                                let (new_x, new_y) = match degrees {
-                                    90 => (old_h as i32 - 1 - orig_y, orig_x),
-                                    180 => (old_w as i32 - 1 - orig_x, old_h as i32 - 1 - orig_y),
-                                    270 => (orig_y, old_w as i32 - 1 - orig_x),
-                                    _ => (orig_x, orig_y),
-                                };
+        grid.clear();
+        for (x, y, color) in rotated_pixels {
+            grid.set_pixel_cow(x, y, color);
+        }
+    }
 
+    pub fn rotate_layer_grid(grid: &mut SparseTileGrid, doc_w: u32, doc_h: u32, degrees: u16) {
+        let degrees = degrees % 360;
+        if degrees == 0 {
+            return;
+        }
+
+        let cx = (doc_w as f64 - 1.0) / 2.0;
+        let cy = (doc_h as f64 - 1.0) / 2.0;
+
+        let mut rotated_pixels = Vec::new();
+        let coords = grid.get_allocated_coords();
+        for coord in coords {
+            if let Some(tile) = grid.get_tile(&coord) {
+                let start_x = coord.x * (TILE_SIZE as i32);
+                let start_y = coord.y * (TILE_SIZE as i32);
+                for y in 0..TILE_SIZE {
+                    let orig_y = start_y + y as i32;
+                    if orig_y < 0 || orig_y >= doc_h as i32 {
+                        continue;
+                    }
+                    for x in 0..TILE_SIZE {
+                        let orig_x = start_x + x as i32;
+                        if orig_x < 0 || orig_x >= doc_w as i32 {
+                            continue;
+                        }
+                        let pixel = tile.get_pixel(x, y);
+                        if pixel[3] > 0 {
+                            let (new_x, new_y) = match degrees {
+                                90 => {
+                                    let dy = orig_y as f64 - cy;
+                                    let dx = orig_x as f64 - cx;
+                                    ((cx - dy).round() as i32, (cy + dx).round() as i32)
+                                }
+                                180 => (doc_w as i32 - 1 - orig_x, doc_h as i32 - 1 - orig_y),
+                                270 => {
+                                    let dy = orig_y as f64 - cy;
+                                    let dx = orig_x as f64 - cx;
+                                    ((cx + dy).round() as i32, (cy - dx).round() as i32)
+                                }
+                                _ => (orig_x, orig_y),
+                            };
+                            if new_x >= 0
+                                && new_x < doc_w as i32
+                                && new_y >= 0
+                                && new_y < doc_h as i32
+                            {
                                 rotated_pixels.push((new_x, new_y, pixel));
                             }
                         }
                     }
                 }
             }
+        }
 
-            layer.grid.clear();
-            for (x, y, color) in rotated_pixels {
-                layer.grid.set_pixel_cow(x, y, color);
-            }
+        grid.clear();
+        for (x, y, color) in rotated_pixels {
+            grid.set_pixel_cow(x, y, color);
         }
     }
 
-    pub fn flip(&mut self, direction: &str) {
-        for layer in &mut self.layers {
-            let mut flipped_pixels = Vec::new();
-            let coords = layer.grid.get_allocated_coords();
-            for coord in coords {
-                if let Some(tile) = layer.grid.get_tile(&coord) {
-                    let start_x = coord.x * 512;
-                    let start_y = coord.y * 512;
-                    for y in 0..512 {
-                        for x in 0..512 {
-                            let pixel = tile.get_pixel(x, y);
-                            if pixel[3] > 0 {
-                                let orig_x = start_x + x as i32;
-                                let orig_y = start_y + y as i32;
-
-                                let (new_x, new_y) = match direction {
-                                    "horizontal" => (self.width as i32 - 1 - orig_x, orig_y),
-                                    "vertical" => (orig_x, self.height as i32 - 1 - orig_y),
-                                    _ => (orig_x, orig_y),
-                                };
-
-                                flipped_pixels.push((new_x, new_y, pixel));
-                            }
+    pub fn flip_grid(grid: &mut SparseTileGrid, doc_w: u32, doc_h: u32, direction: &str) {
+        let mut flipped_pixels = Vec::new();
+        let coords = grid.get_allocated_coords();
+        for coord in coords {
+            if let Some(tile) = grid.get_tile(&coord) {
+                let start_x = coord.x * (TILE_SIZE as i32);
+                let start_y = coord.y * (TILE_SIZE as i32);
+                for y in 0..TILE_SIZE {
+                    let orig_y = start_y + y as i32;
+                    if orig_y < 0 || orig_y >= doc_h as i32 {
+                        continue;
+                    }
+                    for x in 0..TILE_SIZE {
+                        let orig_x = start_x + x as i32;
+                        if orig_x < 0 || orig_x >= doc_w as i32 {
+                            continue;
+                        }
+                        let pixel = tile.get_pixel(x, y);
+                        if pixel[3] > 0 {
+                            let (new_x, new_y) = match direction {
+                                "horizontal" => (doc_w as i32 - 1 - orig_x, orig_y),
+                                "vertical" => (orig_x, doc_h as i32 - 1 - orig_y),
+                                _ => (orig_x, orig_y),
+                            };
+                            flipped_pixels.push((new_x, new_y, pixel));
                         }
                     }
                 }
             }
+        }
 
-            layer.grid.clear();
-            for (x, y, color) in flipped_pixels {
-                layer.grid.set_pixel_cow(x, y, color);
-            }
+        grid.clear();
+        for (x, y, color) in flipped_pixels {
+            grid.set_pixel_cow(x, y, color);
+        }
+    }
+
+    pub fn rotate(&mut self, degrees: u16) {
+        let old_w = self.width;
+        let old_h = self.height;
+        if degrees == 90 || degrees == 270 {
+            self.width = old_h;
+            self.height = old_w;
+        }
+
+        for layer in &mut self.layers {
+            Self::rotate_canvas_grid(&mut layer.grid, old_w, old_h, degrees);
+        }
+    }
+
+    pub fn flip(&mut self, direction: &str) {
+        let w = self.width;
+        let h = self.height;
+        for layer in &mut self.layers {
+            Self::flip_grid(&mut layer.grid, w, h, direction);
+        }
+    }
+
+    pub fn rotate_layer(&mut self, layer_id: &str, degrees: u16) -> bool {
+        let w = self.width;
+        let h = self.height;
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == layer_id) {
+            Self::rotate_layer_grid(&mut layer.grid, w, h, degrees);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn flip_layer(&mut self, layer_id: &str, direction: &str) -> bool {
+        let w = self.width;
+        let h = self.height;
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == layer_id) {
+            Self::flip_grid(&mut layer.grid, w, h, direction);
+            true
+        } else {
+            false
         }
     }
 

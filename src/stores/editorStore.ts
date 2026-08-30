@@ -6,8 +6,8 @@ import {
   TextSettings,
   SelectionArea,
   TabletTelemetry,
-} from '../types';
-import { hexToRgba } from '../utils/color';
+} from '@/types';
+import { hexToRgba } from '@/utils/color';
 
 interface EditorState {
   activeTool: ToolType;
@@ -25,7 +25,8 @@ interface EditorState {
   isDrawing: boolean;
   showGrid: boolean;
   showRulers: boolean;
-  activePanel: 'layers' | 'history' | 'color' | 'all';
+  activePanel: 'layers' | 'history' | 'color' | 'adjustments' | 'all';
+  activeAdjustmentTab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null;
   selection: SelectionArea | null;
   activeTextNode: { x: number; y: number; text: string } | null;
   tabletTelemetry: TabletTelemetry;
@@ -52,7 +53,10 @@ interface EditorState {
   setIsDrawing: (drawing: boolean) => void;
   setShowGrid: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
-  setActivePanel: (panel: 'layers' | 'history' | 'color' | 'all') => void;
+  setActivePanel: (panel: 'layers' | 'history' | 'color' | 'adjustments' | 'all') => void;
+  setActiveAdjustmentTab: (
+    tab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null
+  ) => void;
   setSelection: (selection: SelectionArea | null) => void;
   setActiveTextNode: (node: { x: number; y: number; text: string } | null) => void;
   setTabletTelemetry: (telemetry: Partial<TabletTelemetry>) => void;
@@ -106,6 +110,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   showGrid: false,
   showRulers: true,
   activePanel: 'all',
+  activeAdjustmentTab: null,
   selection: null,
   activeTextNode: null,
   tabletTelemetry: {
@@ -142,7 +147,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       brushSettings: {
         ...state.brushSettings,
-        size: Math.min(300, state.brushSettings.size + delta),
+        size: Math.min(500, state.brushSettings.size + delta),
       },
     })),
   decreaseBrushSize: (delta = 5) =>
@@ -192,6 +197,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   setShowGrid: (showGrid) => set({ showGrid }),
   setShowRulers: (showRulers) => set({ showRulers }),
   setActivePanel: (activePanel) => set({ activePanel }),
+  setActiveAdjustmentTab: (activeAdjustmentTab) => set({ activeAdjustmentTab }),
   setSelection: (selection) => set({ selection }),
   setActiveTextNode: (activeTextNode) => set({ activeTextNode }),
   setTabletTelemetry: (telemetry) =>

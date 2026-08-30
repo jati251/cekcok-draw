@@ -1,4 +1,4 @@
-import { SelectionArea } from '../types';
+import { SelectionArea } from '@/types';
 
 /**
  * Coordinate transformations between client screen pixels and document canvas pixels

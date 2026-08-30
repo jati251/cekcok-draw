@@ -1,3 +1,33 @@
+# CekcokDraw v0.3.0 — Official Release Notes 🐒🎨
+
+**CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.
+
+---
+
+## 🌟 Highlights & New Features in v0.3.0
+
+### 🏗️ 1. Vertical Slice Architecture
+
+- **Feature-Driven Modules**: Entire frontend restructured into strict vertical slices — `canvas`, `adjustments`, `system`, `document`, `layers`, `tools`.
+- **Absolute Import Paths**: Configured `@/*` alias in `tsconfig.json` + `vite.config.ts`. No more fragile `../../../` relative imports.
+- **Clean App Shell**: Extracted ~200 lines of native menu event listeners from `App.tsx` into a dedicated `useAppShortcuts` hook.
+- **Removed Legacy Modals**: Deleted `HueSaturationModal`, `LevelsModal`, `FiltersModal` — all filter adjustments now live in the sidebar `AdjustmentsPanel`.
+
+### 🔧 2. Split-Brain History Fix
+
+- **Eliminated Dual History System**: The frontend `canvasHistoryManager` and Rust `HistoryEngine` were running independently, causing duplicate history entries and undo/redo desync.
+- **Frontend SSoT for Timeline**: History panel now reads exclusively from the frontend pixel snapshot manager.
+- **Removed Band-Aid Guards**: Deleted `isDuplicateActionCall` and `isDuplicateImportCall` — no longer needed with a single history source.
+- **Fixed 6 Core Functions**: `addNewLayer`, `deleteLayer`, `changeLayerBlendMode`, `mergeDown`, `clearLayer`, and `cropCanvas` now use a consistent history push pattern.
+- **Frontend-Authoritative Undo/Redo**: Rust undo/redo is now fire-and-forget sync, eliminating cross-stack drift.
+
+### 🔄 3. Version & Release Improvements
+
+- **Dynamic App Version**: Version strings are now injected at build time via Vite `__APP_VERSION__` — no more hardcoded `'0.2.4'` in source.
+- **Release Notes from File**: `draw-latest.json` updater manifest now sources notes from `RELEASE_NOTES.md` instead of raw commit messages.
+
+---
+
 # CekcokDraw v0.2.6 — Official Release Notes 🐒🎨
 
 **CekcokDraw** is a high-performance, GPU-accelerated raster graphics studio & digital painting application engineered with **Rust, WebAssembly / Tauri v2, and React 19**.

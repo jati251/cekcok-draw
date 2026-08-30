@@ -1,17 +1,18 @@
 import { create } from 'zustand';
-import { BlendMode, DocumentInfo, HistoryAction } from '../types';
-import * as bridge from '../lib/tauriBridge';
-import { canvasHistoryManager } from '../utils/history';
-import { toast } from './toastStore';
+import { BlendMode, DocumentInfo, HistoryAction } from '@/types';
+import * as bridge from '@/services/tauriBridge';
+import { canvasHistoryManager, LayerSnapshot } from '@/features/document/utils/history';
+import { toast } from '@/stores/toastStore';
 import {
   loadImageFromFile,
   loadImageFromNativePath,
   calculateFittedPlacement,
-} from '../utils/imageLoader';
+} from '@/features/document/utils/imageLoader';
 
 interface DocumentState {
   doc: DocumentInfo | null;
   history: HistoryAction[];
+  historyIndex: number;
   isLoading: boolean;
   error: string | null;
   canvasRevision: number;
@@ -37,6 +38,7 @@ interface DocumentState {
   pushCanvasSnapshot: (description: string) => void;
   triggerUndo: () => Promise<void>;
   triggerRedo: () => Promise<void>;
+  jumpToHistoryIndex: (index: number) => Promise<void>;
   refreshHistory: () => Promise<void>;
   bumpCanvasRevision: () => void;
   resizeCanvas: (
@@ -48,6 +50,7 @@ interface DocumentState {
   ) => Promise<void>;
   rotateCanvas: (degrees: 90 | 180 | 270) => Promise<void>;
   flipCanvas: (direction: 'horizontal' | 'vertical') => Promise<void>;
+  rotateActiveLayer: (degrees: 90 | 180 | 270) => Promise<void>;
   flipActiveLayer: (direction: 'horizontal' | 'vertical') => Promise<void>;
   importImageAsLayer: (fileOrBlob: File | Blob, customName?: string) => Promise<void>;
   importImagePathAsLayer: (filePath: string) => Promise<void>;
@@ -56,22 +59,10 @@ interface DocumentState {
   cropCanvas: (x: number, y: number, width: number, height: number) => Promise<void>;
 }
 
-let lastImportTime = 0;
-let lastImportKey = '';
-
-function isDuplicateImportCall(key: string): boolean {
-  const now = Date.now();
-  if (now - lastImportTime < 1000 && lastImportKey === key) {
-    return true;
-  }
-  lastImportTime = now;
-  lastImportKey = key;
-  return false;
-}
-
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   doc: null,
   history: [],
+  historyIndex: -1,
   isLoading: false,
   error: null,
   canvasRevision: 0,
@@ -84,6 +75,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const currentDoc = get().doc;
     if (currentDoc) {
       canvasHistoryManager.pushState(currentDoc, description);
+      set({
+        history: canvasHistoryManager.getHistoryActions(),
+        historyIndex: canvasHistoryManager.getCurrentIndex(),
+      });
     }
   },
 
@@ -92,11 +87,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     canvasHistoryManager.clear();
     try {
       const doc = await bridge.createDocument(title, width, height);
-      const history = await bridge.getHistory();
-      set({ doc, history, isLoading: false, canvasRevision: get().canvasRevision + 1 });
-      // Record initial blank state snapshot
+      set({
+        doc,
+        history: [],
+        historyIndex: -1,
+        isLoading: false,
+        canvasRevision: get().canvasRevision + 1,
+      });
+      // Record initial blank state snapshot after DOM renders
       setTimeout(() => {
-        canvasHistoryManager.pushState(doc, 'Initialize Document');
+        get().pushCanvasSnapshot('Initialize Document');
       }, 50);
       if (showToast) {
         toast.success('Document Created', `${title} (${width}×${height}px)`);
@@ -113,8 +113,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const layerName = name || `Layer ${layerCount}`;
     try {
       const doc = await bridge.addLayer(layerName);
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      // Push snapshot after DOM has rendered the new layer canvas
+      setTimeout(() => {
+        get().pushCanvasSnapshot(`Add Layer '${layerName}'`);
+      }, 40);
     } catch (err) {
       set({ error: String(err) });
       toast.error('Could not create layer', String(err));
@@ -161,7 +164,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
           ctx.drawImage(copyBuffer, 0, 0);
           get().pushCanvasSnapshot(`Duplicate '${sourceLayer.name}'`);
           get().bumpCanvasRevision();
-          toast.success('Layer Duplicated', `Created '${sourceLayer.name} Copy'`);
         }
       }
     }, 40);
@@ -174,10 +176,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       toast.warning('Cannot Delete Layer', 'Document must have at least one layer.');
       return;
     }
+    // Capture snapshot BEFORE deletion so undo can restore it
+    get().pushCanvasSnapshot('Delete Layer');
     try {
       const doc = await bridge.removeLayer(id);
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      set({
+        doc,
+        history: canvasHistoryManager.getHistoryActions(),
+        historyIndex: canvasHistoryManager.getCurrentIndex(),
+        canvasRevision: get().canvasRevision + 1,
+      });
     } catch (err) {
       set({ error: String(err) });
       toast.error('Failed to delete layer', String(err));
@@ -241,8 +249,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   changeLayerBlendMode: async (id: string, blendMode: BlendMode) => {
     try {
       const doc = await bridge.setLayerBlendMode(id, blendMode);
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      get().pushCanvasSnapshot(`Blend Mode: ${blendMode}`);
     } catch (err) {
       set({ error: String(err) });
     }
@@ -276,10 +284,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }
     }
 
+    get().pushCanvasSnapshot(`Merge Down '${upperLayer.name}'`);
     try {
       const doc = await bridge.removeLayer(upperLayer.id);
-      const history = await bridge.getHistory();
-      set({ doc, history, canvasRevision: get().canvasRevision + 1 });
+      set({
+        doc,
+        history: canvasHistoryManager.getHistoryActions(),
+        historyIndex: canvasHistoryManager.getCurrentIndex(),
+        canvasRevision: get().canvasRevision + 1,
+      });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -313,6 +326,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         get().pushCanvasSnapshot(`Clear Layer '${target?.name || 'Layer'}'`);
         ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
         get().bumpCanvasRevision();
+        // Sync Rust backend
+        bridge.commitStrokeHistory(`Clear Layer '${target?.name || 'Layer'}'`).catch(() => {});
       }
     }
   },
@@ -321,16 +336,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const currentDoc = get().doc;
     if (!currentDoc) return;
     try {
-      const restoredState = canvasHistoryManager.undo(currentDoc);
+      const restoredState = canvasHistoryManager.undo();
       if (restoredState) {
-        set({ doc: restoredState.doc, canvasRevision: get().canvasRevision + 1 });
-      }
-      const bridgeDoc = await bridge.undo().catch(() => null);
-      const history = await bridge.getHistory().catch(() => []);
-      if (bridgeDoc) {
-        set({ doc: bridgeDoc, history, canvasRevision: get().canvasRevision + 1 });
-      } else if (history.length > 0) {
-        set({ history });
+        set({
+          doc: restoredState.doc,
+          history: canvasHistoryManager.getHistoryActions(),
+          historyIndex: canvasHistoryManager.getCurrentIndex(),
+          canvasRevision: get().canvasRevision + 1,
+        });
+        // Fire-and-forget Rust sync — frontend is authoritative
+        bridge.undo().catch(() => null);
       }
     } catch (err) {
       set({ error: String(err) });
@@ -341,16 +356,32 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const currentDoc = get().doc;
     if (!currentDoc) return;
     try {
-      const restoredState = canvasHistoryManager.redo(currentDoc);
+      const restoredState = canvasHistoryManager.redo();
       if (restoredState) {
-        set({ doc: restoredState.doc, canvasRevision: get().canvasRevision + 1 });
+        set({
+          doc: restoredState.doc,
+          history: canvasHistoryManager.getHistoryActions(),
+          historyIndex: canvasHistoryManager.getCurrentIndex(),
+          canvasRevision: get().canvasRevision + 1,
+        });
+        // Fire-and-forget Rust sync — frontend is authoritative
+        bridge.redo().catch(() => null);
       }
-      const bridgeDoc = await bridge.redo().catch(() => null);
-      const history = await bridge.getHistory().catch(() => []);
-      if (bridgeDoc) {
-        set({ doc: bridgeDoc, history, canvasRevision: get().canvasRevision + 1 });
-      } else if (history.length > 0) {
-        set({ history });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  jumpToHistoryIndex: async (index: number) => {
+    try {
+      const targetState = canvasHistoryManager.jumpToIndex(index);
+      if (targetState) {
+        set({
+          doc: targetState.doc,
+          history: canvasHistoryManager.getHistoryActions(),
+          historyIndex: canvasHistoryManager.getCurrentIndex(),
+          canvasRevision: get().canvasRevision + 1,
+        });
       }
     } catch (err) {
       set({ error: String(err) });
@@ -359,8 +390,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   refreshHistory: async () => {
     try {
-      const history = await bridge.getHistory();
-      set({ history, canvasRevision: get().canvasRevision + 1 });
+      set({
+        history: canvasHistoryManager.getHistoryActions(),
+        historyIndex: canvasHistoryManager.getCurrentIndex(),
+        canvasRevision: get().canvasRevision + 1,
+      });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -450,7 +484,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
       get().pushCanvasSnapshot(`Canvas Size (${newWidth}×${newHeight})`);
       get().bumpCanvasRevision();
-      toast.success('Canvas Resized', `${newWidth} × ${newHeight} px`);
     }, 40);
   },
 
@@ -463,8 +496,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const newWidth = degrees === 180 ? oldWidth : oldHeight;
     const newHeight = degrees === 180 ? oldHeight : oldWidth;
 
-    // 1. Capture and rotate each layer into an offscreen canvas
-    const layerBuffers: { layerId: string; buffer: HTMLCanvasElement }[] = [];
+    // 1. Synchronously capture and rotate every layer into offscreen buffers
+    const layerSnapshots: LayerSnapshot[] = [];
     for (const layer of currentDoc.layers) {
       const domCanvas = document.getElementById(
         `layer-canvas-${layer.id}`
@@ -478,174 +511,197 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
           tempCtx.save();
           if (degrees === 90) {
             tempCtx.translate(newWidth, 0);
-            tempCtx.rotate((90 * Math.PI) / 180);
+            tempCtx.rotate(Math.PI / 2);
           } else if (degrees === 270) {
             tempCtx.translate(0, newHeight);
-            tempCtx.rotate((-90 * Math.PI) / 180);
+            tempCtx.rotate(-Math.PI / 2);
           } else if (degrees === 180) {
             tempCtx.translate(newWidth, newHeight);
             tempCtx.rotate(Math.PI);
           }
           tempCtx.drawImage(domCanvas, 0, 0);
           tempCtx.restore();
+          layerSnapshots.push({
+            layerId: layer.id,
+            imageData: tempCtx.getImageData(0, 0, newWidth, newHeight),
+          });
         }
-        layerBuffers.push({
-          layerId: layer.id,
-          buffer: tempCanvas,
-        });
       }
     }
 
-    // 2. Update document size in store (triggers React canvas resizing)
+    const updatedDoc: DocumentInfo = {
+      ...currentDoc,
+      width: newWidth,
+      height: newHeight,
+    };
+
+    // 2. Push explicit transformed snapshot to history timeline
+    canvasHistoryManager.pushExplicitState({
+      id: `state-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      description: `Rotate Canvas ${degrees}°`,
+      timestamp: Date.now(),
+      doc: updatedDoc,
+      layerSnapshots,
+    });
+
+    // 3. Update store state
     set({
-      doc: {
-        ...currentDoc,
-        width: newWidth,
-        height: newHeight,
-      },
+      doc: updatedDoc,
+      history: canvasHistoryManager.getHistoryActions(),
+      historyIndex: canvasHistoryManager.getCurrentIndex(),
       canvasRevision: get().canvasRevision + 1,
     });
 
-    // 3. Blit rotated layer buffers onto DOM canvases after React updates dimensions
-    setTimeout(() => {
-      for (const item of layerBuffers) {
-        const canvas = document.getElementById(
-          `layer-canvas-${item.layerId}`
-        ) as HTMLCanvasElement | null;
-        if (canvas) {
-          canvas.width = newWidth;
-          canvas.height = newHeight;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, newWidth, newHeight);
-            ctx.drawImage(item.buffer, 0, 0);
-          }
-        }
-      }
+    // 4. Blit to DOM canvases
+    canvasHistoryManager.applyStateToDom(canvasHistoryManager.getCurrentState()!);
 
-      bridge
-        .rotateDocument(degrees)
-        .then((doc) => {
-          set({ doc, canvasRevision: get().canvasRevision + 1 });
-        })
-        .catch((err) => toast.error('Backend Sync Failed', String(err)));
-
-      get().pushCanvasSnapshot(`Rotate Canvas ${degrees}°`);
-      get().bumpCanvasRevision();
-      toast.success('Canvas Rotated', `Rotated ${degrees}°`);
-    }, 40);
+    // 5. Notify Rust backend
+    try {
+      await bridge.rotateDocument(degrees);
+    } catch (err) {
+      console.warn('Backend rotate sync failed:', err);
+    }
   },
 
   flipCanvas: async (direction: 'horizontal' | 'vertical') => {
     const currentDoc = get().doc;
     if (!currentDoc) return;
 
+    const layerSnapshots: LayerSnapshot[] = [];
     for (const layer of currentDoc.layers) {
-      const canvas = document.getElementById(
+      const domCanvas = document.getElementById(
         `layer-canvas-${layer.id}`
       ) as HTMLCanvasElement | null;
-      if (canvas) {
+      if (domCanvas) {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = currentDoc.width;
         tempCanvas.height = currentDoc.height;
         const tempCtx = tempCanvas.getContext('2d');
         if (tempCtx) {
-          tempCtx.drawImage(canvas, 0, 0);
-        }
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.save();
-          ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+          tempCtx.save();
           if (direction === 'horizontal') {
-            ctx.translate(currentDoc.width, 0);
-            ctx.scale(-1, 1);
+            tempCtx.translate(currentDoc.width, 0);
+            tempCtx.scale(-1, 1);
           } else {
-            ctx.translate(0, currentDoc.height);
-            ctx.scale(1, -1);
+            tempCtx.translate(0, currentDoc.height);
+            tempCtx.scale(1, -1);
           }
-          ctx.drawImage(tempCanvas, 0, 0);
-          ctx.restore();
+          tempCtx.drawImage(domCanvas, 0, 0);
+          tempCtx.restore();
+          layerSnapshots.push({
+            layerId: layer.id,
+            imageData: tempCtx.getImageData(0, 0, currentDoc.width, currentDoc.height),
+          });
         }
       }
     }
 
-    get().pushCanvasSnapshot(
-      `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
-    );
-    get().bumpCanvasRevision();
+    canvasHistoryManager.pushExplicitState({
+      id: `state-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      description: `Flip Canvas ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`,
+      timestamp: Date.now(),
+      doc: currentDoc,
+      layerSnapshots,
+    });
 
-    await bridge
-      .flipDocument(direction)
-      .then((doc) => {
-        set({ doc, canvasRevision: get().canvasRevision + 1 });
-      })
-      .catch(() => {});
+    set({
+      history: canvasHistoryManager.getHistoryActions(),
+      historyIndex: canvasHistoryManager.getCurrentIndex(),
+      canvasRevision: get().canvasRevision + 1,
+    });
 
-    toast.success('Canvas Flipped', `Flipped ${direction}`);
+    canvasHistoryManager.applyStateToDom(canvasHistoryManager.getCurrentState()!);
+
+    try {
+      await bridge.flipDocument(direction);
+    } catch (err) {
+      console.warn('Backend flip sync failed:', err);
+    }
+  },
+
+  rotateActiveLayer: async (degrees: 90 | 180 | 270) => {
+    const currentDoc = get().doc;
+    if (!currentDoc || !currentDoc.active_layer_id) return;
+
+    const domCanvas = document.getElementById(
+      `layer-canvas-${currentDoc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (domCanvas) {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = currentDoc.width;
+      tempCanvas.height = currentDoc.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.save();
+        tempCtx.translate(currentDoc.width / 2, currentDoc.height / 2);
+        const rad = (degrees * Math.PI) / 180;
+        tempCtx.rotate(rad);
+        tempCtx.drawImage(domCanvas, -currentDoc.width / 2, -currentDoc.height / 2);
+        tempCtx.restore();
+
+        const ctx = domCanvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+          ctx.drawImage(tempCanvas, 0, 0);
+        }
+      }
+
+      get().pushCanvasSnapshot(`Rotate Layer ${degrees}°`);
+      get().bumpCanvasRevision();
+
+      try {
+        await bridge.rotateLayer(currentDoc.active_layer_id, degrees);
+      } catch (err) {
+        console.warn('Backend layer rotate sync failed:', err);
+      }
+    }
   },
 
   flipActiveLayer: async (direction: 'horizontal' | 'vertical') => {
     const currentDoc = get().doc;
     if (!currentDoc || !currentDoc.active_layer_id) return;
 
-    const canvas = document.getElementById(
+    const domCanvas = document.getElementById(
       `layer-canvas-${currentDoc.active_layer_id}`
     ) as HTMLCanvasElement | null;
-    if (canvas) {
+    if (domCanvas) {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = currentDoc.width;
       tempCanvas.height = currentDoc.height;
       const tempCtx = tempCanvas.getContext('2d');
       if (tempCtx) {
-        tempCtx.drawImage(canvas, 0, 0);
-      }
-
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.save();
-        ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+        tempCtx.save();
         if (direction === 'horizontal') {
-          ctx.translate(currentDoc.width, 0);
-          ctx.scale(-1, 1);
+          tempCtx.translate(currentDoc.width, 0);
+          tempCtx.scale(-1, 1);
         } else {
-          ctx.translate(0, currentDoc.height);
-          ctx.scale(1, -1);
+          tempCtx.translate(0, currentDoc.height);
+          tempCtx.scale(1, -1);
         }
-        ctx.drawImage(tempCanvas, 0, 0);
-        ctx.restore();
+        tempCtx.drawImage(domCanvas, 0, 0);
+        tempCtx.restore();
+
+        const ctx = domCanvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, currentDoc.width, currentDoc.height);
+          ctx.drawImage(tempCanvas, 0, 0);
+        }
       }
 
       get().pushCanvasSnapshot(
         `Flip Layer ${direction === 'horizontal' ? 'Horizontal' : 'Vertical'}`
       );
       get().bumpCanvasRevision();
-      if (direction === 'horizontal') {
-        await bridge
-          .applyLayerFilter({
-            type: 'flip_horizontal',
-            width: currentDoc.width,
-            layer_id: currentDoc.active_layer_id,
-          })
-          .catch(() => {});
-      } else {
-        await bridge
-          .applyLayerFilter({
-            type: 'flip_vertical',
-            height: currentDoc.height,
-            layer_id: currentDoc.active_layer_id,
-          })
-          .catch(() => {});
+
+      try {
+        await bridge.flipLayer(currentDoc.active_layer_id, direction);
+      } catch (err) {
+        console.warn('Backend layer flip sync failed:', err);
       }
-      toast.success('Layer Flipped', `Flipped layer ${direction}`);
     }
   },
 
   importImageAsLayer: async (fileOrBlob: File | Blob, customName?: string) => {
-    const key =
-      fileOrBlob instanceof File ? `${fileOrBlob.name}_${fileOrBlob.size}` : customName || 'blob';
-    if (isDuplicateImportCall(key)) return;
-
     try {
       const imgRes = await loadImageFromFile(fileOrBlob, customName || 'Image Layer');
       const currentDoc = get().doc;
@@ -710,10 +766,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   openImageAsDocument: async (fileOrBlob: File | Blob, customTitle?: string) => {
-    const key =
-      fileOrBlob instanceof File ? `${fileOrBlob.name}_${fileOrBlob.size}` : customTitle || 'blob';
-    if (isDuplicateImportCall(key)) return;
-
     try {
       const imgRes = await loadImageFromFile(fileOrBlob, customTitle || 'Imported Image');
       await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
@@ -754,8 +806,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   importImagePathAsLayer: async (filePath: string) => {
-    if (isDuplicateImportCall(filePath)) return;
-
     try {
       const imgRes = await loadImageFromNativePath(filePath);
       const currentDoc = get().doc;
@@ -820,8 +870,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   openImagePathAsDocument: async (filePath: string) => {
-    if (isDuplicateImportCall(filePath)) return;
-
     try {
       const imgRes = await loadImageFromNativePath(filePath);
       await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
@@ -917,7 +965,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
       get().pushCanvasSnapshot(`Crop Canvas (${roundW}×${roundH})`);
       get().bumpCanvasRevision();
-      toast.success('Canvas Cropped', `${roundW} × ${roundH} px`);
+      // Sync Rust backend with new dimensions
+      bridge.resizeDocument(roundW, roundH).catch(() => {});
     }, 40);
   },
 }));
