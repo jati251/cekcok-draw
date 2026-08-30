@@ -16,11 +16,14 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             updater_platform: darwin-aarch64
+            # Tauri v2 emits a dedicated `.app.tar.gz` updater archive on macOS
             updater_glob: '*.app.tar.gz'
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             updater_platform: windows-x86_64
-            updater_glob: '*.nsis.zip'
+            # Tauri v2 on Windows signs the NSIS installer itself (`-setup.exe` +
+            # `.sig`), there is no `.nsis.zip` archive.
+            updater_glob: '*-setup.exe'
 
     runs-on: ${{ matrix.os }}
 
@@ -91,8 +94,9 @@ jobs:
             fi
           fi
 
-          # Locate the updater archive (tar.gz on macOS, nsis.zip on Windows) and its
-          # minisign signature. Fail loudly instead of silently publishing a manifest
+          # Locate the updater artifact (the `.app.tar.gz` archive on macOS, or the
+          # signed NSIS `-setup.exe` installer on Windows) and its minisign signature
+          # (`<file>.sig`). Fail loudly instead of silently publishing a manifest
           # that is missing this platform.
           UPDATER_FILE=$(find "$BUNDLE_DIR" -name "$UPDATER_GLOB" 2>/dev/null | head -n 1)
           UPDATER_SIG="${UPDATER_FILE}.sig"
