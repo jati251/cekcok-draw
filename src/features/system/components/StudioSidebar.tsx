@@ -23,7 +23,9 @@ import { Tooltip } from '@/components/ui/Tooltip';
 export const StudioSidebar: React.FC = () => {
   const { activePanel, setActivePanel, isSidebarCollapsed, setIsSidebarCollapsed, primaryColor } =
     useEditorStore();
-  const { doc } = useDocumentStore();
+  // Selector subscription: avoid re-rendering the whole sidebar on every
+  // canvasRevision bump while drawing.
+  const doc = useDocumentStore((s) => s.doc);
 
   // Vertical panels accordion state (Photoshop style stacked panels)
   const [expandColor, setExpandColor] = useState(true);

@@ -7,7 +7,15 @@ interface Props {
 
 export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { doc, canvasRevision } = useDocumentStore();
+  const activeLayerId = useDocumentStore((s) => s.doc?.active_layer_id);
+  const canvasRevision = useDocumentStore((s) => s.canvasRevision);
+  const rustSyncRevision = useDocumentStore((s) => s.rustSyncRevision);
+
+  // Only the active layer's pixels change on a normal stroke (canvasRevision),
+  // so only it should re-downsample per stroke. Undo/redo and structural ops
+  // bump rustSyncRevision, invalidating every thumbnail at once. This avoids
+  // downsampling N full-size canvases on every brush stroke with many layers.
+  const revision = layerId === activeLayerId ? canvasRevision : rustSyncRevision;
 
   useEffect(() => {
     // Debounce thumbnail downsampling so drawing never stutters or lags
@@ -43,7 +51,7 @@ export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [layerId, doc, canvasRevision]);
+  }, [layerId, revision]);
 
   return (
     <div

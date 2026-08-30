@@ -15,8 +15,12 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            updater_platform: darwin-aarch64
+            updater_glob: '*.app.tar.gz'
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            updater_platform: windows-x86_64
+            updater_glob: '*.nsis.zip'
 
     runs-on: ${{ matrix.os }}
 
@@ -52,108 +56,98 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: pnpm tauri build
 
-      - name: Upload Artifacts to MinIO S3 (macOS)
-        if: matrix.os == 'macos-latest' && env.MINIO_ENDPOINT != ''
+      - name: Upload Artifacts & Publish Updater Manifest (MinIO S3)
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          UPDATER_PLATFORM: ${{ matrix.updater_platform }}
         run: |
+          set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           BUNDLE_DIR="src-tauri/target/release/bundle"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          UPDATER_GLOB="${{ matrix.updater_glob }}"
 
-          echo "🚀 Uploading macOS Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
+          echo "🚀 Uploading ${{ matrix.os }} artifacts for CekcokDraw v${VERSION} to ${MINIO_ENDPOINT}..."
 
-          DMG_FILE=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -n 1)
-          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
-            DMG_NAME=$(basename "$DMG_FILE")
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/$DMG_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw-macos.dmg" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw.dmg" --endpoint-url "$MINIO_ENDPOINT"
-          fi
-
-          MACOS_TAR=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz" 2>/dev/null | head -n 1)
-          MACOS_SIG=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz.sig" 2>/dev/null | head -n 1)
-          if [ -n "$MACOS_TAR" ] && [ -f "$MACOS_TAR" ]; then
-            TAR_NAME=$(basename "$MACOS_TAR")
-            aws s3 cp "$MACOS_TAR" "s3://cekcok-releases/$TAR_NAME" --endpoint-url "$MINIO_ENDPOINT"
-
-            if [ -n "$MACOS_SIG" ] && [ -f "$MACOS_SIG" ]; then
-              SIG_CONTENT=$(cat "$MACOS_SIG")
-              aws s3 cp "$MACOS_SIG" "s3://cekcok-releases/${TAR_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
-
-              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
-
-              node -e "
-                const fs = require('fs');
-                let data = {};
-                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-                data.version = '$VERSION';
-                data.notes = 'CekcokDraw v$VERSION update.';
-                data.pub_date = '$PUB_DATE';
-                data.platforms = data.platforms || {};
-                data.platforms['darwin-aarch64'] = {
-                  signature: '$SIG_CONTENT',
-                  url: 'https://releases.cekcok.my.id/cekcok-releases/$TAR_NAME'
-                };
-                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-              "
-
-              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+          # Upload installers for manual downloads (dmg on macOS, exe/msi on Windows).
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            DMG_FILE=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -n 1)
+            if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+              DMG_NAME=$(basename "$DMG_FILE")
+              aws s3 cp "$DMG_FILE" "s3://cekcok-releases/$DMG_NAME" --endpoint-url "$MINIO_ENDPOINT"
+              aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw-macos.dmg" --endpoint-url "$MINIO_ENDPOINT"
+              aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw.dmg" --endpoint-url "$MINIO_ENDPOINT"
+            fi
+          else
+            EXE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*.exe" 2>/dev/null | head -n 1)
+            if [ -n "$EXE_FILE" ] && [ -f "$EXE_FILE" ]; then
+              EXE_NAME=$(basename "$EXE_FILE")
+              aws s3 cp "$EXE_FILE" "s3://cekcok-releases/$EXE_NAME" --endpoint-url "$MINIO_ENDPOINT"
+              aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-windows.exe" --endpoint-url "$MINIO_ENDPOINT"
+              aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-setup.exe" --endpoint-url "$MINIO_ENDPOINT"
             fi
           fi
 
-      - name: Upload Artifacts to MinIO S3 (Windows)
-        if: matrix.os == 'windows-latest' && env.MINIO_ENDPOINT != ''
+          # Locate the updater archive (tar.gz on macOS, nsis.zip on Windows) and its
+          # minisign signature. Fail loudly instead of silently publishing a manifest
+          # that is missing this platform.
+          UPDATER_FILE=$(find "$BUNDLE_DIR" -name "$UPDATER_GLOB" 2>/dev/null | head -n 1)
+          UPDATER_SIG="${UPDATER_FILE}.sig"
+          if [ -z "$UPDATER_FILE" ] || [ ! -f "$UPDATER_FILE" ] || [ ! -f "$UPDATER_SIG" ]; then
+            echo "::error::Updater artifact not found (glob=$UPDATER_GLOB under $BUNDLE_DIR). Ensure bundle.createUpdaterArtifacts is enabled and signing env vars are set."
+            exit 1
+          fi
+          UPDATER_NAME=$(basename "$UPDATER_FILE")
+          SIG_CONTENT=$(cat "$UPDATER_SIG")
+
+          echo "Uploading updater artifact $UPDATER_NAME + signature..."
+          aws s3 cp "$UPDATER_FILE" "s3://cekcok-releases/$UPDATER_NAME" --endpoint-url "$MINIO_ENDPOINT"
+          aws s3 cp "$UPDATER_SIG" "s3://cekcok-releases/${UPDATER_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
+
+          # Merge this platform's entry into the shared manifest, preserving others.
+          aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
+
+          # Signature is passed via env var so multi-line content can never break the script.
+          export SIG_CONTENT
+          node -e "
+            const fs = require('fs');
+            let data = {};
+            try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch (e) {}
+            data.version = '$VERSION';
+            data.notes = 'CekcokDraw v$VERSION update.';
+            data.pub_date = '$PUB_DATE';
+            data.platforms = data.platforms || {};
+            data.platforms[process.env.UPDATER_PLATFORM] = {
+              signature: process.env.SIG_CONTENT,
+              url: 'https://releases.cekcok.my.id/cekcok-releases/$UPDATER_NAME'
+            };
+            fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
+          "
+
+          aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
+          echo "Published ${UPDATER_PLATFORM} entry for v$VERSION."
+
+  verify-manifest:
+    name: Verify published updater manifest
+    needs: release
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert all platforms present in draw-latest.json
         shell: bash
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          BUNDLE_DIR="src-tauri/target/release/bundle"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          echo "🚀 Uploading Windows Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
-
-          EXE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*.exe" 2>/dev/null | head -n 1)
-          if [ -n "$EXE_FILE" ] && [ -f "$EXE_FILE" ]; then
-            EXE_NAME=$(basename "$EXE_FILE")
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/$EXE_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-windows.exe" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-setup.exe" --endpoint-url "$MINIO_ENDPOINT"
-          fi
-
-          WIN_ZIP=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip" 2>/dev/null | head -n 1)
-          WIN_SIG=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip.sig" 2>/dev/null | head -n 1)
-          if [ -n "$WIN_ZIP" ] && [ -f "$WIN_ZIP" ]; then
-            ZIP_NAME=$(basename "$WIN_ZIP")
-            aws s3 cp "$WIN_ZIP" "s3://cekcok-releases/$ZIP_NAME" --endpoint-url "$MINIO_ENDPOINT"
-
-            if [ -n "$WIN_SIG" ] && [ -f "$WIN_SIG" ]; then
-              WIN_SIG_CONTENT=$(cat "$WIN_SIG")
-              aws s3 cp "$WIN_SIG" "s3://cekcok-releases/${ZIP_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
-
-              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
-
-              node -e "
-                const fs = require('fs');
-                let data = {};
-                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-                data.version = '$VERSION';
-                data.notes = 'CekcokDraw v$VERSION update.';
-                data.pub_date = '$PUB_DATE';
-                data.platforms = data.platforms || {};
-                data.platforms['windows-x86_64'] = {
-                  signature: '$WIN_SIG_CONTENT',
-                  url: 'https://releases.cekcok.my.id/cekcok-releases/$ZIP_NAME'
-                };
-                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-              "
-
-              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
-            fi
-          fi
+          curl -sS https://releases.cekcok.my.id/cekcok-releases/draw-latest.json -o manifest.json
+          node -e "
+            const m = JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'));
+            const need = ['darwin-aarch64', 'windows-x86_64'];
+            const missing = need.filter((p) => !(m.platforms && m.platforms[p]));
+            if (missing.length > 0) {
+              console.error('MISSING platform entries in published manifest:', missing.join(', '));
+              console.error('Present platforms:', Object.keys(m.platforms || {}).join(', ') || '(none)');
+              process.exit(1);
+            }
+            console.log('OK - all platform entries present:', Object.keys(m.platforms).join(', '));
+          "

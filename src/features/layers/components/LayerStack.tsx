@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
 import { useEditorStore } from '@/stores/editorStore';
@@ -17,15 +17,35 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
   const transformState = useEditorStore((state) => state.transformState);
   const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
 
+  // Stable signature of everything that can change actual layer pixel data:
+  // canvas dimensions, the set of layer ids (add/remove/merge), clipping flags,
+  // and the Rust sync revision (undo/redo/merge/delete). Style-only changes —
+  // opacity, visibility, blend mode, rename, reorder — do NOT invalidate it, so
+  // those no longer trigger a full re-fetch of every layer via IPC, which was
+  // the main source of lag when working with many layers.
+  const pixelSignature = useMemo(
+    () =>
+      `${doc.width}x${doc.height}|${doc.layers
+        .map((l) => `${l.id}:${l.is_clipped ? '1' : '0'}`)
+        .sort()
+        .join(',')}|${rustSyncRevision}`,
+    [doc.height, doc.layers, doc.width, rustSyncRevision]
+  );
+
   // Sync layer canvases from Rust engine state.
   // Uses pre-fetched pixels from combined undo/redo IPC when available (instant),
-  // falls back to individual IPC calls only on init / dimension changes.
+  // falls back to individual IPC calls only on init / dimension / pixel changes.
   useEffect(() => {
+    // Read the latest doc straight from the store so the effect never depends
+    // on the frequently-changing `doc.layers` prop reference.
+    const d = useDocumentStore.getState().doc;
+    if (!d) return;
+
     if (
-      lastDimensionsRef.current.width !== doc.width ||
-      lastDimensionsRef.current.height !== doc.height
+      lastDimensionsRef.current.width !== d.width ||
+      lastDimensionsRef.current.height !== d.height
     ) {
-      lastDimensionsRef.current = { width: doc.width, height: doc.height };
+      lastDimensionsRef.current = { width: d.width, height: d.height };
       initializedLayersRef.current.clear();
     }
 
@@ -34,21 +54,21 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
     const hydrate = async () => {
       if (!isTauriEnvironment()) {
         // Browser mock fallback
-        doc.layers.forEach((layer) => {
+        d.layers.forEach((layer) => {
           const canvas = layerCanvasesRef.current?.get(layer.id);
           if (!canvas || initializedLayersRef.current.has(layer.id) || layer.name !== 'Background')
             return;
           const ctx = canvas?.getContext('2d');
           if (ctx) {
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, doc.width, doc.height);
+            ctx.fillRect(0, 0, d.width, d.height);
           }
           initializedLayersRef.current.add(layer.id);
         });
         return;
       }
 
-      if (doc.width < 1 || doc.height < 1) return;
+      if (d.width < 1 || d.height < 1) return;
 
       // Check for pre-fetched pixels from combined undo/redo IPC
       const store = useDocumentStore.getState();
@@ -56,14 +76,14 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
 
       if (pendingPixels && pendingPixels.size > 0) {
         // Instant blit: pixels already arrived with the undo/redo response
-        for (const layer of doc.layers) {
+        for (const layer of d.layers) {
           if (cancelled) return;
           const rawBytes = pendingPixels.get(layer.id);
           if (!rawBytes) continue;
           const canvas = layerCanvasesRef.current?.get(layer.id);
           const ctx = canvas?.getContext('2d');
           if (canvas && ctx) {
-            const imgData = ctx.createImageData(doc.width, doc.height);
+            const imgData = ctx.createImageData(d.width, d.height);
             imgData.data.set(rawBytes);
             ctx.putImageData(imgData, 0, 0);
             initializedLayersRef.current.add(layer.id);
@@ -71,7 +91,7 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
         }
         // Apply clipping masks visually in the DOM for instant blit.
         let currentBaseLayerId: string | null = null;
-        for (const layer of doc.layers) {
+        for (const layer of d.layers) {
           if (!layer.is_clipped) {
             currentBaseLayerId = layer.id;
           } else if (currentBaseLayerId) {
@@ -95,25 +115,25 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
 
       // Fallback: fetch pixels via individual IPC (init, dimension changes, etc.)
       // Background placeholder while initial render arrives
-      const background = doc.layers.find((layer) => layer.name === 'Background');
+      const background = d.layers.find((layer) => layer.name === 'Background');
       if (background && !initializedLayersRef.current.has(background.id)) {
         const canvas = layerCanvasesRef.current?.get(background.id);
         const ctx = canvas?.getContext('2d');
         if (ctx) {
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, doc.width, doc.height);
+          ctx.fillRect(0, 0, d.width, d.height);
           initializedLayersRef.current.add(background.id);
         }
       }
 
       await Promise.all(
-        doc.layers.map(async (layer) => {
-          const rawBytes = await renderLayerViewport(layer.id, 0, 0, doc.width, doc.height);
+        d.layers.map(async (layer) => {
+          const rawBytes = await renderLayerViewport(layer.id, 0, 0, d.width, d.height);
           if (cancelled || !rawBytes) return;
           const canvas = layerCanvasesRef.current?.get(layer.id);
           const ctx = canvas?.getContext('2d');
           if (canvas && ctx) {
-            const imgData = ctx.createImageData(doc.width, doc.height);
+            const imgData = ctx.createImageData(d.width, d.height);
             imgData.data.set(rawBytes);
             ctx.putImageData(imgData, 0, 0);
             initializedLayersRef.current.add(layer.id);
@@ -126,7 +146,7 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
       // Apply clipping masks visually in the DOM.
       // We iterate from bottom to top to find base layers.
       let currentBaseLayerId: string | null = null;
-      for (const layer of doc.layers) {
+      for (const layer of d.layers) {
         if (!layer.is_clipped) {
           currentBaseLayerId = layer.id;
         } else if (currentBaseLayerId) {
@@ -149,7 +169,7 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
     return () => {
       cancelled = true;
     };
-  }, [doc.layers, doc.width, doc.height, layerCanvasesRef, rustSyncRevision]);
+  }, [pixelSignature, layerCanvasesRef]);
 
   return (
     <>

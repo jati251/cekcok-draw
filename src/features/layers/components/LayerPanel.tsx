@@ -8,18 +8,19 @@ import { LayerContextMenu } from '@/features/layers/components/LayerContextMenu'
 import { Tooltip } from '@/components/ui/Tooltip';
 
 export const LayerPanel: React.FC = () => {
-  const {
-    doc,
-    selectLayer,
-    changeLayerOpacity,
-    toggleLayerVisibility,
-    toggleLayerLock,
-    renameLayer,
-    changeLayerBlendMode,
-    selectedLayerIds,
-    toggleSelectLayer,
-    selectLayerRange,
-  } = useDocumentStore();
+  // Selector-based subscriptions so the panel only re-renders when the layer
+  // data or selection actually change (not on every canvasRevision bump from
+  // drawing, which used to re-render the whole layer list on every stroke).
+  const doc = useDocumentStore((s) => s.doc);
+  const selectedLayerIds = useDocumentStore((s) => s.selectedLayerIds);
+  const selectLayer = useDocumentStore((s) => s.selectLayer);
+  const changeLayerOpacity = useDocumentStore((s) => s.changeLayerOpacity);
+  const toggleLayerVisibility = useDocumentStore((s) => s.toggleLayerVisibility);
+  const toggleLayerLock = useDocumentStore((s) => s.toggleLayerLock);
+  const renameLayer = useDocumentStore((s) => s.renameLayer);
+  const changeLayerBlendMode = useDocumentStore((s) => s.changeLayerBlendMode);
+  const toggleSelectLayer = useDocumentStore((s) => s.toggleSelectLayer);
+  const selectLayerRange = useDocumentStore((s) => s.selectLayerRange);
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
