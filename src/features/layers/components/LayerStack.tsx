@@ -1,45 +1,103 @@
 import React, { useEffect, useRef } from 'react';
 import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
-import { canvasHistoryManager } from '@/features/document/utils/history';
 import { useEditorStore } from '@/stores/editorStore';
+import { isTauriEnvironment, renderLayerViewport } from '@/services/tauriBridge';
 
 interface Props {
   doc: DocumentInfo;
   layerCanvasesRef: React.RefObject<Map<string, HTMLCanvasElement>>;
+  viewport: { x: number; y: number; width: number; height: number };
 }
 
-export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
+const decodePng = (base64: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Could not decode native layer image'));
+    image.src = `data:image/png;base64,${base64}`;
+  });
+
+export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef, viewport }) => {
   const initializedLayersRef = useRef<Set<string>>(new Set());
+  const lastDimensionsRef = useRef({ width: doc.width, height: doc.height });
   const transformState = useEditorStore((state) => state.transformState);
 
-  // Restore layer contents from history snapshot or initialize Background
+  // Canvases are a sparse display cache. Native state supplies only the visible
+  // document rectangle, so panning does not move complete raster layers over IPC.
   useEffect(() => {
-    doc.layers.forEach((layer) => {
-      const canvas =
-        layerCanvasesRef.current?.get(layer.id) ||
-        (document.getElementById(`layer-canvas-${layer.id}`) as HTMLCanvasElement | null);
-      if (canvas) {
-        const snap = canvasHistoryManager.getSnapshotForLayer(layer.id);
-        if (snap) {
-          const ctx = canvas.getContext('2d');
+    if (
+      lastDimensionsRef.current.width !== doc.width ||
+      lastDimensionsRef.current.height !== doc.height
+    ) {
+      lastDimensionsRef.current = { width: doc.width, height: doc.height };
+      initializedLayersRef.current.clear();
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      hydrate().catch((error) => console.error('Failed to hydrate layer cache:', error));
+    }, 40);
+
+    const hydrate = async () => {
+      if (isTauriEnvironment()) {
+        // Keep a new document usable while its native viewport is decoding.
+        // The native background replaces this cache entry as soon as it arrives.
+        const background = doc.layers.find((layer) => layer.name === 'Background');
+        if (background && !initializedLayersRef.current.has(background.id)) {
+          const canvas = layerCanvasesRef.current?.get(background.id);
+          const ctx = canvas?.getContext('2d');
           if (ctx) {
-            ctx.putImageData(snap, 0, 0);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, doc.width, doc.height);
+            initializedLayersRef.current.add(background.id);
           }
-          initializedLayersRef.current.add(layer.id);
-        } else if (!initializedLayersRef.current.has(layer.id)) {
-          if (layer.name === 'Background') {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#ffffff';
-              ctx.fillRect(0, 0, doc.width, doc.height);
-            }
-          }
-          initializedLayersRef.current.add(layer.id);
         }
+        if (viewport.width < 1 || viewport.height < 1) return;
+        await Promise.all(
+          doc.layers.map(async (layer) => {
+            const png = await renderLayerViewport(
+              layer.id,
+              viewport.x,
+              viewport.y,
+              viewport.width,
+              viewport.height
+            );
+            if (cancelled || !png) return;
+            const canvas = layerCanvasesRef.current?.get(layer.id);
+            const ctx = canvas?.getContext('2d');
+            const image = await decodePng(png);
+            if (cancelled) return;
+            if (canvas && ctx) {
+              ctx.clearRect(viewport.x, viewport.y, viewport.width, viewport.height);
+              ctx.drawImage(image, viewport.x, viewport.y, viewport.width, viewport.height);
+              initializedLayersRef.current.add(layer.id);
+            }
+          })
+        );
+        return;
       }
-    });
-  }, [doc.layers, doc.width, doc.height, layerCanvasesRef]);
+
+      if (viewport.width < 1 || viewport.height < 1) return;
+
+      doc.layers.forEach((layer) => {
+        const canvas = layerCanvasesRef.current?.get(layer.id);
+        if (!canvas || initializedLayersRef.current.has(layer.id) || layer.name !== 'Background')
+          return;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, doc.width, doc.height);
+        }
+        initializedLayersRef.current.add(layer.id);
+      });
+    };
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [doc.layers, doc.width, doc.height, layerCanvasesRef, viewport]);
 
   return (
     <>

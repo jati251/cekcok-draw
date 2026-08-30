@@ -12,7 +12,7 @@ export interface ToastItem {
 
 interface ToastState {
   toasts: ToastItem[];
-  addToast: (toast: Omit<ToastItem, 'id'>) => void;
+  addToast: (toast: Omit<ToastItem, 'id'>) => string;
   removeToast: (id: string) => void;
 }
 
@@ -29,6 +29,7 @@ export const useToastStore = create<ToastState>((set) => ({
         set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
       }, duration);
     }
+    return id;
   },
   removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 }));
@@ -43,4 +44,7 @@ export const toast = {
     useToastStore.getState().addToast({ title, message, type: 'warning' }),
   error: (title: string, message?: string) =>
     useToastStore.getState().addToast({ title, message, type: 'error' }),
+  loading: (title: string, message?: string) =>
+    useToastStore.getState().addToast({ title, message, type: 'info', duration: 0 }),
+  dismiss: (id: string) => useToastStore.getState().removeToast(id),
 };

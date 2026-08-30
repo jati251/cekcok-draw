@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { toast } from '@/stores/toastStore';
@@ -33,6 +33,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const previousToolBeforeEraserRef = useRef<ToolType | null>(null);
 
   const isMac =
@@ -105,6 +106,37 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     liveStrokeCanvasRef,
     layerCanvasesRef,
   });
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const updateSize = () =>
+      setContainerSize({ width: container.clientWidth, height: container.clientHeight });
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const nativeViewport = useMemo(() => {
+    const width = Math.min(doc?.width || 0, Math.ceil(containerSize.width / zoom) + 2);
+    const height = Math.min(doc?.height || 0, Math.ceil(containerSize.height / zoom) + 2);
+    const x = Math.max(
+      0,
+      Math.min(
+        (doc?.width || 0) - width,
+        Math.floor((doc?.width || 0) / 2 - (containerSize.width / 2 + pan.x) / zoom)
+      )
+    );
+    const y = Math.max(
+      0,
+      Math.min(
+        (doc?.height || 0) - height,
+        Math.floor((doc?.height || 0) / 2 - (containerSize.height / 2 + pan.y) / zoom)
+      )
+    );
+    return { x, y, width, height };
+  }, [containerSize, doc?.height, doc?.width, pan.x, pan.y, zoom]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -577,7 +609,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
         }}
         className="transition-none"
       >
-        <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} />
+        <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} viewport={nativeViewport} />
 
         <canvas
           ref={liveStrokeCanvasRef}

@@ -24,8 +24,11 @@ parking_lot = { version = "0.12", features = ["serde"] }
 memmap2 = "0.9"
 wgpu = "24.0"
 bytemuck = { version = "1.21", features = ["derive"] }
+base64 = "0.22"
 pollster = "0.4"
 uuid = { version = "1.13", features = ["v4", "serde"] }
 log = "0.4"
 env_logger = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "ico"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"

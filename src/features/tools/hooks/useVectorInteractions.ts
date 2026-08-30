@@ -127,7 +127,27 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       }
       ctx.restore();
       bumpCanvasRevision();
-      bridge.commitStrokeHistory('Gradient Tool');
+      const bounds: [number, number, number, number] | undefined =
+        selection && selection.active && selection.width > 0
+          ? [
+              Math.round(selection.x),
+              Math.round(selection.y),
+              Math.round(selection.width),
+              Math.round(selection.height),
+            ]
+          : undefined;
+      bridge
+        .applyGradient(
+          start,
+          end,
+          hexToRgba(primaryColor, 255),
+          hexToRgba(secondaryColor, 255),
+          brushSettings.opacity,
+          bounds,
+          doc.active_layer_id
+        )
+        .then(() => useDocumentStore.getState().refreshHistory())
+        .catch(() => {});
     },
     [
       brushSettings.opacity,
@@ -139,6 +159,8 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       selection,
     ]
   );
+
+  const originalBaseBufferRef = useRef<HTMLCanvasElement | null>(null);
 
   const startMove = useCallback(
     (pos: { x: number; y: number }) => {
@@ -153,21 +175,81 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       if (!moveBufferRef.current) {
         moveBufferRef.current = document.createElement('canvas');
       }
+      if (!originalBaseBufferRef.current) {
+        originalBaseBufferRef.current = document.createElement('canvas');
+      }
       const buf = moveBufferRef.current;
+      const baseBuf = originalBaseBufferRef.current;
       buf.width = canvas.width;
       buf.height = canvas.height;
+      baseBuf.width = canvas.width;
+      baseBuf.height = canvas.height;
+
       const bCtx = buf.getContext('2d');
-      if (bCtx) {
+      const baseCtx = baseBuf.getContext('2d');
+      const ctx = canvas.getContext('2d');
+
+      if (bCtx && baseCtx && ctx) {
         bCtx.clearRect(0, 0, buf.width, buf.height);
-        bCtx.drawImage(canvas, 0, 0);
+        bCtx.save();
+
+        if (selection && selection.active) {
+          // If we have a selection, we extract it and "cut" it from the original layer
+          if (selection.path && selection.path.length > 2) {
+            bCtx.beginPath();
+            bCtx.moveTo(selection.path[0].x, selection.path[0].y);
+            for (let i = 1; i < selection.path.length; i++) {
+              bCtx.lineTo(selection.path[i].x, selection.path[i].y);
+            }
+            bCtx.closePath();
+            bCtx.clip();
+          } else if (selection.width > 0 && selection.height > 0) {
+            bCtx.beginPath();
+            bCtx.rect(selection.x, selection.y, selection.width, selection.height);
+            bCtx.clip();
+          }
+
+          bCtx.drawImage(canvas, 0, 0);
+          bCtx.restore();
+
+          // Clear it from the DOM canvas
+          ctx.save();
+          if (selection.path && selection.path.length > 2) {
+            ctx.beginPath();
+            ctx.moveTo(selection.path[0].x, selection.path[0].y);
+            for (let i = 1; i < selection.path.length; i++) {
+              ctx.lineTo(selection.path[i].x, selection.path[i].y);
+            }
+            ctx.closePath();
+            ctx.clip();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+          } else if (selection.width > 0 && selection.height > 0) {
+            ctx.clearRect(selection.x, selection.y, selection.width, selection.height);
+          }
+          ctx.restore();
+        } else {
+          bCtx.drawImage(canvas, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Save the cut base to avoid smearing
+        baseCtx.clearRect(0, 0, baseBuf.width, baseBuf.height);
+        baseCtx.drawImage(canvas, 0, 0);
       }
     },
-    [doc, layerCanvasesRef]
+    [doc, layerCanvasesRef, selection]
   );
 
   const updateMove = useCallback(
     (pos: { x: number; y: number }) => {
-      if (!doc || !doc.active_layer_id || !moveStartRef.current || !moveBufferRef.current) return;
+      if (
+        !doc ||
+        !doc.active_layer_id ||
+        !moveStartRef.current ||
+        !moveBufferRef.current ||
+        !originalBaseBufferRef.current
+      )
+        return;
       const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -179,19 +261,60 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       setMoveDrag({ start: moveStartRef.current, current: pos });
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(originalBaseBufferRef.current, 0, 0);
       ctx.drawImage(moveBufferRef.current, dx, dy);
     },
     [doc, layerCanvasesRef]
   );
 
   const endMove = useCallback(() => {
-    if (moveStartRef.current) {
+    if (moveStartRef.current && doc?.active_layer_id && moveDrag) {
+      const dx = Math.round(moveDrag.current.x - moveDrag.start.x);
+      const dy = Math.round(moveDrag.current.y - moveDrag.start.y);
       moveStartRef.current = null;
       setMoveDrag(null);
       bumpCanvasRevision();
-      bridge.commitStrokeHistory('Move Layer Content');
+
+      if (selection && selection.active) {
+        let boundX = 0;
+        let boundY = 0;
+        let boundW = doc.width;
+        let boundH = doc.height;
+        if (!selection.path && selection.width > 0 && selection.height > 0) {
+          boundX = Math.round(selection.x);
+          boundY = Math.round(selection.y);
+          boundW = Math.round(selection.width);
+          boundH = Math.round(selection.height);
+        }
+
+        // Send cut data to Rust
+        if (moveBufferRef.current) {
+          const tCtx = moveBufferRef.current.getContext('2d');
+          if (tCtx) {
+            const imgData = tCtx.getImageData(boundX, boundY, boundW, boundH);
+            bridge
+              .moveSelectionContent(
+                doc.active_layer_id,
+                dx,
+                dy,
+                boundX,
+                boundY,
+                boundW,
+                boundH,
+                new Uint8Array(imgData.data.buffer)
+              )
+              .then(() => useDocumentStore.getState().refreshHistory())
+              .catch(() => {});
+          }
+        }
+      } else {
+        bridge
+          .moveLayerContent(doc.active_layer_id, dx, dy)
+          .then(() => useDocumentStore.getState().refreshHistory())
+          .catch(() => {});
+      }
     }
-  }, [bumpCanvasRevision]);
+  }, [bumpCanvasRevision, doc, moveDrag, selection]);
 
   const clearSelectionContent = useCallback(() => {
     if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
@@ -217,72 +340,69 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     ctx.restore();
 
     bumpCanvasRevision();
-    bridge.commitStrokeHistory('Clear Selection (Delete)');
+    if (!selection.path && selection.width > 0 && selection.height > 0) {
+      bridge
+        .clearLayerRegion(
+          doc.active_layer_id,
+          Math.round(selection.x),
+          Math.round(selection.y),
+          Math.round(selection.width),
+          Math.round(selection.height)
+        )
+        .then(() => useDocumentStore.getState().refreshHistory())
+        .catch(() => {});
+    } else {
+      // Lasso paths still need a polygon-aware native command.
+      bridge.commitStrokeHistory('Clear Selection (Delete)');
+    }
   }, [bumpCanvasRevision, doc, layerCanvasesRef, selection]);
 
   const bakeShapeToCanvas = useCallback(
-    (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    async (start: { x: number; y: number }, end: { x: number; y: number }) => {
       if (!doc || !doc.active_layer_id) return;
-      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
 
+      let targetLayerId = doc.active_layer_id;
+
+      // If the current layer is the Background or not empty (has an ID that's been used), create a new layer
+      // We'll just always create a new layer for shapes unless the user explicitly is on an empty layer,
+      // but to mimic Photoshop, let's always spawn a new layer for a shape.
+      const shapeLayerName = `${shapeSettings.type.charAt(0).toUpperCase() + shapeSettings.type.slice(1)} 1`;
       useDocumentStore.getState().pushCanvasSnapshot(`Shape (${shapeSettings.type})`);
 
-      const x = Math.min(start.x, end.x);
-      const y = Math.min(start.y, end.y);
-      const w = Math.abs(end.x - start.x);
-      const h = Math.abs(end.y - start.y);
-
-      ctx.save();
-      ctx.fillStyle = primaryColor;
-      ctx.strokeStyle = secondaryColor;
-      ctx.lineWidth = shapeSettings.strokeWidth;
-
-      if (shapeSettings.type === 'line' || shapeSettings.type === 'arrow') {
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        ctx.lineTo(end.x, end.y);
-        ctx.stroke();
-        if (shapeSettings.type === 'arrow') {
-          ctx.beginPath();
-          ctx.arc(end.x, end.y, shapeSettings.strokeWidth * 1.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (shapeSettings.type === 'ellipse') {
-        ctx.beginPath();
-        ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-        if (shapeSettings.fill) ctx.fill();
-        if (shapeSettings.stroke) ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, shapeSettings.radius);
-        if (shapeSettings.fill) ctx.fill();
-        if (shapeSettings.stroke) ctx.stroke();
+      try {
+        const updatedDoc = await bridge.addLayer(shapeLayerName);
+        targetLayerId = updatedDoc.active_layer_id || targetLayerId;
+        useDocumentStore.getState().bumpCanvasRevision();
+      } catch {
+        // Fallback to current layer if add fails
       }
-      ctx.restore();
-      bumpCanvasRevision();
 
+      // We do not draw it to the DOM immediately because the new layer canvas hasn't mounted yet.
+      // We let the Rust engine rasterize it, and it will be fetched on the next render.
       const strokeRgba = hexToRgba(secondaryColor, 255);
       const fillRgba = hexToRgba(primaryColor, 255);
 
-      bridge.applyShape(
-        shapeSettings.type,
-        start.x,
-        start.y,
-        end.x,
-        end.y,
-        strokeRgba,
-        fillRgba,
-        shapeSettings.strokeWidth,
-        shapeSettings.radius,
-        shapeSettings.fill,
-        shapeSettings.stroke,
-        doc.active_layer_id
-      );
+      bridge
+        .applyShape(
+          shapeSettings.type,
+          start.x,
+          start.y,
+          end.x,
+          end.y,
+          strokeRgba,
+          fillRgba,
+          shapeSettings.strokeWidth,
+          shapeSettings.radius,
+          shapeSettings.fill,
+          shapeSettings.stroke,
+          targetLayerId
+        )
+        .then(() => {
+          useDocumentStore.getState().refreshHistory();
+          useDocumentStore.getState().bumpCanvasRevision();
+        });
     },
-    [bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, secondaryColor, shapeSettings]
+    [doc, primaryColor, secondaryColor, shapeSettings]
   );
 
   return {

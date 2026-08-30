@@ -38,6 +38,10 @@ pub struct BrushPoint {
     pub tilt_y: Option<f32>,
     #[serde(default)]
     pub twist: Option<f32>,
+    #[serde(default)]
+    pub velocity: Option<f32>,
+    #[serde(default)]
+    pub timestamp: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +68,10 @@ pub struct BrushSettings {
     pub pressure_flow: bool,
     #[serde(default)]
     pub smoothing: Option<f32>,
+    #[serde(default)]
+    pub velocity_sensitivity: Option<f32>,
+    #[serde(default)]
+    pub taper: Option<f32>,
 }
 
 impl Default for BrushSettings {
@@ -83,6 +91,8 @@ impl Default for BrushSettings {
             pressure_opacity: true,
             pressure_flow: false,
             smoothing: Some(0.15),
+            velocity_sensitivity: Some(0.0),
+            taper: Some(0.0),
         }
     }
 }
@@ -130,7 +140,14 @@ impl BrushEngine {
 
         if points.len() == 1 {
             let p = points[0];
-            Self::stamp_to_buffer(&mut stroke_alpha_map, p.x, p.y, p.pressure, settings);
+            Self::stamp_to_buffer(
+                &mut stroke_alpha_map,
+                p.x,
+                p.y,
+                p.pressure,
+                p.velocity.unwrap_or(0.0),
+                settings,
+            );
         } else if points.len() == 2 {
             let p0 = points[0];
             let p1 = points[1];
@@ -156,7 +173,17 @@ impl BrushEngine {
                     let t = step as f32 / steps as f32;
                     let (x, y) = Self::catmull_rom_point(p0, p1, p2, p3, t);
                     let pressure = p1.pressure + (p2.pressure - p1.pressure) * t;
-                    Self::stamp_to_buffer(&mut stroke_alpha_map, x, y, pressure, settings);
+                    let v1 = p1.velocity.unwrap_or(0.0);
+                    let v2 = p2.velocity.unwrap_or(0.0);
+                    let velocity = v1 + (v2 - v1) * t;
+                    Self::stamp_to_buffer(
+                        &mut stroke_alpha_map,
+                        x,
+                        y,
+                        pressure,
+                        velocity,
+                        settings,
+                    );
                 }
             }
         }
@@ -219,7 +246,10 @@ impl BrushEngine {
             let cur_x = p0.x + dx * t;
             let cur_y = p0.y + dy * t;
             let cur_pressure = p0.pressure + (p1.pressure - p0.pressure) * t;
-            Self::stamp_to_buffer(buffer, cur_x, cur_y, cur_pressure, settings);
+            let v0 = p0.velocity.unwrap_or(0.0);
+            let v1 = p1.velocity.unwrap_or(0.0);
+            let cur_velocity = v0 + (v1 - v0) * t;
+            Self::stamp_to_buffer(buffer, cur_x, cur_y, cur_pressure, cur_velocity, settings);
         }
     }
 
@@ -228,14 +258,22 @@ impl BrushEngine {
         center_x: f32,
         center_y: f32,
         pressure: f32,
+        velocity: f32,
         settings: &BrushSettings,
     ) {
         let p_clamped = pressure.clamp(0.0, 1.0);
-        let eff_radius = if settings.pressure_size {
+        let mut eff_radius = if settings.pressure_size {
             (settings.size * 0.5 * (0.08 + 0.92 * p_clamped)).max(0.75)
         } else {
             (settings.size * 0.5).max(0.75)
         };
+        let taper = settings.taper.unwrap_or(0.0);
+        let vel_sens = settings.velocity_sensitivity.unwrap_or(0.0);
+        if taper > 0.0 && vel_sens > 0.0 {
+            let speed_factor = (velocity / 3.0).min(1.0) * vel_sens;
+            eff_radius = eff_radius * (1.0 - speed_factor * taper);
+        }
+        eff_radius = eff_radius.max(0.75);
         let eff_radius_sq = eff_radius * eff_radius;
         let hardness = settings.hardness.clamp(0.0, 0.999);
         let inner_radius = eff_radius * hardness;

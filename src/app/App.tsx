@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TopMenuBar } from '@/features/system/components/TopMenuBar';
 import { ToolOptionsBar } from '@/features/system/components/ToolOptionsBar';
 import { ToolBar } from '@/features/system/components/ToolBar';
 import { CanvasViewport } from '@/features/canvas/components/CanvasViewport';
@@ -67,14 +66,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-ps-bg text-ps-text select-none">
-      {/* 1. Top Menu Navigation */}
-      <TopMenuBar
-        onOpenNewDoc={() => setIsNewDocOpen(true)}
-        onOpenOpenFile={handleOpenFileDialog}
-        onOpenCanvasSize={() => setIsCanvasSizeOpen(true)}
-        onOpenExport={() => setIsExportOpen(true)}
-        onOpenUpdateModal={() => setIsUpdateOpen(true)}
-      />
+      {/* 1. Top Menu Navigation (Native OS Handled) */}
 
       {/* 2. Contextual Tool Options Bar */}
       <ToolOptionsBar />

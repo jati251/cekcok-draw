@@ -78,15 +78,15 @@ export const ToolBar: React.FC = () => {
   const categories = ['Select', 'Paint', 'Vector', 'Tone', 'View'] as const;
 
   return (
-    <aside className="w-13 bg-ps-panel/95 backdrop-blur-md border-r border-ps-border flex flex-col items-center py-2.5 justify-between select-none z-30 shadow-studio-subtle">
+    <aside className="w-[4.5rem] bg-ps-panel/80 backdrop-blur-xl border-r border-ps-border flex flex-col items-center py-2.5 justify-between select-none z-30 shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
       {/* Grouped Tool Buttons */}
-      <div className="flex flex-col items-center space-y-1 w-full px-1.5 overflow-y-auto">
+      <div className="grid grid-cols-2 gap-1.5 w-full px-1.5 overflow-y-auto content-start justify-items-center">
         {categories.map((cat, catIdx) => {
           const catTools = TOOLS.filter((t) => t.category === cat);
           return (
             <React.Fragment key={cat}>
               {catIdx > 0 && (
-                <div className="w-5 h-[1px] bg-gradient-to-r from-transparent via-ps-border to-transparent my-1.5" />
+                <div className="col-span-2 w-10 mx-auto h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent my-1" />
               )}
               {catTools.map((tool) => {
                 const isActive = activeTool === tool.type;
@@ -99,15 +99,15 @@ export const ToolBar: React.FC = () => {
                   >
                     <button
                       onClick={() => setActiveTool(tool.type)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-150 relative ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200 relative ${
                         isActive
-                          ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)] ring-1 ring-blue-400/40'
-                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover hover:scale-105 active:scale-95'
+                          ? 'bg-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)] ring-1 ring-blue-500/60'
+                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/10 hover:shadow-lg hover:-translate-y-0.5 active:scale-95'
                       }`}
                     >
                       {getToolIcon(tool.iconName)}
                       {isActive && (
-                        <div className="absolute -left-1.5 w-1 h-3.5 bg-blue-400 rounded-r-full" />
+                        <div className="absolute inset-0 bg-blue-400/10 rounded-lg pointer-events-none" />
                       )}
                     </button>
                   </Tooltip>
@@ -138,7 +138,7 @@ export const ToolBar: React.FC = () => {
           {/* Primary color */}
           <Tooltip content="Primary Color (Click to change)" position="right">
             <div
-              className="absolute top-0 left-0 w-5 h-5 rounded-md border-2 border-white/40 cursor-pointer shadow-lg z-10 transition-transform hover:scale-110 active:scale-95"
+              className="absolute top-0 left-0 w-5 h-5 rounded-md border-[1.5px] border-white/60 cursor-pointer shadow-lg z-10 transition-transform hover:scale-110 active:scale-95"
               style={{ backgroundColor: primaryColor }}
               onClick={() => {
                 const input = document.createElement('input');

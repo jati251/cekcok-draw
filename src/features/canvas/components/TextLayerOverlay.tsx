@@ -19,7 +19,7 @@ export const TextLayerOverlay: React.FC = () => {
   // Only render overlay when in text tool and node is open
   if (!activeTextNode || !doc || activeTool !== 'text') return null;
 
-  const commitTextToCanvas = () => {
+  const commitTextToCanvas = async () => {
     if (!activeTextNode.text.trim()) {
       setActiveTextNode(null);
       return;
@@ -54,10 +54,20 @@ export const TextLayerOverlay: React.FC = () => {
         lines.forEach((line, index) => {
           ctx.fillText(line, activeTextNode.x, activeTextNode.y + index * lineHeight);
         });
+        const maxWidth = Math.ceil(Math.max(...lines.map((line) => ctx.measureText(line).width)));
+        const height = Math.ceil(lineHeight * lines.length);
         ctx.restore();
+        const x = Math.max(0, Math.floor(activeTextNode.x - maxWidth));
+        const y = Math.max(0, Math.floor(activeTextNode.y));
+        const width = Math.min(doc.width - x, maxWidth * 2);
+        const clippedHeight = Math.min(doc.height - y, height);
+        if (width > 0 && clippedHeight > 0) {
+          const pixels = ctx.getImageData(x, y, width, clippedHeight);
+          await bridge.writeLayerPixels(x, y, width, clippedHeight, pixels.data, activeId);
+          await useDocumentStore.getState().refreshHistory();
+        }
 
         bumpCanvasRevision();
-        bridge.commitStrokeHistory(`Text: "${activeTextNode.text.slice(0, 15)}..."`);
       }
     }
 

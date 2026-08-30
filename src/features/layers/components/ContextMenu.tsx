@@ -33,12 +33,57 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
 
   // Layer via Copy (⌘J)
   const handleLayerViaCopy = () => {
-    if (!doc || !doc.active_layer_id) return;
-    addNewLayer(`${doc.layers.find((l) => l.id === doc.active_layer_id)?.name || 'Layer'} Copy`);
+    if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
+
+    let boundX = 0;
+    let boundY = 0;
+    let boundW = doc.width;
+    let boundH = doc.height;
+
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (!selection.path && selection.width > 0 && selection.height > 0) {
+      boundX = Math.round(selection.x);
+      boundY = Math.round(selection.y);
+      boundW = Math.round(selection.width);
+      boundH = Math.round(selection.height);
+    }
+
+    // For lasso, we get the whole canvas but apply a mask.
+    // Wait, the selection is active on the DOM, but it might not be clipped.
+    // If it's lasso, we need to clip it to get only the pixels.
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = boundW;
+    tempCanvas.height = boundH;
+    const tCtx = tempCanvas.getContext('2d');
+    if (tCtx) {
+      tCtx.save();
+      if (selection.path && selection.path.length > 2) {
+        tCtx.beginPath();
+        tCtx.moveTo(selection.path[0].x - boundX, selection.path[0].y - boundY);
+        for (let i = 1; i < selection.path.length; i++) {
+          tCtx.lineTo(selection.path[i].x - boundX, selection.path[i].y - boundY);
+        }
+        tCtx.closePath();
+        tCtx.clip();
+      }
+      tCtx.drawImage(canvas, -boundX, -boundY);
+      tCtx.restore();
+      const imgData = tCtx.getImageData(0, 0, boundW, boundH);
+
+      bridge
+        .layerViaCopy(boundX, boundY, boundW, boundH, new Uint8Array(imgData.data.buffer))
+        .then(() => useDocumentStore.getState().refreshHistory())
+        .catch(() => {});
+    }
     onClose();
   };
 
-  // Clear Selection
   const handleClearSelection = () => {
     if (!doc || !doc.active_layer_id || !selection || !selection.active) return;
     const canvas = document.getElementById(
@@ -48,6 +93,12 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.save();
+
+        let boundX = 0;
+        let boundY = 0;
+        let boundW = doc.width;
+        let boundH = doc.height;
+
         if (selection.path && selection.path.length > 2) {
           ctx.beginPath();
           ctx.moveTo(selection.path[0].x, selection.path[0].y);
@@ -57,12 +108,37 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
           ctx.closePath();
           ctx.clip();
           ctx.clearRect(0, 0, doc.width, doc.height);
+          // Use document bounds for lasso
         } else if (selection.width > 0 && selection.height > 0) {
-          ctx.clearRect(selection.x, selection.y, selection.width, selection.height);
+          boundX = Math.round(selection.x);
+          boundY = Math.round(selection.y);
+          boundW = Math.round(selection.width);
+          boundH = Math.round(selection.height);
+          ctx.clearRect(boundX, boundY, boundW, boundH);
         }
         ctx.restore();
         bumpCanvasRevision();
-        bridge.commitStrokeHistory('Clear (Delete)');
+
+        if (!selection.path && selection.width > 0 && selection.height > 0) {
+          bridge
+            .clearLayerRegion(doc.active_layer_id, boundX, boundY, boundW, boundH)
+            .then(() => bridge.commitStrokeHistory('Clear (Delete)'))
+            .catch(() => {});
+        } else {
+          // For lasso, sync the entire canvas back to rust
+          const imgData = ctx.getImageData(0, 0, doc.width, doc.height);
+          bridge
+            .writeLayerPixels(
+              0,
+              0,
+              doc.width,
+              doc.height,
+              new Uint8Array(imgData.data.buffer),
+              doc.active_layer_id
+            )
+            .then(() => bridge.commitStrokeHistory('Clear (Delete)'))
+            .catch(() => {});
+        }
       }
     }
     onClose();

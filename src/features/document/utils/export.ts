@@ -1,6 +1,8 @@
 import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
 import * as bridge from '@/services/tauriBridge';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff' | 'svg' | 'pdf' | 'cekcok';
 
@@ -227,7 +229,7 @@ export const compositeAndDownloadDocument = async (
   // 1. .cekcok Project Archive
   if (format === 'cekcok') {
     const blob = exportCekcokProject(doc);
-    downloadBlob(blob, filename);
+    await downloadBlob(blob, filename);
     return;
   }
 
@@ -254,7 +256,7 @@ export const compositeAndDownloadDocument = async (
                   ? 'image/bmp'
                   : 'image/tiff';
         const blob = new Blob([bytes.buffer as ArrayBuffer], { type: mime });
-        downloadBlob(blob, filename);
+        await downloadBlob(blob, filename);
         return;
       }
     } catch {
@@ -267,29 +269,48 @@ export const compositeAndDownloadDocument = async (
 
   if (format === 'bmp') {
     const blob = canvasToBmpBlob(canvas);
-    downloadBlob(blob, filename);
+    await downloadBlob(blob, filename);
   } else if (format === 'svg') {
     const svgStr = canvasToSvgString(canvas, doc.title);
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    downloadBlob(blob, filename);
+    await downloadBlob(blob, filename);
   } else if (format === 'pdf') {
     const blob = canvasToPdfBlob(canvas);
-    downloadBlob(blob, filename);
+    await downloadBlob(blob, filename);
   } else {
     // PNG, JPEG, WebP
     const mime = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp';
     const dataUrl = canvas.toDataURL(mime, quality);
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = dataUrl;
-    link.click();
+    // Convert data URL to Blob for downloadBlob
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    await downloadBlob(blob, filename);
   }
 };
 
-const downloadBlob = (blob: Blob, filename: string): void => {
+const downloadBlob = async (blob: Blob, defaultFilename: string): Promise<void> => {
+  if (bridge.isTauriEnvironment()) {
+    try {
+      const filePath = await save({
+        defaultPath: defaultFilename,
+      });
+      if (filePath) {
+        const buffer = await blob.arrayBuffer();
+        await writeFile(filePath, new Uint8Array(buffer));
+        return;
+      } else {
+        // User cancelled
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to save file natively', err);
+      // Fallback to web download
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.download = filename;
+  link.download = defaultFilename;
   link.href = url;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

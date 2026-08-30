@@ -52,6 +52,22 @@ impl SparseTileGrid {
         Some(Arc::make_mut(shared))
     }
 
+    pub fn get_pixel(&self, global_x: i32, global_y: i32) -> [u8; 4] {
+        if global_x < 0 || global_y < 0 {
+            return [0, 0, 0, 0];
+        }
+        let tile_x = global_x / (TILE_SIZE as i32);
+        let tile_y = global_y / (TILE_SIZE as i32);
+        let local_x = (global_x % (TILE_SIZE as i32)) as u32;
+        let local_y = (global_y % (TILE_SIZE as i32)) as u32;
+        let coord = TileCoord::new(tile_x, tile_y, 0);
+        if let Some(tile) = self.get_tile(&coord) {
+            tile.get_pixel(local_x, local_y)
+        } else {
+            [0, 0, 0, 0]
+        }
+    }
+
     #[inline]
     pub fn set_pixel_cow(&mut self, global_x: i32, global_y: i32, color: [u8; 4]) {
         if global_x < 0 || global_y < 0 {

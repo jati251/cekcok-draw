@@ -3,6 +3,7 @@ import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { Check, X, Lock, Unlock, RotateCw } from 'lucide-react';
 import { TransformState } from '@/types';
+import * as bridge from '@/services/tauriBridge';
 
 interface Props {
   zoom: number;
@@ -12,7 +13,7 @@ type DragMode = 'move' | 'rotate' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' 
 
 export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
   const { transformState, setTransformState } = useEditorStore();
-  const { doc, pushCanvasSnapshot, bumpCanvasRevision } = useDocumentStore();
+  const { doc, bumpCanvasRevision } = useDocumentStore();
 
   const [keepAspect, setKeepAspect] = useState<boolean>(true);
   const [dragMode, setDragMode] = useState<DragMode | null>(null);
@@ -48,41 +49,34 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
     ctx.restore();
   }, [transformState]);
 
-  const handleApply = useCallback(() => {
+  const handleApply = useCallback(async () => {
     if (!transformState || !transformState.sourceCanvas || !doc) {
       setTransformState(null);
       return;
     }
 
-    const targetCanvas = document.getElementById(
-      `layer-canvas-${transformState.layerId}`
-    ) as HTMLCanvasElement | null;
-
-    if (targetCanvas) {
-      pushCanvasSnapshot('Free Transform');
-      const ctx = targetCanvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
-        ctx.save();
-        ctx.translate(
-          transformState.x + transformState.width / 2,
-          transformState.y + transformState.height / 2
-        );
-        ctx.rotate((transformState.rotation * Math.PI) / 180);
-        ctx.drawImage(
-          transformState.sourceCanvas,
-          -transformState.width / 2,
-          -transformState.height / 2,
-          transformState.width,
-          transformState.height
-        );
-        ctx.restore();
-      }
-      bumpCanvasRevision();
+    try {
+      const updatedDoc = await bridge.transformLayer(
+        transformState.layerId,
+        transformState.x,
+        transformState.y,
+        transformState.width,
+        transformState.height,
+        transformState.rotation
+      );
+      const history = await bridge.getHistory();
+      useDocumentStore.setState((state) => ({
+        doc: updatedDoc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: state.canvasRevision + 1,
+      }));
+    } catch (error) {
+      console.error('Failed to transform layer:', error);
     }
 
     setTransformState(null);
-  }, [bumpCanvasRevision, doc, pushCanvasSnapshot, setTransformState, transformState]);
+  }, [doc, setTransformState, transformState]);
 
   const handleCancel = useCallback(() => {
     if (!transformState || !transformState.sourceCanvas) {

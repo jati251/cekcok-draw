@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
-import { Cpu, HardDrive, MousePointer, Sparkles, PenTool } from 'lucide-react';
+import { HardDrive, MousePointer, Sparkles, PenTool } from 'lucide-react';
 
 interface Props {
   onOpenUpdateModal?: () => void;
@@ -78,10 +78,7 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
             {estimatedRamMb} MB)
           </span>
         </div>
-        <div className="flex items-center space-x-1.5 border-l border-ps-border/60 pl-3">
-          <Cpu size={10} className="text-blue-400" />
-          <span className="text-emerald-400 font-medium">GPU Headless</span>
-        </div>
+
         {onOpenUpdateModal && (
           <button
             onClick={onOpenUpdateModal}

@@ -16,12 +16,34 @@ pub fn run() {
     let mut history = HistoryEngine::new(50);
     history.push_state("Initialize Document", &initial_doc);
 
+    // Initialize GPU context synchronously
+    let (gpu_context, blend_pipeline) =
+        match pollster::block_on(compute::context::GpuContext::init_headless()) {
+            Ok(ctx) => {
+                let ctx_arc = Arc::new(ctx);
+                let pipeline =
+                    Arc::new(compute::blend_pipeline::BlendPipeline::new(&ctx_arc.device));
+                (Some(ctx_arc), Some(pipeline))
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to initialize GPU context: {}. Falling back to CPU rendering.",
+                    e
+                );
+                (None, None)
+            }
+        };
+
     let engine_state: SharedEngineState = Arc::new(Mutex::new(AppEngineState {
         document: initial_doc,
         history,
+        gpu_context,
+        blend_pipeline,
     }));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -34,7 +56,11 @@ pub fn run() {
             create_document,
             get_document_info,
             add_layer,
+            duplicate_layer,
             remove_layer,
+            clear_layer,
+            merge_down,
+            reorder_layer,
             set_active_layer,
             set_layer_opacity,
             set_layer_visibility,
@@ -49,6 +75,11 @@ pub fn run() {
             apply_brush_stroke,
             apply_flood_fill,
             apply_shape,
+            apply_gradient,
+            move_layer_content,
+            clear_layer_region,
+            crop_document,
+            transform_layer,
             write_layer_pixels,
             commit_stroke_history,
             apply_layer_filter,
@@ -59,7 +90,10 @@ pub fn run() {
             redo,
             get_history,
             render_viewport,
-            read_file_binary
+            render_layer_viewport,
+            read_file_binary,
+            layer_via_copy,
+            move_selection_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running CekcokDraw application");

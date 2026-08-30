@@ -29,6 +29,8 @@ export interface BrushSettings {
   smoothing?: number; // 0.0 (raw) to 1.0 (heavy smoothing)
   pressureCurve?: PressureCurveType;
   minPressureSize?: number; // 0.0 to 1.0 (fraction of full radius at min pressure)
+  velocitySensitivity?: number; // 0.0 to 1.0 (how much velocity affects taper)
+  taper?: number; // 0.0 to 1.0 (taper severity)
 }
 
 export interface BrushPoint {
@@ -39,6 +41,8 @@ export interface BrushPoint {
   tiltY?: number;
   twist?: number;
   pointerType?: 'pen' | 'touch' | 'mouse';
+  timestamp?: number;
+  velocity?: number; // computed velocity magnitude
 }
 
 export interface TabletTelemetry {

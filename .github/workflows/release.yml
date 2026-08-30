@@ -1,201 +1,47 @@
-name: Release and Deploy
-
+name: Release
 on:
-  workflow_dispatch:
   push:
     tags:
       - 'v*'
-
 jobs:
-  build:
-    name: Build (${{ matrix.platform }})
-    runs-on: ${{ matrix.os }}
+  release:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            platform: macos-arm64
-            target: aarch64-apple-darwin
-          - os: windows-latest
-            platform: windows-x86_64
-            target: x86_64-pc-windows-msvc
-
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_EC2_METADATA_DISABLED: 'true'
-      MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+        platform: [macos-latest, ubuntu-20.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-20.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Setup Node.js
+      - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'pnpm'
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install frontend dependencies
+        run: pnpm install
 
-      - name: Build Web Frontend
-        run: pnpm run build
-
-      - name: Build Tauri Desktop App
+      - name: Build and Publish Tauri app
+        uses: tauri-apps/tauri-action@v0
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
-        run: pnpm tauri build
-
-      - name: Upload Artifacts (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          # Extract release notes from RELEASE_NOTES.md (first section only, up to the next "---")
-          VERSION=$(node -p "require('./package.json').version")
-          if [ -f "RELEASE_NOTES.md" ]; then
-            RELEASE_NOTES=$(sed -n '1,/^---$/{ /^---$/d; p; }' RELEASE_NOTES.md | head -50)
-          fi
-          if [ -z "$RELEASE_NOTES" ]; then
-            RELEASE_NOTES="CekcokDraw v${VERSION} release."
-          fi
-          export RELEASE_NOTES
-          if [ -z "$MINIO_ENDPOINT" ]; then
-            echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
-            echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-
-          VERSION=$(node -p "require('./package.json').version")
-          BUNDLE_DIR="src-tauri/target/release/bundle"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          echo "🚀 Uploading macOS Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
-
-          # 1. Upload Static DMG & versioned DMG
-          DMG_FILE=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -n 1)
-          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
-            DMG_NAME=$(basename "$DMG_FILE")
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/$DMG_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw-macos.dmg" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$DMG_FILE" "s3://cekcok-releases/CekcokDraw.dmg" --endpoint-url "$MINIO_ENDPOINT"
-          fi
-
-          # 2. Upload Updater Archive (.tar.gz & .sig)
-          MACOS_TAR=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz" 2>/dev/null | head -n 1)
-          MACOS_SIG=$(find "$BUNDLE_DIR/macos" -name "*.tar.gz.sig" 2>/dev/null | head -n 1)
-          if [ -n "$MACOS_TAR" ] && [ -f "$MACOS_TAR" ]; then
-            TAR_NAME=$(basename "$MACOS_TAR")
-            aws s3 cp "$MACOS_TAR" "s3://cekcok-releases/$TAR_NAME" --endpoint-url "$MINIO_ENDPOINT"
-
-            if [ -n "$MACOS_SIG" ] && [ -f "$MACOS_SIG" ]; then
-              SIG_CONTENT=$(cat "$MACOS_SIG")
-              aws s3 cp "$MACOS_SIG" "s3://cekcok-releases/${TAR_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
-
-              # Download current draw-latest.json, patch platform key, and upload back
-              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
-
-              node -e "
-                const fs = require('fs');
-                let data = {};
-                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-                data.version = '$VERSION';
-                data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
-                data.pub_date = '$PUB_DATE';
-                data.platforms = data.platforms || {};
-                data.platforms['darwin-aarch64'] = {
-                  signature: '$SIG_CONTENT',
-                  url: 'https://releases.cekcok.my.id/cekcok-releases/$TAR_NAME'
-                };
-                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-              "
-
-              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
-            fi
-          fi
-
-      - name: Upload Artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          # Extract release notes from RELEASE_NOTES.md (first section only, up to the next "---")
-          VERSION=$(node -p "require('./package.json').version")
-          if [ -f "RELEASE_NOTES.md" ]; then
-            RELEASE_NOTES=$(sed -n '1,/^---$/{ /^---$/d; p; }' RELEASE_NOTES.md | head -50)
-          fi
-          if [ -z "$RELEASE_NOTES" ]; then
-            RELEASE_NOTES="CekcokDraw v${VERSION} release."
-          fi
-          export RELEASE_NOTES
-          if [ -z "$MINIO_ENDPOINT" ]; then
-            echo "❌ ERROR: MINIO_ENDPOINT secret is not configured in GitHub Secrets!"
-            echo "👉 Please add MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY to Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-
-          VERSION=$(node -p "require('./package.json').version")
-          BUNDLE_DIR="src-tauri/target/release/bundle"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          echo "🚀 Uploading Windows Artifacts for CekcokDraw v${VERSION} to $MINIO_ENDPOINT..."
-
-          # 1. Upload Static EXE
-          EXE_FILE=$(find "$BUNDLE_DIR/nsis" -name "*.exe" 2>/dev/null | head -n 1)
-          if [ -n "$EXE_FILE" ] && [ -f "$EXE_FILE" ]; then
-            EXE_NAME=$(basename "$EXE_FILE")
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/$EXE_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-windows.exe" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$EXE_FILE" "s3://cekcok-releases/CekcokDraw-setup.exe" --endpoint-url "$MINIO_ENDPOINT"
-          fi
-
-          # 2. Upload Static MSI
-          MSI_FILE=$(find "$BUNDLE_DIR/msi" -name "*.msi" 2>/dev/null | head -n 1)
-          if [ -n "$MSI_FILE" ] && [ -f "$MSI_FILE" ]; then
-            MSI_NAME=$(basename "$MSI_FILE")
-            aws s3 cp "$MSI_FILE" "s3://cekcok-releases/$MSI_NAME" --endpoint-url "$MINIO_ENDPOINT"
-            aws s3 cp "$MSI_FILE" "s3://cekcok-releases/CekcokDraw-windows.msi" --endpoint-url "$MINIO_ENDPOINT"
-          fi
-
-          # 3. Upload Updater Zip (.nsis.zip & .sig)
-          WIN_ZIP=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip" 2>/dev/null | head -n 1)
-          WIN_SIG=$(find "$BUNDLE_DIR/nsis" -name "*.nsis.zip.sig" 2>/dev/null | head -n 1)
-          if [ -n "$WIN_ZIP" ] && [ -f "$WIN_ZIP" ]; then
-            ZIP_NAME=$(basename "$WIN_ZIP")
-            aws s3 cp "$WIN_ZIP" "s3://cekcok-releases/$ZIP_NAME" --endpoint-url "$MINIO_ENDPOINT"
-
-            if [ -n "$WIN_SIG" ] && [ -f "$WIN_SIG" ]; then
-              WIN_SIG_CONTENT=$(cat "$WIN_SIG")
-              aws s3 cp "$WIN_SIG" "s3://cekcok-releases/${ZIP_NAME}.sig" --endpoint-url "$MINIO_ENDPOINT"
-
-              # Download current draw-latest.json, patch platform key, and upload back
-              aws s3 cp "s3://cekcok-releases/draw-latest.json" draw-latest.json --endpoint-url "$MINIO_ENDPOINT" 2>/dev/null || echo "{}" > draw-latest.json
-
-              node -e "
-                const fs = require('fs');
-                let data = {};
-                try { data = JSON.parse(fs.readFileSync('draw-latest.json', 'utf8')); } catch(e){}
-                data.version = '$VERSION';
-                data.notes = process.env.RELEASE_NOTES || 'CekcokDraw v$VERSION update.';
-                data.pub_date = '$PUB_DATE';
-                data.platforms = data.platforms || {};
-                data.platforms['windows-x86_64'] = {
-                  signature: '$WIN_SIG_CONTENT',
-                  url: 'https://releases.cekcok.my.id/cekcok-releases/$ZIP_NAME'
-                };
-                fs.writeFileSync('draw-latest.json', JSON.stringify(data, null, 2));
-              "
-
-              aws s3 cp draw-latest.json "s3://cekcok-releases/draw-latest.json" --endpoint-url "$MINIO_ENDPOINT"
-            fi
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'CekcokDraw ${{ github.ref_name }}'
+          releaseBody: 'See RELEASE_NOTES.md for full details.'
+          releaseDraft: false
+          prerelease: false

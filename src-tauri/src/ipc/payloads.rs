@@ -1,4 +1,6 @@
+use crate::compute::blend_pipeline::BlendPipeline;
 use crate::compute::brush_engine::{BrushPoint, BrushSettings};
+use crate::compute::context::GpuContext;
 use crate::compute::filters::LayerFilter;
 use crate::compute::shapes::ShapeType;
 use crate::core::document::Document;
@@ -10,6 +12,8 @@ use std::sync::Arc;
 pub struct AppEngineState {
     pub document: Document,
     pub history: HistoryEngine,
+    pub gpu_context: Option<Arc<GpuContext>>,
+    pub blend_pipeline: Option<Arc<BlendPipeline>>,
 }
 
 impl AppEngineState {
@@ -30,10 +34,20 @@ pub struct ViewportRenderRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct LayerViewportRenderRequest {
+    pub layer_id: String,
+    pub vx: i32,
+    pub vy: i32,
+    pub vw: u32,
+    pub vh: u32,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct StrokePayload {
     pub layer_id: Option<String>,
     pub points: Vec<BrushPoint>,
     pub settings: BrushSettings,
+    pub action_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,6 +83,53 @@ pub struct ShapePayload {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct GradientPayload {
+    pub layer_id: Option<String>,
+    pub start_x: f32,
+    pub start_y: f32,
+    pub end_x: f32,
+    pub end_y: f32,
+    pub start_color: [u8; 4],
+    pub end_color: [u8; 4],
+    pub opacity: f32,
+    pub bounds: Option<[i32; 4]>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MoveLayerPayload {
+    pub layer_id: String,
+    pub dx: i32,
+    pub dy: i32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ClearRegionPayload {
+    pub layer_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CropPayload {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TransformLayerPayload {
+    pub layer_id: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub rotation: f32,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct EngineStats {
     pub total_tiles: usize,
     pub allocated_memory_mb: f32,
@@ -81,6 +142,27 @@ pub struct WriteRegionPayload {
     pub layer_id: Option<String>,
     pub start_x: i32,
     pub start_y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LayerViaCopyPayload {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MoveSelectionPayload {
+    pub layer_id: Option<String>,
+    pub dx: i32,
+    pub dy: i32,
+    pub x: i32,
+    pub y: i32,
     pub width: u32,
     pub height: u32,
     pub data: Vec<u8>,

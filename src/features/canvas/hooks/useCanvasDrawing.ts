@@ -80,7 +80,14 @@ export const useCanvasDrawing = ({
         ctx.save();
         applySelectionClip(ctx);
         const strength = useEditorStore.getState().smudgeStrength || 0.6;
-        const effRadius = computeEffectiveRadius(baseRadius, pCurr.pressure, brushSettings);
+        const interpVelocity =
+          (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * 1.0;
+        const effRadius = computeEffectiveRadius(
+          baseRadius,
+          pCurr.pressure,
+          brushSettings,
+          interpVelocity
+        );
         applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, effRadius, strength);
         ctx.restore();
         return;
@@ -103,7 +110,13 @@ export const useCanvasDrawing = ({
         const dx = pCurr.x - pPrev.x;
         const dy = pCurr.y - pPrev.y;
         const dist = Math.hypot(dx, dy);
-        const effRadius = computeEffectiveRadius(baseRadius, pCurr.pressure, brushSettings);
+        const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
+        const effRadius = computeEffectiveRadius(
+          baseRadius,
+          pCurr.pressure,
+          brushSettings,
+          avgVelocity
+        );
         const stepSize = Math.max(2.0, effRadius * 0.25);
         const steps = Math.max(1, Math.ceil(dist / stepSize));
 
@@ -112,7 +125,14 @@ export const useCanvasDrawing = ({
           const cx = pPrev.x + dx * t;
           const cy = pPrev.y + dy * t;
           const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-          const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+          const interpVelocity =
+            (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
+          const stepRadius = computeEffectiveRadius(
+            baseRadius,
+            interpPressure,
+            brushSettings,
+            interpVelocity
+          );
           const stepAlpha = computeEffectiveAlpha(
             (brushSettings.opacity || 0.8) * 0.4,
             interpPressure,
@@ -153,7 +173,13 @@ export const useCanvasDrawing = ({
         const dy = pCurr.y - pPrev.y;
         const dist = Math.hypot(dx, dy);
         const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
-        const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings);
+        const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
+        const avgRadius = computeEffectiveRadius(
+          baseRadius,
+          avgPressure,
+          brushSettings,
+          avgVelocity
+        );
         const stepSize = Math.max(0.75, avgRadius * 0.15);
         const steps = Math.max(1, Math.ceil(dist / stepSize));
 
@@ -162,7 +188,14 @@ export const useCanvasDrawing = ({
           let x = pPrev.x + dx * t;
           let y = pPrev.y + dy * t;
           const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-          const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+          const interpVelocity =
+            (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
+          const stepRadius = computeEffectiveRadius(
+            baseRadius,
+            interpPressure,
+            brushSettings,
+            interpVelocity
+          );
           const stepAlpha = computeEffectiveAlpha(
             brushSettings.opacity * brushSettings.flow,
             interpPressure,
@@ -209,7 +242,8 @@ export const useCanvasDrawing = ({
             ? 0.35
             : 0.2;
       const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
-      const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings);
+      const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
+      const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings, avgVelocity);
       const standardBrushStep = Math.max(0.75, avgRadius * spacingMultiplier);
       const stepSize = Math.max(
         standardBrushStep,
@@ -222,7 +256,14 @@ export const useCanvasDrawing = ({
         let x = pPrev.x + dx * t;
         let y = pPrev.y + dy * t;
         const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-        const stepRadius = computeEffectiveRadius(baseRadius, interpPressure, brushSettings);
+        const interpVelocity =
+          (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
+        const stepRadius = computeEffectiveRadius(
+          baseRadius,
+          interpPressure,
+          brushSettings,
+          interpVelocity
+        );
         const stepAlpha = computeEffectiveAlpha(
           brushSettings.opacity * brushSettings.flow,
           interpPressure,
@@ -258,7 +299,12 @@ export const useCanvasDrawing = ({
     (p: BrushPoint) => {
       stabilizerRef.current.reset(p);
       const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
-      const effRadius = computeEffectiveRadius(baseRadius, p.pressure, brushSettings);
+      const effRadius = computeEffectiveRadius(
+        baseRadius,
+        p.pressure,
+        brushSettings,
+        p.velocity || 0
+      );
       const effAlpha = computeEffectiveAlpha(
         brushSettings.opacity * brushSettings.flow,
         p.pressure,
@@ -412,8 +458,13 @@ export const useCanvasDrawing = ({
                   : `${brushSettings.type.replace('_', ' ')} Stroke`;
 
       useDocumentStore.getState().pushCanvasSnapshot(actionName);
-      await bridge.applyBrushStroke(strokePoints, { ...brushSettings, color });
-      await bridge.commitStrokeHistory(actionName);
+      await bridge.applyBrushStroke(
+        strokePoints,
+        { ...brushSettings, color },
+        activeLayerId || undefined,
+        actionName
+      );
+      await useDocumentStore.getState().refreshHistory();
       setStrokePoints([]);
     }
   }, [

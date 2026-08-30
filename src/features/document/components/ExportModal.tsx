@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
-import { compositeAndDownloadDocument, ExportFormat } from '@/features/document/utils/export';
+import {
+  compositeAndDownloadDocument,
+  compositeVisibleLayersToCanvas,
+  ExportFormat,
+} from '@/features/document/utils/export';
 import { X, Download, FileImage, Layers, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -17,45 +21,57 @@ const FORMATS: {
 }[] = [
   {
     id: 'png',
-    label: 'PNG',
-    desc: 'Lossless with Alpha Transparency',
+    label: 'PNG Image',
+    desc: 'Lossless raster with alpha transparency',
     ext: '.png',
-    badge: 'Standard',
+    badge: 'Raster',
   },
-  { id: 'jpeg', label: 'JPEG', desc: 'High Quality Compressed Photo', ext: '.jpg', badge: 'Photo' },
+  {
+    id: 'jpeg',
+    label: 'JPEG Photo',
+    desc: 'High-compression raster for photos',
+    ext: '.jpg',
+    badge: 'Lossy',
+  },
   {
     id: 'webp',
-    label: 'WebP',
-    desc: 'Modern High Compression + Alpha',
+    label: 'WebP Modern',
+    desc: 'High efficiency modern web format',
     ext: '.webp',
     badge: 'Modern',
   },
   {
     id: 'bmp',
-    label: 'BMP',
-    desc: 'Uncompressed Windows 24-bit Bitmap',
+    label: 'BMP Bitmap',
+    desc: 'Uncompressed raw 24-bit bitmap',
     ext: '.bmp',
     badge: 'Raw',
   },
   {
     id: 'tiff',
-    label: 'TIFF',
-    desc: 'Print & Pre-press Master Format',
+    label: 'TIFF Print',
+    desc: 'Production-grade publishing format',
     ext: '.tiff',
     badge: 'Print',
   },
   {
     id: 'svg',
-    label: 'SVG',
-    desc: 'Vector XML Container with Embedded Raster',
+    label: 'SVG Wrapper',
+    desc: 'Scalable vector container with embedded raster',
     ext: '.svg',
     badge: 'Vector',
   },
-  { id: 'pdf', label: 'PDF', desc: 'Printable Single-Page Document', ext: '.pdf', badge: 'Doc' },
+  {
+    id: 'pdf',
+    label: 'PDF Document',
+    desc: 'Print-ready single-page document',
+    ext: '.pdf',
+    badge: 'Doc',
+  },
   {
     id: 'cekcok',
     label: 'Project (.cekcok)',
-    desc: 'Full Layer Stack, Opacities & Blend Modes',
+    desc: 'Full layered archive with metadata & history',
     ext: '.cekcok',
     badge: 'Project',
   },
@@ -66,6 +82,31 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [format, setFormat] = useState<ExportFormat>('png');
   const [quality, setQuality] = useState(0.92);
   const [transparentBg, setTransparentBg] = useState(true);
+
+  const previewUrl = useMemo(() => {
+    if (!isOpen || !doc) return null;
+    try {
+      const isTransparent =
+        (format === 'png' || format === 'webp' || format === 'svg') && transparentBg;
+      const compCanvas = compositeVisibleLayersToCanvas(doc, isTransparent);
+      const maxThumbSize = 160;
+      const scale = Math.min(1, maxThumbSize / Math.max(doc.width, doc.height));
+      const thumbWidth = Math.max(1, Math.round(doc.width * scale));
+      const thumbHeight = Math.max(1, Math.round(doc.height * scale));
+
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = thumbWidth;
+      thumbCanvas.height = thumbHeight;
+      const tCtx = thumbCanvas.getContext('2d');
+      if (tCtx) {
+        tCtx.drawImage(compCanvas, 0, 0, thumbWidth, thumbHeight);
+        return thumbCanvas.toDataURL('image/png');
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, [isOpen, doc, format, transparentBg]);
 
   if (!isOpen || !doc) return null;
 
@@ -195,23 +236,38 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* Output Summary Card */}
+          {/* Output Summary Card with Live Visual Preview */}
           <div className="p-3 bg-ps-header/70 border border-ps-border/60 rounded-lg flex items-center justify-between text-zinc-400">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
-                <FileImage size={18} className="text-blue-400" />
+            <div className="flex items-center space-x-3.5">
+              <div className="w-14 h-14 rounded-lg border border-ps-border bg-[linear-gradient(45deg,#1e2024_25%,transparent_25%),linear-gradient(-45deg,#1e2024_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1e2024_75%),linear-gradient(-45deg,transparent_75%,#1e2024_75%)] bg-[size:8px_8px] bg-[position:0_0,0_4px,4px_-4px,-4px_0] bg-[#121316] flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt="Export Preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <FileImage size={20} className="text-blue-400" />
+                )}
               </div>
               <div className="text-[11px] leading-tight">
-                <div className="text-zinc-200 font-semibold">
-                  {doc.title}
-                  {selectedFormatObj.ext}
+                <div className="text-zinc-200 font-semibold flex items-center gap-1.5">
+                  <span>{doc.title}</span>
+                  <span className="text-blue-400 font-mono text-[10px] bg-blue-500/10 px-1 py-0.2 rounded border border-blue-500/20">
+                    {selectedFormatObj.ext}
+                  </span>
                 </div>
-                <div className="text-zinc-400 font-mono text-[10px] mt-0.5">
-                  {doc.width} × {doc.height} px • {doc.layers.length} Layers • {doc.dpi || 72} DPI
+                <div className="text-zinc-400 font-mono text-[10px] mt-1 space-y-0.5">
+                  <div>
+                    {doc.width} × {doc.height} px • {doc.layers.length} Layers • {doc.dpi || 72} DPI
+                  </div>
+                  <div className="text-zinc-500 font-sans text-[10px]">
+                    Output: {selectedFormatObj.label}
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-1.5 text-emerald-400 text-[11px] font-mono font-medium bg-emerald-950/30 px-2 py-0.5 rounded-full border border-emerald-800/40">
+            <div className="flex items-center space-x-1.5 text-emerald-400 text-[11px] font-mono font-medium bg-emerald-950/30 px-2.5 py-1 rounded-full border border-emerald-800/40">
               <Sparkles size={11} />
               <span>Ready</span>
             </div>

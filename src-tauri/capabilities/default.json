@@ -18,6 +18,8 @@
     "core:window:allow-toggle-maximize",
     "opener:default",
     "process:default",
-    "updater:default"
+    "updater:default",
+    "dialog:default",
+    "fs:default"
   ]
 }

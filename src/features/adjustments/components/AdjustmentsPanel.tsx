@@ -228,6 +228,7 @@ export const AdjustmentsPanel: React.FC = () => {
           layer_id: doc.active_layer_id,
         })
         .catch(() => {});
+      await bridge.commitStrokeHistory(`Brightness / Contrast`);
     } else if (currentTab === 'huesat') {
       pushCanvasSnapshot(`Hue (${hue}°) / Saturation (${saturation})`);
       await bridge
@@ -239,6 +240,7 @@ export const AdjustmentsPanel: React.FC = () => {
           layer_id: doc.active_layer_id,
         })
         .catch(() => {});
+      await bridge.commitStrokeHistory(`Hue / Saturation`);
     } else if (currentTab === 'levels') {
       pushCanvasSnapshot('Levels Adjustment');
       await bridge
@@ -252,8 +254,28 @@ export const AdjustmentsPanel: React.FC = () => {
           layer_id: doc.active_layer_id,
         })
         .catch(() => {});
+      await bridge.commitStrokeHistory(`Levels Adjustment`);
     } else if (currentTab === 'blur') {
       pushCanvasSnapshot(`Gaussian Blur (${blurRadius}px)`);
+      const canvas = document.getElementById(
+        `layer-canvas-${doc.active_layer_id}`
+      ) as HTMLCanvasElement | null;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const imgData = ctx.getImageData(0, 0, doc.width, doc.height);
+          await bridge
+            .writeLayerPixels(
+              0,
+              0,
+              doc.width,
+              doc.height,
+              new Uint8Array(imgData.data.buffer),
+              doc.active_layer_id
+            )
+            .catch(() => {});
+        }
+      }
       await bridge
         .applyLayerFilter({
           type: 'gaussian_blur',
@@ -261,6 +283,7 @@ export const AdjustmentsPanel: React.FC = () => {
           layer_id: doc.active_layer_id,
         })
         .catch(() => {});
+      await bridge.commitStrokeHistory(`Gaussian Blur`);
     }
 
     // Refresh baseline with new state

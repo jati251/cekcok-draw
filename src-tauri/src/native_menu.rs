@@ -6,7 +6,7 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     let app_menu = SubmenuBuilder::new(app, "CekcokDraw")
         .about(Some(tauri::menu::AboutMetadata {
             name: Some("CekcokDraw".into()),
-            version: Some("0.2.4".into()),
+            version: Some("0.3.2".into()),
             authors: Some(vec!["Jati Suryo".into()]),
             comments: Some("High-Performance Raster Graphics Studio".into()),
             ..Default::default()
@@ -33,6 +33,12 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
         .item(
             &MenuItemBuilder::with_id("open_file", "Open Image...")
                 .accelerator("CmdOrCtrl+O")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("open_project", "Open Project...").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("save_project", "Save Project...")
+                .accelerator("CmdOrCtrl+S")
                 .build(app)?,
         )
         .item(

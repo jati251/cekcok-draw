@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as bridge from '@/services/tauriBridge';
-
 import { copyActiveLayerSelection } from '@/utils/clipboard';
+import { saveProjectFile, openProjectFile } from '@/features/document/utils/project';
 
 interface ShortcutActions {
   onOpenNewDoc: () => void;
@@ -70,6 +70,9 @@ export const useKeyboardShortcuts = ({
         } else if (e.key.toLowerCase() === 'o') {
           e.preventDefault();
           onOpenOpenFile?.();
+        } else if (e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          saveProjectFile();
         } else if (e.key.toLowerCase() === 't') {
           e.preventDefault();
           const currentDoc = useDocumentStore.getState().doc;
@@ -312,6 +315,10 @@ export const useKeyboardShortcuts = ({
           if (action === 'new_doc') onOpenNewDoc();
           else if (action === 'open_file') {
             if (onOpenOpenFile) onOpenOpenFile();
+          } else if (action === 'open_project') {
+            openProjectFile();
+          } else if (action === 'save_project') {
+            saveProjectFile();
           } else if (action === 'canvas_size') {
             if (onOpenCanvasSize) onOpenCanvasSize();
           } else if (action === 'export_image') onOpenExport();

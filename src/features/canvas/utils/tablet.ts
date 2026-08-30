@@ -30,7 +30,8 @@ export const applyPressureCurve = (
 export const computeEffectiveRadius = (
   baseRadius: number,
   pressure: number,
-  settings: BrushSettings
+  settings: BrushSettings,
+  velocity: number = 0
 ): number => {
   // If pressureSize is explicitly enabled or defaults to enabled for pens
   const usePressureSize = settings.pressureSize ?? true;
@@ -38,7 +39,20 @@ export const computeEffectiveRadius = (
 
   const minRatio = settings.minPressureSize ?? 0.08;
   const curvedP = applyPressureCurve(pressure, settings.pressureCurve);
-  return Math.max(0.75, baseRadius * (minRatio + (1.0 - minRatio) * curvedP));
+  let r = Math.max(0.75, baseRadius * (minRatio + (1.0 - minRatio) * curvedP));
+
+  // Tapering based on velocity
+  const taper = settings.taper ?? 0.0;
+  const velSens = settings.velocitySensitivity ?? 0.0;
+  if (taper > 0 && velSens > 0) {
+    // velocity is assumed to be in px/ms
+    // Typical fast stroke is ~2-5 px/ms. Slow is < 0.2
+    const speedFactor = Math.min(1.0, velocity / 3.0) * velSens;
+    // Shrink radius based on speed (taper)
+    r = r * (1.0 - speedFactor * taper);
+  }
+
+  return Math.max(0.75, r);
 };
 
 /**
@@ -99,6 +113,7 @@ export const extractPointerDetails = (
       tiltY,
       twist,
       pointerType: pType,
+      timestamp: e.timeStamp,
     },
     telemetry: {
       isStylus,
@@ -119,6 +134,8 @@ export class StrokeStabilizer {
   private smoothedX = 0;
   private smoothedY = 0;
   private smoothedPressure = 0.5;
+  private lastTimestamp = 0;
+  private velocity = 0;
   private isInitialized = false;
 
   public reset(initialPoint?: BrushPoint): void {
@@ -126,6 +143,8 @@ export class StrokeStabilizer {
       this.smoothedX = initialPoint.x;
       this.smoothedY = initialPoint.y;
       this.smoothedPressure = initialPoint.pressure;
+      this.lastTimestamp = initialPoint.timestamp ?? performance.now();
+      this.velocity = 0;
       this.isInitialized = true;
     } else {
       this.isInitialized = false;
@@ -134,26 +153,63 @@ export class StrokeStabilizer {
 
   public processPoint(rawPoint: BrushPoint, smoothing = 0.0): BrushPoint {
     const factor = Math.max(0.0, Math.min(0.95, smoothing));
+    const currentTimestamp = rawPoint.timestamp ?? performance.now();
+    let dt = currentTimestamp - this.lastTimestamp;
+    if (dt <= 0) dt = 1;
+
     if (!this.isInitialized || factor <= 0.01) {
       this.smoothedX = rawPoint.x;
       this.smoothedY = rawPoint.y;
       this.smoothedPressure = rawPoint.pressure;
+      this.lastTimestamp = currentTimestamp;
+
+      const dx = rawPoint.x - this.smoothedX;
+      const dy = rawPoint.y - this.smoothedY;
+      const dist = Math.hypot(dx, dy);
+      this.velocity = dist / dt;
+
       this.isInitialized = true;
-      return { ...rawPoint };
+      return { ...rawPoint, velocity: this.velocity };
     }
 
-    // Exponential Moving Average filter
-    const alpha = 1.0 - factor;
-    this.smoothedX = this.smoothedX + alpha * (rawPoint.x - this.smoothedX);
-    this.smoothedY = this.smoothedY + alpha * (rawPoint.y - this.smoothedY);
+    // Spring-mass damper (Streamline) approximation
+    // The "pulled string" model:
+    // If the brush is far from the smoothed point, we move the smoothed point towards it.
+    // The higher the smoothing factor, the tighter the "spring" (slower it follows).
+
+    // Convert smoothing factor to a spring stiffness
+    const stiffness = 1.0 - factor;
+
+    // Move smoothed point
+    const dx = rawPoint.x - this.smoothedX;
+    const dy = rawPoint.y - this.smoothedY;
+    const dist = Math.hypot(dx, dy);
+
+    // Dynamic pull: the further behind it is, the harder it pulls to prevent hanging when mouse stops
+    const pullFactor = Math.min(1.0, stiffness + (dist / 150.0) * factor);
+
+    // We update velocity based on how much the smoothed point moved
+    const moveX = dx * pullFactor;
+    const moveY = dy * pullFactor;
+    const movedDist = Math.hypot(moveX, moveY);
+    const instVelocity = dt > 0 ? movedDist / dt : 0;
+
+    // Smooth the velocity slightly so it doesn't jitter
+    this.velocity = this.velocity * 0.8 + instVelocity * 0.2;
+
+    this.smoothedX += moveX;
+    this.smoothedY += moveY;
     this.smoothedPressure =
-      this.smoothedPressure + alpha * (rawPoint.pressure - this.smoothedPressure);
+      this.smoothedPressure + stiffness * (rawPoint.pressure - this.smoothedPressure);
+
+    this.lastTimestamp = currentTimestamp;
 
     return {
       ...rawPoint,
       x: this.smoothedX,
       y: this.smoothedY,
       pressure: this.smoothedPressure,
+      velocity: this.velocity,
     };
   }
 }

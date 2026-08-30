@@ -80,6 +80,120 @@ impl Document {
         id
     }
 
+    pub fn duplicate_layer(&mut self, id: &str) -> Option<String> {
+        let pos = self.layers.iter().position(|l| l.id == id)?;
+        let original = &self.layers[pos];
+        let new_id = format!("layer-{}", Uuid::new_v4());
+        let mut cloned_layer = Layer::new(format!("{} Copy", original.name));
+        cloned_layer.id = new_id.clone();
+        cloned_layer.blend_mode = original.blend_mode;
+        cloned_layer.opacity = original.opacity;
+        cloned_layer.visible = original.visible;
+        cloned_layer.locked = original.locked;
+        cloned_layer.grid = original.grid.clone();
+
+        self.layers.insert(pos + 1, cloned_layer);
+        self.active_layer_id = Some(new_id.clone());
+        Some(new_id)
+    }
+
+    pub fn merge_down(&mut self, id: &str) -> Result<String, String> {
+        let upper_idx = self
+            .layers
+            .iter()
+            .position(|l| l.id == id)
+            .ok_or_else(|| "Layer not found".to_string())?;
+        if upper_idx == 0 {
+            return Err("Cannot merge the bottommost layer down".to_string());
+        }
+        let lower_idx = upper_idx - 1;
+
+        let upper_layer = self.layers.remove(upper_idx);
+        let lower_layer = &mut self.layers[lower_idx];
+
+        let upper_opacity = upper_layer.opacity;
+        let upper_blend = upper_layer.blend_mode;
+
+        for coord in upper_layer.grid.get_allocated_coords() {
+            if let Some(upper_tile) = upper_layer.grid.get_tile(&coord) {
+                let start_x = coord.x * TILE_SIZE as i32;
+                let start_y = coord.y * TILE_SIZE as i32;
+                for py in 0..TILE_SIZE {
+                    for px in 0..TILE_SIZE {
+                        let top_pixel = upper_tile.get_pixel(px, py);
+                        let top_a = top_pixel[3] as f32 / 255.0 * upper_opacity;
+                        if top_a <= 0.0 {
+                            continue;
+                        }
+                        let doc_x = start_x + px as i32;
+                        let doc_y = start_y + py as i32;
+                        let bot_pixel = lower_layer.grid.get_pixel(doc_x, doc_y);
+
+                        let bot_a = bot_pixel[3] as f32 / 255.0;
+                        let bot_r = bot_pixel[0] as f32 / 255.0;
+                        let bot_g = bot_pixel[1] as f32 / 255.0;
+                        let bot_b = bot_pixel[2] as f32 / 255.0;
+
+                        let top_r = top_pixel[0] as f32 / 255.0;
+                        let top_g = top_pixel[1] as f32 / 255.0;
+                        let top_b = top_pixel[2] as f32 / 255.0;
+
+                        let (b_r, b_g, b_b) = match upper_blend {
+                            BlendMode::Normal => (top_r, top_g, top_b),
+                            BlendMode::Multiply => (bot_r * top_r, bot_g * top_g, bot_b * top_b),
+                            BlendMode::Screen => (
+                                1.0 - (1.0 - bot_r) * (1.0 - top_r),
+                                1.0 - (1.0 - bot_g) * (1.0 - top_g),
+                                1.0 - (1.0 - bot_b) * (1.0 - top_b),
+                            ),
+                            BlendMode::Overlay => (
+                                if bot_r < 0.5 {
+                                    2.0 * bot_r * top_r
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
+                                },
+                                if bot_g < 0.5 {
+                                    2.0 * bot_g * top_g
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
+                                },
+                                if bot_b < 0.5 {
+                                    2.0 * bot_b * top_b
+                                } else {
+                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
+                                },
+                            ),
+                            _ => (top_r, top_g, top_b),
+                        };
+
+                        let out_a = top_a + bot_a * (1.0 - top_a);
+                        if out_a > 0.0 {
+                            let out_r = ((b_r * top_a + bot_r * bot_a * (1.0 - top_a)) / out_a
+                                * 255.0)
+                                .round() as u8;
+                            let out_g = ((b_g * top_a + bot_g * bot_a * (1.0 - top_a)) / out_a
+                                * 255.0)
+                                .round() as u8;
+                            let out_b = ((b_b * top_a + bot_b * bot_a * (1.0 - top_a)) / out_a
+                                * 255.0)
+                                .round() as u8;
+                            let out_a_u8 = (out_a * 255.0).round() as u8;
+                            lower_layer.grid.set_pixel_cow(
+                                doc_x,
+                                doc_y,
+                                [out_r, out_g, out_b, out_a_u8],
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        let lower_id = lower_layer.id.clone();
+        self.active_layer_id = Some(lower_id.clone());
+        Ok(lower_id)
+    }
+
     pub fn remove_layer(&mut self, id: &str) -> bool {
         if self.layers.len() <= 1 {
             return false;
@@ -93,6 +207,132 @@ impl Document {
         } else {
             false
         }
+    }
+
+    pub fn clear_layer(&mut self, id: &str) -> bool {
+        if let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == id) {
+            layer.grid.clear();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn translate_layer(&mut self, id: &str, dx: i32, dy: i32) -> bool {
+        let width = self.width as i32;
+        let height = self.height as i32;
+        let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == id) else {
+            return false;
+        };
+
+        let mut pixels = Vec::new();
+        for coord in layer.grid.get_allocated_coords() {
+            if let Some(tile) = layer.grid.get_tile(&coord) {
+                let origin_x = coord.x * TILE_SIZE as i32;
+                let origin_y = coord.y * TILE_SIZE as i32;
+                for y in 0..TILE_SIZE {
+                    for x in 0..TILE_SIZE {
+                        let pixel = tile.get_pixel(x, y);
+                        if pixel[3] > 0 {
+                            let target_x = origin_x + x as i32 + dx;
+                            let target_y = origin_y + y as i32 + dy;
+                            if (0..width).contains(&target_x) && (0..height).contains(&target_y) {
+                                pixels.push((target_x, target_y, pixel));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        layer.grid.clear();
+        for (x, y, pixel) in pixels {
+            layer.grid.set_pixel_cow(x, y, pixel);
+        }
+        true
+    }
+
+    pub fn crop(&mut self, x: i32, y: i32, width: u32, height: u32) {
+        for layer in &mut self.layers {
+            let mut pixels = Vec::new();
+            for coord in layer.grid.get_allocated_coords() {
+                if let Some(tile) = layer.grid.get_tile(&coord) {
+                    let origin_x = coord.x * TILE_SIZE as i32;
+                    let origin_y = coord.y * TILE_SIZE as i32;
+                    for py in 0..TILE_SIZE {
+                        for px in 0..TILE_SIZE {
+                            let pixel = tile.get_pixel(px, py);
+                            if pixel[3] > 0 {
+                                let target_x = origin_x + px as i32 - x;
+                                let target_y = origin_y + py as i32 - y;
+                                if (0..width as i32).contains(&target_x)
+                                    && (0..height as i32).contains(&target_y)
+                                {
+                                    pixels.push((target_x, target_y, pixel));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            layer.grid.clear();
+            for (px, py, pixel) in pixels {
+                layer.grid.set_pixel_cow(px, py, pixel);
+            }
+        }
+        self.width = width;
+        self.height = height;
+    }
+
+    pub fn transform_layer(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        rotation: f32,
+    ) -> bool {
+        let (doc_w, doc_h) = (self.width as f32, self.height as f32);
+        let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == id) else {
+            return false;
+        };
+        let source = layer.grid.clone();
+        layer.grid.clear();
+        let radians = -rotation.to_radians();
+        let (sin, cos) = radians.sin_cos();
+        let center_x = x + width / 2.0;
+        let center_y = y + height / 2.0;
+        let scale_x = width / doc_w;
+        let scale_y = height / doc_h;
+        if scale_x.abs() < f32::EPSILON || scale_y.abs() < f32::EPSILON {
+            return true;
+        }
+        for target_y in 0..self.height as i32 {
+            for target_x in 0..self.width as i32 {
+                let dx = target_x as f32 + 0.5 - center_x;
+                let dy = target_y as f32 + 0.5 - center_y;
+                let local_x = (dx * cos - dy * sin) / scale_x + doc_w / 2.0;
+                let local_y = (dx * sin + dy * cos) / scale_y + doc_h / 2.0;
+                let source_x = local_x.floor() as i32;
+                let source_y = local_y.floor() as i32;
+                if !(0..doc_w as i32).contains(&source_x) || !(0..doc_h as i32).contains(&source_y)
+                {
+                    continue;
+                }
+                let coord =
+                    TileCoord::new(source_x / TILE_SIZE as i32, source_y / TILE_SIZE as i32, 0);
+                if let Some(tile) = source.get_tile(&coord) {
+                    let pixel = tile.get_pixel(
+                        (source_x % TILE_SIZE as i32) as u32,
+                        (source_y % TILE_SIZE as i32) as u32,
+                    );
+                    if pixel[3] > 0 {
+                        layer.grid.set_pixel_cow(target_x, target_y, pixel);
+                    }
+                }
+            }
+        }
+        true
     }
 
     pub fn set_active_layer(&mut self, id: &str) -> bool {
@@ -501,5 +741,93 @@ impl Document {
         }
 
         buffer
+    }
+
+    /// Renders one layer without applying its display properties. The webview applies
+    /// opacity, visibility, and blend mode so it can keep the existing layer UI.
+    pub fn render_layer_viewport_rgba(
+        &self,
+        layer_id: &str,
+        vx: i32,
+        vy: i32,
+        vw: u32,
+        vh: u32,
+    ) -> Option<Vec<u8>> {
+        let layer = self.layers.iter().find(|layer| layer.id == layer_id)?;
+        let mut buffer = vec![0u8; (vw * vh * 4) as usize];
+
+        for vy_offset in 0..vh {
+            let doc_y = vy + vy_offset as i32;
+            if !(0..self.height as i32).contains(&doc_y) {
+                continue;
+            }
+
+            for vx_offset in 0..vw {
+                let doc_x = vx + vx_offset as i32;
+                if !(0..self.width as i32).contains(&doc_x) {
+                    continue;
+                }
+
+                let coord = TileCoord::new(doc_x / TILE_SIZE as i32, doc_y / TILE_SIZE as i32, 0);
+                if let Some(tile) = layer.grid.get_tile(&coord) {
+                    let local_x = (doc_x % TILE_SIZE as i32) as u32;
+                    let local_y = (doc_y % TILE_SIZE as i32) as u32;
+                    let index = ((vy_offset * vw + vx_offset) * 4) as usize;
+                    buffer[index..index + 4].copy_from_slice(&tile.get_pixel(local_x, local_y));
+                }
+            }
+        }
+
+        Some(buffer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rotate_document_90() {
+        let mut doc = Document::new("Test", 100, 50);
+        let layer = doc.layers.last_mut().unwrap();
+        layer.grid.set_pixel_cow(10, 20, [255, 0, 0, 255]);
+
+        doc.rotate(90);
+        assert_eq!(doc.width, 50);
+        assert_eq!(doc.height, 100);
+
+        let layer = doc.layers.last().unwrap();
+        // new_x = old_h - 1 - orig_y = 50 - 1 - 20 = 29
+        // new_y = orig_x = 10
+        assert_eq!(layer.grid.get_pixel(29, 10), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn test_flip_document_horizontal() {
+        let mut doc = Document::new("Test", 100, 50);
+        let layer = doc.layers.last_mut().unwrap();
+        layer.grid.set_pixel_cow(10, 20, [0, 255, 0, 255]);
+
+        doc.flip("horizontal");
+        assert_eq!(doc.width, 100);
+        assert_eq!(doc.height, 50);
+
+        let layer = doc.layers.last().unwrap();
+        // new_x = doc_w - 1 - orig_x = 100 - 1 - 10 = 89
+        // new_y = orig_y = 20
+        assert_eq!(layer.grid.get_pixel(89, 20), [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn test_flip_document_vertical() {
+        let mut doc = Document::new("Test", 100, 50);
+        let layer = doc.layers.last_mut().unwrap();
+        layer.grid.set_pixel_cow(10, 20, [0, 0, 255, 255]);
+
+        doc.flip("vertical");
+        let layer = doc.layers.last().unwrap();
+        // new_x = orig_x = 10
+        // new_y = doc_h - 1 - orig_y = 50 - 1 - 20 = 29
+        assert_eq!(layer.grid.get_pixel(10, 29), [0, 0, 255, 255]);
     }
 }

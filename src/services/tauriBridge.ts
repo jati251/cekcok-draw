@@ -75,9 +75,11 @@ export async function rotateDocument(degrees: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('rotate_document', { degrees });
   }
-  const oldW = mockDoc.width;
-  mockDoc.width = mockDoc.height;
-  mockDoc.height = oldW;
+  if (degrees === 90 || degrees === 270) {
+    const oldW = mockDoc.width;
+    mockDoc.width = mockDoc.height;
+    mockDoc.height = oldW;
+  }
   return { ...mockDoc };
 }
 
@@ -124,6 +126,45 @@ export async function addLayer(name: string): Promise<DocumentInfo> {
   return { ...mockDoc };
 }
 
+export async function duplicateLayer(layerId?: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('duplicate_layer', { layerId: layerId || null });
+  }
+  const targetId = layerId || mockDoc.active_layer_id;
+  const target = mockDoc.layers.find((l) => l.id === targetId);
+  if (target) {
+    const newId = `layer-${Date.now()}`;
+    mockDoc.layers.push({
+      ...target,
+      id: newId,
+      name: `${target.name} Copy`,
+    });
+    mockDoc.active_layer_id = newId;
+  }
+  return { ...mockDoc };
+}
+
+export async function mergeDown(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('merge_down', { layerId });
+  }
+  const idx = mockDoc.layers.findIndex((l) => l.id === layerId);
+  if (idx > 0) {
+    mockDoc.layers.splice(idx, 1);
+    mockDoc.active_layer_id = mockDoc.layers[idx - 1].id;
+  }
+  return { ...mockDoc };
+}
+
+export async function reorderLayer(fromIndex: number, toIndex: number): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('reorder_layer', { fromIndex, toIndex });
+  }
+  const [moved] = mockDoc.layers.splice(fromIndex, 1);
+  mockDoc.layers.splice(toIndex, 0, moved);
+  return { ...mockDoc };
+}
+
 export async function removeLayer(layerId: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('remove_layer', { layerId });
@@ -133,6 +174,13 @@ export async function removeLayer(layerId: string): Promise<DocumentInfo> {
     if (mockDoc.active_layer_id === layerId) {
       mockDoc.active_layer_id = mockDoc.layers[mockDoc.layers.length - 1].id;
     }
+  }
+  return { ...mockDoc };
+}
+
+export async function clearLayer(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('clear_layer', { layerId });
   }
   return { ...mockDoc };
 }
@@ -196,7 +244,8 @@ export async function setLayerBlendMode(
 export async function applyBrushStroke(
   points: BrushPoint[],
   settings: BrushSettings,
-  layerId?: string
+  layerId?: string,
+  actionName?: string
 ): Promise<string> {
   if (isTauriEnvironment()) {
     return await invoke<string>('apply_brush_stroke', {
@@ -204,6 +253,7 @@ export async function applyBrushStroke(
         points,
         settings,
         layer_id: layerId || null,
+        action_name: actionName || null,
       },
     });
   }
@@ -258,6 +308,21 @@ export async function renderViewport(
   return null;
 }
 
+export async function renderLayerViewport(
+  layerId: string,
+  vx: number,
+  vy: number,
+  vw: number,
+  vh: number
+): Promise<string | null> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('render_layer_viewport', {
+      request: { layer_id: layerId, vx, vy, vw, vh },
+    });
+  }
+  return null;
+}
+
 export async function applyLayerFilter(filter: unknown, layerId?: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('apply_layer_filter', {
@@ -275,7 +340,7 @@ export async function writeLayerPixels(
   y: number,
   width: number,
   height: number,
-  data: Uint8Array,
+  data: Uint8Array | Uint8ClampedArray,
   layerId?: string
 ): Promise<string> {
   if (isTauriEnvironment()) {
@@ -328,6 +393,87 @@ export async function applyFloodFill(
     });
   }
   return 'Mock flood fill';
+}
+
+export async function applyGradient(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  startColor: [number, number, number, number],
+  endColor: [number, number, number, number],
+  opacity: number,
+  bounds?: [number, number, number, number],
+  layerId?: string
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('apply_gradient', {
+      payload: {
+        layer_id: layerId || null,
+        start_x: start.x,
+        start_y: start.y,
+        end_x: end.x,
+        end_y: end.y,
+        start_color: startColor,
+        end_color: endColor,
+        opacity,
+        bounds: bounds || null,
+      },
+    });
+  }
+  return 'Gradient applied';
+}
+
+export async function moveLayerContent(layerId: string, dx: number, dy: number): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('move_layer_content', { payload: { layer_id: layerId, dx, dy } });
+  }
+  return 'Layer moved';
+}
+
+export async function clearLayerRegion(
+  layerId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('clear_layer_region', {
+      payload: { layer_id: layerId, x, y, width, height },
+    });
+  }
+  return 'Selection cleared';
+}
+
+export async function cropDocument(
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('crop_document', {
+      payload: { x, y, width, height },
+    });
+  }
+  mockDoc.width = width;
+  mockDoc.height = height;
+  return { ...mockDoc };
+}
+
+export async function transformLayer(
+  layerId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('transform_layer', {
+      payload: { layer_id: layerId, x, y, width, height, rotation },
+    });
+  }
+  return { ...mockDoc };
 }
 
 export async function applyShape(
@@ -404,4 +550,52 @@ export async function readFileBinary(path: string): Promise<Uint8Array> {
     return new Uint8Array(raw);
   }
   throw new Error('readFileBinary is only available in Tauri native mode');
+}
+
+export async function layerViaCopy(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  data: Uint8Array
+): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('layer_via_copy', {
+      payload: {
+        x,
+        y,
+        width,
+        height,
+        data: Array.from(data),
+      },
+    });
+  }
+  return {} as DocumentInfo;
+}
+
+export async function moveSelectionContent(
+  layerId: string,
+  dx: number,
+  dy: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  data: Uint8Array
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('move_selection_content', {
+      payload: {
+        layer_id: layerId,
+        dx,
+        dy,
+        x,
+        y,
+        width,
+        height,
+        data: Array.from(data),
+      },
+    });
+  }
+  return '';
 }

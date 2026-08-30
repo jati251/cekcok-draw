@@ -28,6 +28,9 @@ pub enum LayerFilter {
     FlipVertical {
         height: u32,
     },
+    GaussianBlur {
+        radius: f32,
+    },
 }
 
 pub struct FilterEngine;
@@ -103,6 +106,82 @@ impl FilterEngine {
             }
             LayerFilter::FlipVertical { height } => {
                 Self::flip_vertical(grid, *height);
+            }
+            LayerFilter::GaussianBlur { radius } => {
+                Self::gaussian_blur(grid, *radius);
+            }
+        }
+    }
+
+    fn gaussian_blur(grid: &mut SparseTileGrid, radius: f32) {
+        if radius <= 0.0 {
+            return;
+        }
+        let r = radius.round() as usize;
+        if r == 0 {
+            return;
+        }
+        let coords = grid.get_allocated_coords();
+        for coord in coords {
+            if let Some(tile) = grid.get_tile_mut(&coord) {
+                let mut temp = vec![[0u8; 4]; 512 * 512];
+                // Horizontal pass
+                for y in 0..512 {
+                    for x in 0..512 {
+                        let mut sum_r = 0u32;
+                        let mut sum_g = 0u32;
+                        let mut sum_b = 0u32;
+                        let mut sum_a = 0u32;
+                        let mut count = 0u32;
+                        let start_x = if x >= r { x - r } else { 0 };
+                        let end_x = (x + r).min(511);
+                        for kx in start_x..=end_x {
+                            let [pr, pg, pb, pa] = tile.get_pixel(kx as u32, y as u32);
+                            sum_r += pr as u32;
+                            sum_g += pg as u32;
+                            sum_b += pb as u32;
+                            sum_a += pa as u32;
+                            count += 1;
+                        }
+                        let idx = y * 512 + x;
+                        temp[idx] = [
+                            (sum_r / count) as u8,
+                            (sum_g / count) as u8,
+                            (sum_b / count) as u8,
+                            (sum_a / count) as u8,
+                        ];
+                    }
+                }
+                // Vertical pass back to tile
+                for x in 0..512 {
+                    for y in 0..512 {
+                        let mut sum_r = 0u32;
+                        let mut sum_g = 0u32;
+                        let mut sum_b = 0u32;
+                        let mut sum_a = 0u32;
+                        let mut count = 0u32;
+                        let start_y = if y >= r { y - r } else { 0 };
+                        let end_y = (y + r).min(511);
+                        for ky in start_y..=end_y {
+                            let [pr, pg, pb, pa] = temp[ky * 512 + x];
+                            sum_r += pr as u32;
+                            sum_g += pg as u32;
+                            sum_b += pb as u32;
+                            sum_a += pa as u32;
+                            count += 1;
+                        }
+                        tile.set_pixel(
+                            x as u32,
+                            y as u32,
+                            [
+                                (sum_r / count) as u8,
+                                (sum_g / count) as u8,
+                                (sum_b / count) as u8,
+                                (sum_a / count) as u8,
+                            ],
+                        );
+                    }
+                }
             }
         }
     }

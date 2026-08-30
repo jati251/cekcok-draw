@@ -174,6 +174,10 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
         <div
           className="absolute inset-0 cursor-move"
           onPointerDown={(e) => handlePointerDown(e, 'inside')}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            handleApply();
+          }}
         >
           {/* Rule-of-Thirds Lines */}
           <div className="absolute left-1/3 top-0 bottom-0 w-[1px] bg-white/30 pointer-events-none" />
