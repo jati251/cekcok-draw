@@ -15,77 +15,66 @@ export const applyLocalBlur = (
   opacity = 0.5
 ) => {
   const rInt = Math.ceil(radius);
-  const minX = Math.max(0, Math.floor(cx - rInt));
-  const minY = Math.max(0, Math.floor(cy - rInt));
-  const maxX = Math.min(docWidth, Math.ceil(cx + rInt));
-  const maxY = Math.min(docHeight, Math.ceil(cy + rInt));
+  const pad = Math.ceil(blurRadius * 2);
+  const minX = Math.max(0, Math.floor(cx - rInt - pad));
+  const minY = Math.max(0, Math.floor(cy - rInt - pad));
+  const maxX = Math.min(docWidth, Math.ceil(cx + rInt + pad));
+  const maxY = Math.min(docHeight, Math.ceil(cy + rInt + pad));
   const w = maxX - minX;
   const h = maxY - minY;
 
   if (w <= 0 || h <= 0) return;
 
-  const imgData = ctx.getImageData(minX, minY, w, h);
-  const src = imgData.data;
-  const out = new Uint8ClampedArray(src.length);
-  out.set(src);
+  // 1. Create a mask canvas with a soft radial gradient
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = w;
+  maskCanvas.height = h;
+  const maskCtx = maskCanvas.getContext('2d');
+  if (!maskCtx) return;
 
-  const bRad = Math.max(1, Math.min(6, Math.round(blurRadius)));
+  const grad = maskCtx.createRadialGradient(cx - minX, cy - minY, 0, cx - minX, cy - minY, radius);
+  grad.addColorStop(0, `rgba(0, 0, 0, ${opacity})`);
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  maskCtx.fillStyle = grad;
+  maskCtx.fillRect(0, 0, w, h);
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const docX = minX + x;
-      const docY = minY + y;
-      const dist = Math.hypot(docX - cx, docY - cy);
+  // 2. Extract original sharp region
+  const origCanvas = document.createElement('canvas');
+  origCanvas.width = w;
+  origCanvas.height = h;
+  const origCtx = origCanvas.getContext('2d');
+  if (!origCtx) return;
+  origCtx.drawImage(ctx.canvas, minX, minY, w, h, 0, 0, w, h);
 
-      if (dist > radius) continue;
+  // Punch hole in original where mask is (Orig * (1 - Mask))
+  origCtx.globalCompositeOperation = 'destination-out';
+  origCtx.drawImage(maskCanvas, 0, 0);
 
-      let rSum = 0;
-      let gSum = 0;
-      let bSum = 0;
-      let aSum = 0;
-      let weightSum = 0;
+  // 3. Create blurred region
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = w;
+  blurCanvas.height = h;
+  const blurCtx = blurCanvas.getContext('2d');
+  if (!blurCtx) return;
 
-      for (let dy = -bRad; dy <= bRad; dy++) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= h) continue;
+  blurCtx.filter = `blur(${blurRadius}px)`;
+  blurCtx.drawImage(ctx.canvas, minX, minY, w, h, 0, 0, w, h);
+  blurCtx.filter = 'none';
 
-        for (let dx = -bRad; dx <= bRad; dx++) {
-          const nx = x + dx;
-          if (nx < 0 || nx >= w) continue;
+  // Keep only blurred pixels where mask is (Blur * Mask)
+  blurCtx.globalCompositeOperation = 'destination-in';
+  blurCtx.drawImage(maskCanvas, 0, 0);
 
-          const nIdx = (ny * w + nx) * 4;
-          const a = src[nIdx + 3];
+  // 4. Combine them (Lighter = Plus blending)
+  origCtx.globalCompositeOperation = 'lighter';
+  origCtx.drawImage(blurCanvas, 0, 0);
 
-          if (a > 0) {
-            const weight = 1.0;
-            rSum += src[nIdx] * weight;
-            gSum += src[nIdx + 1] * weight;
-            bSum += src[nIdx + 2] * weight;
-            aSum += a * weight;
-            weightSum += weight;
-          }
-        }
-      }
-
-      if (weightSum > 0) {
-        const idx = (y * w + x) * 4;
-        const blendWeight = Math.min(1.0, opacity * (1.0 - dist / radius));
-
-        const avgR = rSum / weightSum;
-        const avgG = gSum / weightSum;
-        const avgB = bSum / weightSum;
-        const avgA = aSum / weightSum;
-
-        out[idx] = Math.round(src[idx] * (1 - blendWeight) + avgR * blendWeight);
-        out[idx + 1] = Math.round(src[idx + 1] * (1 - blendWeight) + avgG * blendWeight);
-        out[idx + 2] = Math.round(src[idx + 2] * (1 - blendWeight) + avgB * blendWeight);
-        out[idx + 3] = Math.round(src[idx + 3] * (1 - blendWeight) + avgA * blendWeight);
-      }
-    }
-  }
-
-  imgData.data.set(out);
-  ctx.putImageData(imgData, minX, minY);
+  // 5. Draw back to main context
+  ctx.save();
+  // Clear the original area so we don't double-draw
+  ctx.clearRect(minX, minY, w, h);
+  ctx.drawImage(origCanvas, minX, minY);
+  ctx.restore();
 };
 
 export const applyLocalSmudge = (

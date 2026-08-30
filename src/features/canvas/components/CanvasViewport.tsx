@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { toast } from '@/stores/toastStore';
-import { BrushPoint, ToolType } from '@/types';
+import { BrushPoint, ToolType, SelectionArea } from '@/types';
 import { LayerStack } from '@/features/layers/components/LayerStack';
 import { PixelGrid } from '@/features/canvas/components/PixelGrid';
 import { MarchingAntsSelection } from '@/features/canvas/components/MarchingAntsSelection';
@@ -30,6 +30,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportBoxRef = useRef<HTMLDivElement>(null);
   const liveStrokeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const selectionDragRef = useRef<SelectionArea | null>(null);
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
@@ -50,8 +51,6 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     secondaryColor,
     pan,
     showGrid,
-    selection,
-    setSelection,
     setTabletTelemetry,
   } = useEditorStore();
 
@@ -326,19 +325,21 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
 
     if (activeTool === 'selection') {
       selectionStartRef.current = { x: pos.x, y: pos.y };
-      setSelection({ x: pos.x, y: pos.y, width: 0, height: 0, active: true });
+      selectionDragRef.current = { x: pos.x, y: pos.y, width: 0, height: 0, active: true };
+      useEditorStore.getState().setSelection(null);
       return;
     }
 
     if (activeTool === 'lasso') {
-      setSelection({
+      selectionDragRef.current = {
         x: pos.x,
         y: pos.y,
         width: 0,
         height: 0,
         active: true,
         path: [{ x: pos.x, y: pos.y }],
-      });
+      };
+      useEditorStore.getState().setSelection(null);
       return;
     }
 
@@ -425,21 +426,38 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     if (selectionStartRef.current && activeTool === 'selection') {
       const sx = selectionStartRef.current.x;
       const sy = selectionStartRef.current.y;
-      setSelection({
+      const newSel = {
         x: Math.min(sx, pos.x),
         y: Math.min(sy, pos.y),
         width: Math.abs(pos.x - sx),
         height: Math.abs(pos.y - sy),
         active: true,
-      });
+      };
+      selectionDragRef.current = newSel;
+
+      const marquee = document.getElementById('fast-selection-marquee');
+      if (marquee) {
+        marquee.style.left = `${newSel.x}px`;
+        marquee.style.top = `${newSel.y}px`;
+        marquee.style.width = `${newSel.width}px`;
+        marquee.style.height = `${newSel.height}px`;
+        marquee.style.display = 'block';
+      }
       return;
     }
 
-    if (activeTool === 'lasso' && selection && selection.path) {
-      setSelection({
-        ...selection,
-        path: [...selection.path, { x: pos.x, y: pos.y }],
-      });
+    if (activeTool === 'lasso' && selectionDragRef.current && selectionDragRef.current.path) {
+      selectionDragRef.current.path.push({ x: pos.x, y: pos.y });
+      const pathEl = document.getElementById('fast-lasso-path');
+      const pathEl2 = document.getElementById('fast-lasso-path-2');
+      if (pathEl && pathEl2) {
+        const str = selectionDragRef.current.path
+          .map((p: { x: number; y: number }) => `${p.x},${p.y}`)
+          .join(' ');
+        pathEl.setAttribute('points', str);
+        pathEl2.setAttribute('points', str);
+        pathEl.parentElement!.style.display = 'block';
+      }
       return;
     }
   };
@@ -483,16 +501,26 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
 
     if (selectionStartRef.current && activeTool === 'selection') {
       selectionStartRef.current = null;
-      if (selection && selection.active && selection.width < 5 && selection.height < 5) {
-        setSelection(null);
+      const marquee = document.getElementById('fast-selection-marquee');
+      if (marquee) marquee.style.display = 'none';
+
+      const finalSel = selectionDragRef.current;
+      if (finalSel && finalSel.width > 5 && finalSel.height > 5) {
+        useEditorStore.getState().setSelection(finalSel);
       }
+      selectionDragRef.current = null;
       return;
     }
 
-    if (activeTool === 'lasso' && selection && selection.path) {
-      if (selection.path.length < 5) {
-        setSelection(null);
+    if (activeTool === 'lasso' && selectionDragRef.current && selectionDragRef.current.path) {
+      const svgEl = document.getElementById('fast-lasso-svg');
+      if (svgEl) svgEl.style.display = 'none';
+
+      const finalSel = selectionDragRef.current;
+      if (finalSel.path && finalSel.path.length > 5) {
+        useEditorStore.getState().setSelection(finalSel);
       }
+      selectionDragRef.current = null;
       return;
     }
 
@@ -618,6 +646,39 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
           style={{ opacity: brushSettings.opacity }}
           className="absolute inset-0 pointer-events-none z-10"
         />
+
+        <div
+          id="fast-selection-marquee"
+          className="absolute pointer-events-none z-40 bg-blue-500/10 hidden"
+          style={{ display: 'none' }}
+        >
+          <div className="absolute inset-0 border border-dashed border-black animate-marching-ants" />
+          <div className="absolute inset-0 border border-dashed border-white [animation-delay:0.5s]" />
+        </div>
+
+        <svg
+          id="fast-lasso-svg"
+          className="absolute inset-0 w-full h-full pointer-events-none z-40 hidden"
+          style={{ display: 'none' }}
+        >
+          <polygon
+            id="fast-lasso-path"
+            fill="rgba(59, 130, 246, 0.15)"
+            stroke="#000000"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            className="animate-marching-ants"
+          />
+          <polygon
+            id="fast-lasso-path-2"
+            fill="none"
+            stroke="#ffffff"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            strokeDashoffset="4"
+            className="animate-marching-ants"
+          />
+        </svg>
 
         <PixelGrid showGrid={showGrid} zoom={zoom} />
         <MarchingAntsSelection />

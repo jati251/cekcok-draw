@@ -271,6 +271,28 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     if (moveStartRef.current && doc?.active_layer_id && moveDrag) {
       const dx = Math.round(moveDrag.current.x - moveDrag.start.x);
       const dy = Math.round(moveDrag.current.y - moveDrag.start.y);
+
+      if (dx === 0 && dy === 0) {
+        moveStartRef.current = null;
+        setMoveDrag(null);
+
+        const canvas = doc.active_layer_id
+          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
+            (document.getElementById(
+              `layer-canvas-${doc.active_layer_id}`
+            ) as HTMLCanvasElement | null)
+          : null;
+
+        if (canvas && originalBaseBufferRef.current) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(originalBaseBufferRef.current, 0, 0);
+          }
+        }
+        return;
+      }
+
       moveStartRef.current = null;
       setMoveDrag(null);
       bumpCanvasRevision();
