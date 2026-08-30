@@ -52,7 +52,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
             Cekcok<span className="text-blue-400">Draw</span>
           </span>
           <span className="text-[10px] font-mono text-zinc-500 bg-zinc-800/70 px-1.5 py-0.5 rounded border border-zinc-700/40 ml-1">
-            Studio v0.3.4
+            Studio v{__APP_VERSION__}
           </span>
         </div>
 
