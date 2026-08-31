@@ -1,16 +1,9 @@
 import { useCallback, useRef } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '@/types';
-import { getOrCreateStamp } from '@/features/canvas/utils/stamp';
-import { applyLocalBlur, applyLocalSmudge } from '@/features/canvas/utils/smudgeBlur';
-import {
-  computeEffectiveAlpha,
-  computeEffectiveRadius,
-  simplifyStrokePoints,
-  StrokeStabilizer,
-} from '@/features/canvas/utils/tablet';
-import { useDocumentStore } from '@/stores/documentStore';
+import { StrokeStabilizer } from '@/features/canvas/utils/tablet';
 import { useEditorStore } from '@/stores/editorStore';
-import * as bridge from '@/services/tauriBridge';
+import { useStrokeRenderer } from '@/features/canvas/hooks/useStrokeRenderer';
+import { useStrokeBaker } from '@/features/canvas/hooks/useStrokeBaker';
 
 interface UseCanvasDrawingProps {
   doc: DocumentInfo | null;
@@ -33,7 +26,6 @@ export const useCanvasDrawing = ({
   // and eliminates spurious re-renders during the drawing hot loop.
   const strokePointsRef = useRef<BrushPoint[]>([]);
   const isDrawingRef = useRef(false);
-  const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
   const selection = useEditorStore((s) => s.selection);
   const strokeBoundingBoxRef = useRef<{
     minX: number;
@@ -42,6 +34,31 @@ export const useCanvasDrawing = ({
     maxY: number;
   } | null>(null);
   const stabilizerRef = useRef<StrokeStabilizer>(new StrokeStabilizer());
+
+  const { bakeStrokeToLayer } = useStrokeBaker({
+    doc,
+    activeTool,
+    brushSettings,
+    liveStrokeCanvasRef,
+    layerCanvasesRef,
+    strokePointsRef,
+    strokeBoundingBoxRef,
+    applySelectionClip: (ctx) => {
+      if (selection && selection.active) {
+        ctx.beginPath();
+        if (selection.path && selection.path.length > 2) {
+          ctx.moveTo(selection.path[0].x, selection.path[0].y);
+          for (let i = 1; i < selection.path.length; i++) {
+            ctx.lineTo(selection.path[i].x, selection.path[i].y);
+          }
+          ctx.closePath();
+        } else if (selection.width > 0 && selection.height > 0) {
+          ctx.rect(selection.x, selection.y, selection.width, selection.height);
+        }
+        ctx.clip();
+      }
+    },
+  });
 
   const expandBoundingBox = useCallback((x: number, y: number, radius: number) => {
     const pad = radius + 4;
@@ -87,355 +104,17 @@ export const useCanvasDrawing = ({
     [selection]
   );
 
-  const drawStrokeSegment = useCallback(
-    (pPrev: BrushPoint, pCurr: BrushPoint) => {
-      if (!doc) return;
-      const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
-
-      // 1. Smudge Tool
-      if (activeTool === 'smudge') {
-        const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.save();
-        applySelectionClip(ctx);
-        const strength = useEditorStore.getState().smudgeStrength || 0.6;
-        const interpVelocity =
-          (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * 1.0;
-        const effRadius = computeEffectiveRadius(
-          baseRadius,
-          pCurr.pressure,
-          brushSettings,
-          interpVelocity
-        );
-        applyLocalSmudge(ctx, doc.width, doc.height, pPrev, pCurr, effRadius, strength);
-        ctx.restore();
-        return;
-      }
-
-      // 2. Blur Tool
-      if (activeTool === 'blur') {
-        const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.save();
-        applySelectionClip(ctx);
-        const dx = pCurr.x - pPrev.x;
-        const dy = pCurr.y - pPrev.y;
-        const dist = Math.hypot(dx, dy);
-        const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
-        const effRadius = computeEffectiveRadius(
-          baseRadius,
-          pCurr.pressure,
-          brushSettings,
-          avgVelocity
-        );
-        const stepSize = Math.max(2.0, effRadius * 0.25);
-        const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          const cx = pPrev.x + dx * t;
-          const cy = pPrev.y + dy * t;
-          const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-          const interpVelocity =
-            (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
-          const stepRadius = computeEffectiveRadius(
-            baseRadius,
-            interpPressure,
-            brushSettings,
-            interpVelocity
-          );
-          const stepAlpha = computeEffectiveAlpha(
-            (brushSettings.opacity || 0.8) * 0.75,
-            interpPressure,
-            brushSettings
-          );
-          applyLocalBlur(
-            ctx,
-            doc.width,
-            doc.height,
-            cx,
-            cy,
-            stepRadius,
-            Math.max(3, stepRadius * 0.35),
-            stepAlpha
-          );
-        }
-        ctx.restore();
-        return;
-      }
-
-      // 3. Live Eraser
-      if (activeTool === 'eraser') {
-        const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.save();
-        applySelectionClip(ctx);
-        ctx.globalCompositeOperation = 'destination-out';
-
-        const dx = pCurr.x - pPrev.x;
-        const dy = pCurr.y - pPrev.y;
-        const dist = Math.hypot(dx, dy);
-        const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
-        const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
-        const avgRadius = computeEffectiveRadius(
-          baseRadius,
-          avgPressure,
-          brushSettings,
-          avgVelocity
-        );
-        const stepSize = Math.max(0.75, avgRadius * 0.15);
-        const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          let x = pPrev.x + dx * t;
-          let y = pPrev.y + dy * t;
-          const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-          const interpVelocity =
-            (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
-          const stepRadius = computeEffectiveRadius(
-            baseRadius,
-            interpPressure,
-            brushSettings,
-            interpVelocity
-          );
-          const stepAlpha = computeEffectiveAlpha(
-            activeTool === 'eraser'
-              ? brushSettings.opacity * brushSettings.flow
-              : brushSettings.flow,
-            interpPressure,
-            brushSettings
-          );
-          ctx.globalAlpha = stepAlpha;
-
-          const stamp = getOrCreateStamp(stepRadius, brushSettings, [0, 0, 0, 255]);
-          if (brushSettings.type === 'pixel') {
-            x = Math.round(x);
-            y = Math.round(y);
-          }
-          ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
-        }
-        ctx.restore();
-        return;
-      }
-
-      // 4. Regular Brushes & Tonals on liveStrokeCanvas
-      const strokeCanvas = liveStrokeCanvasRef.current;
-      if (!strokeCanvas) return;
-      const ctx = strokeCanvas.getContext('2d');
-      if (!ctx) return;
-
-      const color = getToolColor();
-
-      ctx.save();
-      applySelectionClip(ctx);
-
-      if (activeTool === 'dodge') ctx.globalCompositeOperation = 'screen';
-      else if (activeTool === 'burn') ctx.globalCompositeOperation = 'multiply';
-      else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
-      else ctx.globalCompositeOperation = 'source-over';
-
-      const dx = pCurr.x - pPrev.x;
-      const dy = pCurr.y - pPrev.y;
-      const dist = Math.hypot(dx, dy);
-
-      const minScreenPixelDocSize = 1.0 / Math.max(0.01, zoom);
-      const spacingMultiplier =
-        brushSettings.type === 'calligraphy' || brushSettings.type === 'pixel'
-          ? 0.1
-          : brushSettings.type === 'spray'
-            ? 0.35
-            : 0.2;
-      const avgPressure = (pPrev.pressure + pCurr.pressure) * 0.5;
-      const avgVelocity = ((pPrev.velocity || 0) + (pCurr.velocity || 0)) * 0.5;
-      const avgRadius = computeEffectiveRadius(baseRadius, avgPressure, brushSettings, avgVelocity);
-      const standardBrushStep = Math.max(0.75, avgRadius * spacingMultiplier);
-      const stepSize = Math.max(
-        standardBrushStep,
-        Math.min(minScreenPixelDocSize, avgRadius * 0.8)
-      );
-      const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-      for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        let x = pPrev.x + dx * t;
-        let y = pPrev.y + dy * t;
-        const interpPressure = pPrev.pressure + (pCurr.pressure - pPrev.pressure) * t;
-        const interpVelocity =
-          (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * t;
-        const stepRadius = computeEffectiveRadius(
-          baseRadius,
-          interpPressure,
-          brushSettings,
-          interpVelocity
-        );
-        const stepAlpha = computeEffectiveAlpha(brushSettings.flow, interpPressure, brushSettings);
-        ctx.globalAlpha = stepAlpha;
-
-        const stamp = getOrCreateStamp(stepRadius, brushSettings, color);
-
-        if (brushSettings.type === 'pixel') {
-          x = Math.round(x);
-          y = Math.round(y);
-        }
-
-        ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
-        expandBoundingBox(x, y, stepRadius);
-      }
-
-      ctx.restore();
-    },
-    [
-      activeTool,
-      applySelectionClip,
-      brushSettings,
-      doc,
-      getToolColor,
-      layerCanvasesRef,
-      liveStrokeCanvasRef,
-      zoom,
-      expandBoundingBox,
-    ]
-  );
-
-  const drawInitialDot = useCallback(
-    (p: BrushPoint) => {
-      stabilizerRef.current.reset(p);
-      const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
-      const effRadius = computeEffectiveRadius(
-        baseRadius,
-        p.pressure,
-        brushSettings,
-        p.velocity || 0
-      );
-      const effAlpha = computeEffectiveAlpha(
-        activeTool === 'eraser' || activeTool === 'blur' || activeTool === 'smudge'
-          ? brushSettings.opacity * brushSettings.flow
-          : brushSettings.flow,
-        p.pressure,
-        brushSettings
-      );
-
-      if (activeTool === 'blur') {
-        const activeCanvas = doc?.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas || !doc) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (ctx) {
-          ctx.save();
-          applySelectionClip(ctx);
-          applyLocalBlur(
-            ctx,
-            doc.width,
-            doc.height,
-            p.x,
-            p.y,
-            effRadius,
-            Math.max(3, effRadius * 0.35),
-            effAlpha * 0.75
-          );
-          ctx.restore();
-        }
-        return;
-      }
-
-      if (activeTool === 'smudge') return;
-
-      if (activeTool === 'eraser') {
-        const activeCanvas = doc?.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (!activeCanvas) return;
-        const ctx = activeCanvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.save();
-        applySelectionClip(ctx);
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.globalAlpha = effAlpha;
-        const stamp = getOrCreateStamp(effRadius, brushSettings, [0, 0, 0, 255]);
-        let x = p.x;
-        let y = p.y;
-        if (brushSettings.type === 'pixel') {
-          x = Math.round(x);
-          y = Math.round(y);
-        }
-        ctx.drawImage(stamp, x - effRadius, y - effRadius);
-        ctx.restore();
-        return;
-      }
-
-      const strokeCanvas = liveStrokeCanvasRef.current;
-      if (!strokeCanvas || !doc) return;
-
-      const ctx = strokeCanvas.getContext('2d');
-      if (!ctx) return;
-
-      const color = getToolColor();
-
-      ctx.save();
-      applySelectionClip(ctx);
-      if (activeTool === 'dodge') ctx.globalCompositeOperation = 'screen';
-      else if (activeTool === 'burn') ctx.globalCompositeOperation = 'multiply';
-      else if (brushSettings.type === 'marker') ctx.globalCompositeOperation = 'multiply';
-      else ctx.globalCompositeOperation = 'source-over';
-
-      ctx.globalAlpha = effAlpha;
-      const stamp = getOrCreateStamp(effRadius, brushSettings, color);
-
-      let x = p.x;
-      let y = p.y;
-      if (brushSettings.type === 'pixel') {
-        x = Math.round(x);
-        y = Math.round(y);
-      }
-
-      ctx.drawImage(stamp, x - effRadius, y - effRadius);
-      expandBoundingBox(x, y, effRadius);
-      ctx.restore();
-    },
-    [
-      activeTool,
-      applySelectionClip,
-      brushSettings,
-      doc,
-      expandBoundingBox,
-      getToolColor,
-      layerCanvasesRef,
-      liveStrokeCanvasRef,
-    ]
-  );
+  const { drawStrokeSegment, drawInitialDot } = useStrokeRenderer({
+    doc,
+    activeTool,
+    brushSettings,
+    zoom,
+    liveStrokeCanvasRef,
+    layerCanvasesRef,
+    expandBoundingBox,
+    applySelectionClip,
+    getToolColor,
+  });
 
   const processSmoothPoint = useCallback(
     (rawPoint: BrushPoint): BrushPoint => {
@@ -445,171 +124,7 @@ export const useCanvasDrawing = ({
     [brushSettings.smoothing]
   );
 
-  const bakeStrokeToLayer = useCallback(() => {
-    const strokeCanvas = liveStrokeCanvasRef.current;
-    const activeLayerId = doc?.active_layer_id;
-    const activeCanvas = activeLayerId
-      ? layerCanvasesRef.current?.get(activeLayerId) ||
-        (document.getElementById(`layer-canvas-${activeLayerId}`) as HTMLCanvasElement | null) ||
-        (document.querySelector(
-          `canvas[data-layer-id="${activeLayerId}"]`
-        ) as HTMLCanvasElement | null)
-      : null;
-
-    // ── Phase 1: Synchronous canvas bake (instant visual feedback) ──
-    if (activeCanvas && strokeCanvas && doc) {
-      const box = strokeBoundingBoxRef.current;
-      strokeBoundingBoxRef.current = null;
-
-      const mainCtx = activeCanvas.getContext('2d');
-      const sCtx = strokeCanvas.getContext('2d');
-
-      if (box && mainCtx && sCtx) {
-        const minX = Math.max(0, Math.floor(box.minX));
-        const minY = Math.max(0, Math.floor(box.minY));
-        const maxX = Math.min(doc.width, Math.ceil(box.maxX));
-        const maxY = Math.min(doc.height, Math.ceil(box.maxY));
-        const w = maxX - minX;
-        const h = maxY - minY;
-
-        if (w > 0 && h > 0) {
-          mainCtx.save();
-          applySelectionClip(mainCtx);
-          mainCtx.globalAlpha = brushSettings.opacity;
-          if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
-          else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
-          else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';
-          else if (brushSettings.type === 'marker') mainCtx.globalCompositeOperation = 'multiply';
-          else mainCtx.globalCompositeOperation = 'source-over';
-
-          // Ultra-fast sub-region blit: 100x faster than full 4K blit
-          mainCtx.drawImage(strokeCanvas, minX, minY, w, h, minX, minY, w, h);
-          mainCtx.restore();
-
-          sCtx.clearRect(minX, minY, w, h);
-        } else {
-          sCtx.clearRect(0, 0, doc.width, doc.height);
-        }
-      } else {
-        if (mainCtx) {
-          mainCtx.save();
-          applySelectionClip(mainCtx);
-          mainCtx.globalAlpha = brushSettings.opacity;
-          if (activeTool === 'eraser') mainCtx.globalCompositeOperation = 'destination-out';
-          else if (activeTool === 'dodge') mainCtx.globalCompositeOperation = 'screen';
-          else if (activeTool === 'burn') mainCtx.globalCompositeOperation = 'multiply';
-          else if (brushSettings.type === 'marker') mainCtx.globalCompositeOperation = 'multiply';
-          else mainCtx.globalCompositeOperation = 'source-over';
-
-          mainCtx.drawImage(strokeCanvas, 0, 0);
-          mainCtx.restore();
-        }
-        if (sCtx) sCtx.clearRect(0, 0, doc.width, doc.height);
-      }
-    }
-
-    bumpCanvasRevision();
-
-    // ── Phase 2: Fire-and-forget Rust backend sync (non-blocking) ──
-    const points = strokePointsRef.current;
-    if (points.length > 0) {
-      // Snapshot the points array before clearing the ref
-      const pointsCopy = points;
-      strokePointsRef.current = [];
-
-      let color = brushSettings.color;
-      if (activeTool === 'eraser') color = [0, 0, 0, 0];
-      else if (activeTool === 'dodge') color = [255, 255, 255, 255];
-      else if (activeTool === 'burn') color = [0, 0, 0, 255];
-
-      const actionName =
-        activeTool === 'eraser'
-          ? 'Eraser'
-          : activeTool === 'dodge'
-            ? 'Dodge Tool'
-            : activeTool === 'burn'
-              ? 'Burn Tool'
-              : activeTool === 'smudge'
-                ? 'Smudge Tool'
-                : activeTool === 'blur'
-                  ? 'Blur Tool'
-                  : `${brushSettings.type.replace('_', ' ')} Stroke`;
-
-      useDocumentStore.getState().pushCanvasSnapshot(actionName);
-
-      // Non-blocking: IPC to Rust runs in background with simplified point curve, UI stays responsive
-      if ((activeTool === 'blur' || activeTool === 'smudge') && doc) {
-        const activeCanvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-        if (activeCanvas) {
-          // Find bounding box of the stroke to minimize IPC payload
-          let minX = doc.width;
-          let minY = doc.height;
-          let maxX = 0;
-          let maxY = 0;
-          const pad = brushSettings.size * 2;
-          for (const p of pointsCopy) {
-            if (p.x - pad < minX) minX = p.x - pad;
-            if (p.y - pad < minY) minY = p.y - pad;
-            if (p.x + pad > maxX) maxX = p.x + pad;
-            if (p.y + pad > maxY) maxY = p.y + pad;
-          }
-          minX = Math.max(0, Math.floor(minX));
-          minY = Math.max(0, Math.floor(minY));
-          maxX = Math.min(doc.width, Math.ceil(maxX));
-          maxY = Math.min(doc.height, Math.ceil(maxY));
-          const w = maxX - minX;
-          const h = maxY - minY;
-
-          if (w > 0 && h > 0) {
-            const ctx = activeCanvas.getContext('2d');
-            if (ctx) {
-              const imgData = ctx.getImageData(minX, minY, w, h);
-              bridge
-                .writeLayerPixels(
-                  minX,
-                  minY,
-                  w,
-                  h,
-                  new Uint8Array(imgData.data.buffer),
-                  activeLayerId || undefined
-                )
-                .then(() => {
-                  useDocumentStore.getState().refreshHistory();
-                })
-                .catch(() => {});
-            }
-          }
-        }
-      } else {
-        const decimatedPoints = simplifyStrokePoints(pointsCopy);
-        bridge
-          .applyBrushStroke(
-            decimatedPoints,
-            { ...brushSettings, color },
-            activeLayerId || undefined,
-            actionName
-          )
-          .then(() => {
-            useDocumentStore.getState().refreshHistory();
-            // Don't bump revision again, let the optimistic UI stay
-          })
-          .catch(() => {});
-      }
-    }
-  }, [
-    activeTool,
-    applySelectionClip,
-    brushSettings,
-    bumpCanvasRevision,
-    doc,
-    layerCanvasesRef,
-    liveStrokeCanvasRef,
-  ]);
+  // useStrokeBaker usage ended
 
   const startStroke = useCallback(
     (rawPoint: BrushPoint) => {

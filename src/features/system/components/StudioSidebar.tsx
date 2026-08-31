@@ -19,6 +19,7 @@ import {
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const StudioSidebar: React.FC = () => {
   const { activePanel, setActivePanel, isSidebarCollapsed, setIsSidebarCollapsed, primaryColor } =
@@ -45,7 +46,13 @@ export const StudioSidebar: React.FC = () => {
   // 1. Collapsed Dock Rail (Compact 40px icon rail)
   if (isSidebarCollapsed) {
     return (
-      <aside className="w-10 bg-ps-panel border-l border-ps-border flex flex-col items-center py-2 space-y-1.5 z-20 select-none shadow-studio-subtle">
+      <motion.aside
+        initial={{ width: 288, opacity: 0 }}
+        animate={{ width: 40, opacity: 1 }}
+        exit={{ width: 288, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="bg-ps-panel border-l border-ps-border flex flex-col items-center py-2 space-y-1.5 z-20 select-none shadow-studio-subtle"
+      >
         <Tooltip content="Expand Panels" position="left">
           <button
             type="button"
@@ -131,13 +138,19 @@ export const StudioSidebar: React.FC = () => {
             <Layers size={15} />
           </button>
         </Tooltip>
-      </aside>
+      </motion.aside>
     );
   }
 
   // 2. Expanded Vertical Dock (Authentic Photoshop Stacked Panels)
   return (
-    <aside className="w-72 bg-ps-panel border-l border-ps-border flex flex-col z-20 select-none relative h-full">
+    <motion.aside
+      initial={{ width: 40, opacity: 0 }}
+      animate={{ width: 288, opacity: 1 }}
+      exit={{ width: 40, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className="bg-ps-panel border-l border-ps-border flex flex-col z-20 select-none relative h-full"
+    >
       {/* Dock Top Bar (Clean Photoshop Style - 32px) */}
       <div className="h-8 px-2.5 bg-ps-surface/90 border-b border-ps-border flex items-center justify-between text-xs text-zinc-300">
         <span className="font-semibold text-zinc-300 text-[11px] tracking-tight">Panels</span>
@@ -207,17 +220,26 @@ export const StudioSidebar: React.FC = () => {
                 <span>{primaryColor.toUpperCase()}</span>
               </div>
             </button>
-            {expandColor && (
-              <div className="p-2 bg-ps-panel">
-                <ColorPicker />
-              </div>
-            )}
+            <AnimatePresence>
+              {expandColor && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden bg-ps-panel"
+                >
+                  <div className="p-2">
+                    <ColorPicker />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
         {/* Panel 2: Adjustments & Filters */}
         {(activePanel === 'all' || activePanel === 'adjustments') && (
-          <div className={`flex flex-col ${expandAdjustments ? 'max-h-72' : 'flex-shrink-0'}`}>
+          <div className="flex flex-col flex-shrink-0">
             <button
               type="button"
               onClick={() => setExpandAdjustments(!expandAdjustments)}
@@ -233,17 +255,24 @@ export const StudioSidebar: React.FC = () => {
                 <span>Adjustments</span>
               </div>
             </button>
-            {expandAdjustments && (
-              <div className="overflow-y-auto bg-ps-panel">
-                <AdjustmentsPanel />
-              </div>
-            )}
+            <AnimatePresence>
+              {expandAdjustments && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden bg-ps-panel"
+                >
+                  <AdjustmentsPanel />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
         {/* Panel 3: History States */}
         {(activePanel === 'all' || activePanel === 'history') && (
-          <div className={`flex flex-col ${expandHistory ? 'max-h-56' : 'flex-shrink-0'}`}>
+          <div className="flex flex-col flex-shrink-0">
             <button
               type="button"
               onClick={() => setExpandHistory(!expandHistory)}
@@ -259,11 +288,18 @@ export const StudioSidebar: React.FC = () => {
                 <span>History</span>
               </div>
             </button>
-            {expandHistory && (
-              <div className="overflow-y-auto bg-ps-panel">
-                <HistoryPanel />
-              </div>
-            )}
+            <AnimatePresence>
+              {expandHistory && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden bg-ps-panel"
+                >
+                  <HistoryPanel />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
@@ -288,11 +324,18 @@ export const StudioSidebar: React.FC = () => {
                 {layerCount} {layerCount === 1 ? 'layer' : 'layers'}
               </span>
             </button>
-            {expandLayers && (
-              <div className="flex-1 overflow-hidden">
-                <LayerPanel />
-              </div>
-            )}
+            <AnimatePresence>
+              {expandLayers && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: '100%', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="flex-1 overflow-hidden"
+                >
+                  <LayerPanel />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -300,6 +343,6 @@ export const StudioSidebar: React.FC = () => {
       {/* Sticky Layer Actions Bar - pinned outside the scroll container so the
           add/duplicate/delete/merge tools never scroll out of view */}
       {(activePanel === 'all' || activePanel === 'layers') && <LayerActionsBar />}
-    </aside>
+    </motion.aside>
   );
 };

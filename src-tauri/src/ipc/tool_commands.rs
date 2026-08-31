@@ -3,245 +3,9 @@ use crate::compute::brush_engine::BrushEngine;
 use crate::compute::filters::FilterEngine;
 use crate::compute::flood_fill::FloodFillEngine;
 use crate::compute::shapes::ShapeRasterizer;
-use crate::core::document::{Document, DocumentInfo};
-use crate::core::history::{HistoryAction, HistoryEngine};
-use crate::core::layer::BlendMode;
+use crate::core::document::DocumentInfo;
 use std::io::Cursor;
 use tauri::State;
-
-#[tauri::command]
-pub fn create_document(
-    title: String,
-    width: u32,
-    height: u32,
-    dpi: Option<f32>,
-    state: State<'_, SharedEngineState>,
-) -> DocumentInfo {
-    let mut guard = state.lock();
-    let new_doc = Document::with_dpi(title, width, height, dpi.unwrap_or(72.0));
-    guard.document = new_doc.clone();
-    guard.history = HistoryEngine::new(50);
-    guard.history.push_state("Initialize Document", &new_doc);
-    guard.document.get_info()
-}
-
-#[tauri::command]
-pub fn set_document_dpi(
-    dpi: f32,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Set Resolution to {} DPI", dpi));
-    guard.document.set_dpi(dpi);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn get_document_info(state: State<'_, SharedEngineState>) -> DocumentInfo {
-    let guard = state.lock();
-    guard.document.get_info()
-}
-
-#[tauri::command]
-pub fn add_layer(name: String, state: State<'_, SharedEngineState>) -> DocumentInfo {
-    let mut guard = state.lock();
-    guard.push_history(format!("Add Layer '{}'", name));
-    guard.document.add_layer(name);
-    guard.document.get_info()
-}
-
-#[tauri::command]
-pub fn duplicate_layer(
-    layer_id: Option<String>,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let target_id = layer_id
-        .or_else(|| guard.document.active_layer_id.clone())
-        .ok_or_else(|| "No layer to duplicate".to_string())?;
-    let layer_name = guard
-        .document
-        .layers
-        .iter()
-        .find(|l| l.id == target_id)
-        .map(|l| l.name.clone())
-        .unwrap_or_else(|| "Layer".to_string());
-    guard.push_history(format!("Duplicate '{}'", layer_name));
-    if guard.document.duplicate_layer(&target_id).is_some() {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn merge_down(
-    layer_id: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let layer_name = guard
-        .document
-        .layers
-        .iter()
-        .find(|l| l.id == layer_id)
-        .map(|l| l.name.clone())
-        .unwrap_or_else(|| "Layer".to_string());
-    guard.push_history(format!("Merge Down '{}'", layer_name));
-    guard.document.merge_down(&layer_id)?;
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn toggle_layer_clipping(
-    layer_id: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.document.toggle_layer_clipping(&layer_id)?;
-    guard.push_history("Toggle Clipping Mask");
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn reorder_layer(
-    from_index: usize,
-    to_index: usize,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history("Reorder Layers");
-    if guard.document.reorder_layers(from_index, to_index) {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Invalid layer indices for reorder".into())
-    }
-}
-
-#[tauri::command]
-pub fn remove_layer(
-    layer_id: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history("Delete Layer");
-    if guard.document.remove_layer(&layer_id) {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Cannot remove the last remaining layer".into())
-    }
-}
-
-#[tauri::command]
-pub fn clear_layer(
-    layer_id: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let layer = guard
-        .document
-        .layers
-        .iter()
-        .find(|layer| layer.id == layer_id)
-        .ok_or_else(|| "Layer not found".to_string())?;
-    if layer.locked {
-        return Err("Layer is locked".to_string());
-    }
-
-    guard.push_history("Clear Layer");
-    guard.document.clear_layer(&layer_id);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn set_active_layer(
-    layer_id: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    if guard.document.set_active_layer(&layer_id) {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn set_layer_opacity(
-    layer_id: String,
-    opacity: f32,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
-        layer.opacity = opacity.clamp(0.0, 1.0);
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn set_layer_visibility(
-    layer_id: String,
-    visible: bool,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
-        layer.visible = visible;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn set_layer_blend_mode(
-    layer_id: String,
-    blend_mode: BlendMode,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Set Blend Mode to {:?}", blend_mode));
-    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
-        layer.blend_mode = blend_mode;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn set_layer_lock(
-    layer_id: String,
-    locked: bool,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
-        layer.locked = locked;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn rename_layer(
-    layer_id: String,
-    name: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Rename Layer to '{}'", name));
-    if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
-        layer.name = name;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
 
 #[tauri::command]
 pub fn apply_brush_stroke(
@@ -447,25 +211,6 @@ pub fn clear_layer_region(
 }
 
 #[tauri::command]
-pub fn crop_document(
-    payload: CropPayload,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    if payload.width == 0 || payload.height == 0 {
-        return Err("Crop dimensions must be positive".into());
-    }
-    let mut guard = state.lock();
-    guard.push_history(format!(
-        "Crop Canvas ({}×{})",
-        payload.width, payload.height
-    ));
-    guard
-        .document
-        .crop(payload.x, payload.y, payload.width, payload.height);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
 pub fn transform_layer(
     payload: TransformLayerPayload,
     state: State<'_, SharedEngineState>,
@@ -566,199 +311,6 @@ pub fn get_layer_histogram(
 }
 
 #[tauri::command]
-pub fn commit_stroke_history(description: String, state: State<'_, SharedEngineState>) {
-    let mut guard = state.lock();
-    guard.push_history(description);
-}
-
-#[tauri::command]
-pub fn resize_document(
-    width: u32,
-    height: u32,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Canvas Size ({}×{})", width, height));
-    guard.document.resize(width, height);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn rotate_document(
-    degrees: u16,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Rotate Canvas {}°", degrees));
-    guard.document.rotate(degrees);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn flip_document(
-    direction: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let cap_dir = if direction == "horizontal" {
-        "Horizontal"
-    } else {
-        "Vertical"
-    };
-    guard.push_history(format!("Flip Canvas {}", cap_dir));
-    guard.document.flip(&direction);
-    Ok(guard.document.get_info())
-}
-
-#[tauri::command]
-pub fn rotate_layer(
-    layer_id: String,
-    degrees: u16,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    guard.push_history(format!("Rotate Layer {}°", degrees));
-    if guard.document.rotate_layer(&layer_id, degrees) {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn flip_layer(
-    layer_id: String,
-    direction: String,
-    state: State<'_, SharedEngineState>,
-) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let cap_dir = if direction == "horizontal" {
-        "Horizontal"
-    } else {
-        "Vertical"
-    };
-    guard.push_history(format!("Flip Layer {}", cap_dir));
-    if guard.document.flip_layer(&layer_id, &direction) {
-        Ok(guard.document.get_info())
-    } else {
-        Err("Layer not found".into())
-    }
-}
-
-#[tauri::command]
-pub fn undo(state: State<'_, SharedEngineState>) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.undo(&mut current_doc).is_some() {
-        guard.document = current_doc;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Nothing to undo".into())
-    }
-}
-
-#[tauri::command]
-pub fn redo(state: State<'_, SharedEngineState>) -> Result<DocumentInfo, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.redo(&mut current_doc).is_some() {
-        guard.document = current_doc;
-        Ok(guard.document.get_info())
-    } else {
-        Err("Nothing to redo".into())
-    }
-}
-
-#[tauri::command]
-pub fn get_history(state: State<'_, SharedEngineState>) -> Vec<HistoryAction> {
-    let guard = state.lock();
-    guard.history.get_history_list()
-}
-
-/// Combined undo + render all layers + history in a single IPC call.
-///
-/// Binary response format:
-///   [4 bytes: JSON header length (u32 LE)]
-///   [JSON header bytes: { doc, history, layers: [{id, offset, length}] }]
-///   [concatenated raw RGBA buffers for each layer]
-#[tauri::command]
-pub fn undo_with_layers(
-    state: State<'_, SharedEngineState>,
-) -> Result<tauri::ipc::Response, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.undo(&mut current_doc).is_none() {
-        return Err("Nothing to undo".into());
-    }
-    guard.document = current_doc;
-    Ok(pack_doc_with_layers(&guard.document, &guard.history))
-}
-
-/// Combined redo + render all layers + history in a single IPC call.
-#[tauri::command]
-pub fn redo_with_layers(
-    state: State<'_, SharedEngineState>,
-) -> Result<tauri::ipc::Response, String> {
-    let mut guard = state.lock();
-    let mut current_doc = guard.document.clone();
-    if guard.history.redo(&mut current_doc).is_none() {
-        return Err("Nothing to redo".into());
-    }
-    guard.document = current_doc;
-    Ok(pack_doc_with_layers(&guard.document, &guard.history))
-}
-
-/// Packs document info, history, and all layer RGBA pixels into a single binary buffer.
-fn pack_doc_with_layers(doc: &Document, history: &HistoryEngine) -> tauri::ipc::Response {
-    let doc_info = doc.get_info();
-    let history_list = history.get_history_list();
-    let w = doc.width;
-    let h = doc.height;
-    let layer_pixel_bytes = (w as usize) * (h as usize) * 4;
-
-    // Render all layers and build offset table
-    let mut layer_buffers: Vec<(String, Vec<u8>)> = Vec::with_capacity(doc_info.layers.len());
-    for layer_info in &doc_info.layers {
-        let rgba = doc
-            .render_layer_viewport_rgba(&layer_info.id, 0, 0, w, h)
-            .unwrap_or_else(|| vec![0u8; layer_pixel_bytes]);
-        layer_buffers.push((layer_info.id.clone(), rgba));
-    }
-
-    // Build JSON header with layer offset table
-    let mut offset = 0usize;
-    let mut layer_entries = Vec::new();
-    for (id, buf) in &layer_buffers {
-        layer_entries.push(serde_json::json!({
-            "id": id,
-            "offset": offset,
-            "length": buf.len(),
-        }));
-        offset += buf.len();
-    }
-
-    let header = serde_json::json!({
-        "doc": doc_info,
-        "history": history_list,
-        "layers": layer_entries,
-    });
-    let header_bytes = serde_json::to_vec(&header).unwrap_or_default();
-    let header_len = header_bytes.len() as u32;
-
-    // Pack: [4B header_len LE] [header JSON] [layer RGBA buffers...]
-    let total_pixel_bytes: usize = layer_buffers.iter().map(|(_, b)| b.len()).sum();
-    let mut out = Vec::with_capacity(4 + header_bytes.len() + total_pixel_bytes);
-    out.extend_from_slice(&header_len.to_le_bytes());
-    out.extend_from_slice(&header_bytes);
-    for (_, buf) in layer_buffers {
-        out.extend_from_slice(&buf);
-    }
-
-    tauri::ipc::Response::new(out)
-}
-
-/// Render the viewport region to a raw binary RGBA byte buffer
-#[tauri::command]
 pub fn render_viewport(
     request: ViewportRenderRequest,
     state: State<'_, SharedEngineState>,
@@ -790,7 +342,6 @@ pub fn render_layer_viewport(
     Ok(tauri::ipc::Response::new(rgba))
 }
 
-/// Native multi-format image exporter encoding PNG, JPEG, WebP, BMP, TIFF directly in Rust
 #[tauri::command]
 pub fn export_document_image(
     format: String,
@@ -807,7 +358,6 @@ pub fn export_document_image(
     };
 
     let raw_rgba = if let (Some(ctx), Some(pipeline)) = (gpu_context, blend_pipeline) {
-        log::info!("Exporting document using GPU Compositor");
         let mut layers_data = Vec::new();
         for layer in &doc.layers {
             if !layer.visible || layer.opacity <= 0.0 {
@@ -821,7 +371,6 @@ pub fn export_document_image(
         }
         pipeline.composite_layers(&ctx.device, &ctx.queue, doc.width, doc.height, layers_data)
     } else {
-        log::info!("Exporting document using CPU Compositor");
         doc.render_viewport_rgba(0, 0, doc.width, doc.height)
     };
 
@@ -870,27 +419,6 @@ pub fn export_document_image(
     Ok(cursor.into_inner())
 }
 
-/// Retrieve telemetry metrics from the Rust engine state
-#[tauri::command]
-pub fn get_engine_stats(state: State<'_, SharedEngineState>) -> EngineStats {
-    let guard = state.lock();
-    let mut total_tiles = 0;
-    for layer in &guard.document.layers {
-        total_tiles += layer.grid.tile_count();
-    }
-    let allocated_memory_mb = (total_tiles as f32 * 1.0).max(1.0); // ~1MB per tile uncompressed
-    let history_nodes = guard.history.len();
-    let gpu_available = guard.gpu_context.is_some();
-
-    EngineStats {
-        total_tiles,
-        allocated_memory_mb,
-        history_nodes,
-        gpu_available,
-    }
-}
-
-/// Read local binary image file contents directly from disk
 #[tauri::command]
 pub fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("Failed to read file '{}': {}", path, e))
@@ -959,7 +487,6 @@ pub fn move_selection_content(
         return Err("Layer is locked".to_string());
     }
 
-    // First clear the source region
     for dy in 0..payload.height as i32 {
         for dx in 0..payload.width as i32 {
             layer
@@ -968,7 +495,6 @@ pub fn move_selection_content(
         }
     }
 
-    // Then write the data to the new location
     layer.grid.write_region(
         payload.x + payload.dx,
         payload.y + payload.dy,

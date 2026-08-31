@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
-import { toast } from '@/stores/toastStore';
-import { BrushPoint, ToolType, SelectionArea } from '@/types';
+
+import { ToolType, SelectionArea } from '@/types';
 import { LayerStack } from '@/features/layers/components/LayerStack';
 import { PixelGrid } from '@/features/canvas/components/PixelGrid';
 import { MarchingAntsSelection } from '@/features/canvas/components/MarchingAntsSelection';
@@ -18,8 +18,9 @@ import { RulersOverlay } from '@/features/canvas/components/RulersOverlay';
 import { useCanvasDrawing } from '@/features/canvas/hooks/useCanvasDrawing';
 import { useCanvasViewport } from '@/features/canvas/hooks/useCanvasViewport';
 import { useVectorInteractions } from '@/features/tools/hooks/useVectorInteractions';
-import { extractPointerDetails } from '@/features/canvas/utils/tablet';
-import { isTauriEnvironment } from '@/services/tauriBridge';
+import { useCanvasInteractions } from '@/features/canvas/hooks/useCanvasInteractions';
+import { useCanvasDropZone } from '@/features/canvas/hooks/useCanvasDropZone';
+import { useClipboardLayer } from '@/features/canvas/hooks/useClipboardLayer';
 
 interface Props {
   onOpenNewDoc?: () => void;
@@ -33,7 +34,6 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
   const selectionDragRef = useRef<SelectionArea | null>(null);
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const previousToolBeforeEraserRef = useRef<ToolType | null>(null);
 
@@ -41,7 +41,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
 
-  const { doc, importImageAsLayer, openImageAsDocument } = useDocumentStore();
+  const { doc } = useDocumentStore();
   const {
     activeTool,
     setActiveTool,
@@ -106,6 +106,46 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     layerCanvasesRef,
   });
 
+  const { handlePointerDown, handlePointerMove, handlePointerUp } = useCanvasInteractions({
+    doc,
+    activeTool,
+    setActiveTool,
+    setContextMenuPos,
+    setTabletTelemetry,
+    startPanning,
+    screenToCanvas,
+    startMove,
+    setZoom,
+    sampleColorAt,
+    handlePaintBucket,
+    setActiveTextNode,
+    gradientStartRef,
+    setGradientDrag,
+    shapeStartRef,
+    setShapeDrag,
+    selectionStartRef,
+    selectionDragRef,
+    startStroke,
+    isPanningRef,
+    updatePanning,
+    isDrawingRef,
+    strokePointsRef,
+    processSmoothPoint,
+    drawStrokeSegment,
+    setCursorPos,
+    setMouseClientPos,
+    moveDrag,
+    updateMove,
+    gradientDrag,
+    applyGradient,
+    shapeDrag,
+    bakeShapeToCanvas,
+    stopPanning,
+    endMove,
+    endStroke,
+    previousToolBeforeEraserRef,
+  });
+
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -137,397 +177,10 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     return { x, y, width, height };
   }, [containerSize, doc?.height, doc?.width, pan.x, pan.y, zoom]);
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isDraggingFile) setIsDraggingFile(true);
-  };
+  const { isDraggingFile, handleDragOver, handleDragLeave, handleDrop } = useCanvasDropZone();
+  useClipboardLayer();
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setIsDraggingFile(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingFile(false);
-
-    // In native Tauri desktop app mode, Tauri's onDragDropEvent already handles the file drop natively!
-    // Returning early here prevents duplicate 2x imports.
-    if (isTauriEnvironment()) return;
-
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-    if (files.length === 0) return;
-
-    for (const file of files) {
-      if (doc) {
-        await importImageAsLayer(file);
-      } else {
-        await openImageAsDocument(file);
-      }
-    }
-  };
-
-  // Clipboard paste listener
-  React.useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith('image/')) {
-          const blob = items[i].getAsFile();
-          if (blob) {
-            if (doc) {
-              await importImageAsLayer(blob, 'Pasted Layer');
-            } else {
-              await openImageAsDocument(blob, 'Pasted Document');
-            }
-          }
-        }
-      }
-    };
-
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [doc, importImageAsLayer, openImageAsDocument]);
-
-  // Listen to native OS drag & drop events (Finder on macOS, Explorer on Windows)
-  React.useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => {
-        getCurrentWebview()
-          .onDragDropEvent((event) => {
-            const payload = event.payload;
-            if (payload.type === 'enter' || payload.type === 'over') {
-              setIsDraggingFile(true);
-            } else if (payload.type === 'leave') {
-              setIsDraggingFile(false);
-            } else if (payload.type === 'drop') {
-              setIsDraggingFile(false);
-              const paths = payload.paths;
-              if (paths && paths.length > 0) {
-                for (const filePath of paths) {
-                  const currentDoc = useDocumentStore.getState().doc;
-                  if (currentDoc) {
-                    useDocumentStore.getState().importImagePathAsLayer(filePath);
-                  } else {
-                    useDocumentStore.getState().openImagePathAsDocument(filePath);
-                  }
-                }
-              }
-            }
-          })
-          .then((fn) => {
-            unlisten = fn;
-          });
-      });
-    }
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!doc) return;
-    if (contextMenuPos) setContextMenuPos(null);
-
-    // Right-click opens Photoshop Context Menu instead of drawing
-    if (e.button === 2) return;
-
-    const { point: rawPointData, telemetry } = extractPointerDetails(e);
-    setTabletTelemetry(telemetry);
-
-    // Stylus Physical Eraser Tip Auto-Switching
-    if (telemetry.isEraser && activeTool !== 'eraser') {
-      previousToolBeforeEraserRef.current = activeTool;
-      setActiveTool('eraser');
-    }
-
-    if (activeTool !== 'text') {
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-    }
-
-    if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
-      startPanning(e.clientX, e.clientY);
-      return;
-    }
-
-    const pos = screenToCanvas(e.clientX, e.clientY);
-
-    const activeLayer = doc.layers.find((l) => l.id === doc.active_layer_id);
-    const isModifying = [
-      'brush',
-      'eraser',
-      'dodge',
-      'burn',
-      'smudge',
-      'blur',
-      'paint_bucket',
-      'gradient',
-      'move',
-    ].includes(activeTool);
-    if (isModifying && activeLayer) {
-      if (activeLayer.locked) {
-        toast.warning('Layer Locked', 'Unlock the layer to edit.');
-        return;
-      }
-      if (!activeLayer.visible) {
-        toast.warning('Layer Hidden', 'Make the layer visible to edit.');
-        return;
-      }
-    }
-
-    if (activeTool === 'move') {
-      startMove(pos);
-      return;
-    }
-
-    if (activeTool === 'zoom') {
-      const factor = e.altKey ? 0.7 : 1.4;
-      setZoom((z) => (e.altKey ? Math.max(0.05, z * factor) : Math.min(32, z * factor)));
-      return;
-    }
-
-    if (activeTool === 'eyedropper') {
-      sampleColorAt(pos);
-      return;
-    }
-
-    if (activeTool === 'paint_bucket') {
-      handlePaintBucket(pos);
-      return;
-    }
-
-    if (activeTool === 'text') {
-      setActiveTextNode({ x: Math.round(pos.x), y: Math.round(pos.y), text: '' });
-      return;
-    }
-
-    if (activeTool === 'gradient') {
-      gradientStartRef.current = { x: pos.x, y: pos.y };
-      setGradientDrag({ start: pos, current: pos });
-      return;
-    }
-
-    if (activeTool === 'shape') {
-      shapeStartRef.current = { x: pos.x, y: pos.y };
-      setShapeDrag({ start: pos, current: pos });
-      return;
-    }
-
-    if (activeTool === 'selection') {
-      selectionStartRef.current = { x: pos.x, y: pos.y };
-      selectionDragRef.current = { x: pos.x, y: pos.y, width: 0, height: 0, active: true };
-      useEditorStore.getState().setSelection(null);
-      return;
-    }
-
-    if (activeTool === 'lasso') {
-      selectionDragRef.current = {
-        x: pos.x,
-        y: pos.y,
-        width: 0,
-        height: 0,
-        active: true,
-        path: [{ x: pos.x, y: pos.y }],
-      };
-      useEditorStore.getState().setSelection(null);
-      return;
-    }
-
-    if (['brush', 'eraser', 'dodge', 'burn', 'smudge', 'blur'].includes(activeTool)) {
-      const rawBrushPoint: BrushPoint = {
-        x: pos.x,
-        y: pos.y,
-        pressure: rawPointData.pressure,
-        tiltX: rawPointData.tiltX,
-        tiltY: rawPointData.tiltY,
-        twist: rawPointData.twist,
-        pointerType: rawPointData.pointerType,
-      };
-      startStroke(rawBrushPoint);
-    }
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!doc) return;
-
-    if (isPanningRef.current) {
-      updatePanning(e.clientX, e.clientY);
-      return;
-    }
-
-    if (isDrawingRef.current) {
-      // High-performance hot drawing loop: bypass React state updates during active stroke
-      const coalescedEvents =
-        typeof e.nativeEvent.getCoalescedEvents === 'function'
-          ? e.nativeEvent.getCoalescedEvents()
-          : [e.nativeEvent];
-
-      let lastPt =
-        strokePointsRef.current.length > 0
-          ? strokePointsRef.current[strokePointsRef.current.length - 1]
-          : null;
-
-      for (const rawEv of coalescedEvents) {
-        const subDetails = extractPointerDetails(rawEv);
-        const subCanvasPos = screenToCanvas(subDetails.point.x, subDetails.point.y);
-        const rawSubPt: BrushPoint = {
-          x: subCanvasPos.x,
-          y: subCanvasPos.y,
-          pressure: subDetails.point.pressure,
-          tiltX: subDetails.point.tiltX,
-          tiltY: subDetails.point.tiltY,
-          twist: subDetails.point.twist,
-          pointerType: subDetails.point.pointerType,
-        };
-        const smoothed = processSmoothPoint(rawSubPt);
-
-        if (lastPt) {
-          drawStrokeSegment(lastPt, smoothed);
-        }
-        lastPt = smoothed;
-        // O(1) amortized push — no array copy, no re-render
-        strokePointsRef.current.push(smoothed);
-      }
-      return;
-    }
-
-    const { telemetry } = extractPointerDetails(e);
-    setTabletTelemetry(telemetry);
-
-    const pos = screenToCanvas(e.clientX, e.clientY);
-    setCursorPos({ x: Math.round(pos.x), y: Math.round(pos.y) });
-    setMouseClientPos({ clientX: e.clientX, clientY: e.clientY });
-
-    if (activeTool === 'move' && moveDrag) {
-      updateMove(pos);
-      return;
-    }
-
-    if (gradientStartRef.current && activeTool === 'gradient') {
-      setGradientDrag({ start: gradientStartRef.current, current: pos });
-      return;
-    }
-
-    if (shapeStartRef.current && activeTool === 'shape') {
-      setShapeDrag({ start: shapeStartRef.current, current: pos });
-      return;
-    }
-
-    if (selectionStartRef.current && activeTool === 'selection') {
-      const sx = selectionStartRef.current.x;
-      const sy = selectionStartRef.current.y;
-      const newSel = {
-        x: Math.min(sx, pos.x),
-        y: Math.min(sy, pos.y),
-        width: Math.abs(pos.x - sx),
-        height: Math.abs(pos.y - sy),
-        active: true,
-      };
-      selectionDragRef.current = newSel;
-
-      const marquee = document.getElementById('fast-selection-marquee');
-      if (marquee) {
-        marquee.style.left = `${newSel.x}px`;
-        marquee.style.top = `${newSel.y}px`;
-        marquee.style.width = `${newSel.width}px`;
-        marquee.style.height = `${newSel.height}px`;
-        marquee.style.display = 'block';
-      }
-      return;
-    }
-
-    if (activeTool === 'lasso' && selectionDragRef.current && selectionDragRef.current.path) {
-      selectionDragRef.current.path.push({ x: pos.x, y: pos.y });
-      const pathEl = document.getElementById('fast-lasso-path');
-      const pathEl2 = document.getElementById('fast-lasso-path-2');
-      if (pathEl && pathEl2) {
-        const str = selectionDragRef.current.path
-          .map((p: { x: number; y: number }) => `${p.x},${p.y}`)
-          .join(' ');
-        pathEl.setAttribute('points', str);
-        pathEl2.setAttribute('points', str);
-        pathEl.parentElement!.style.display = 'block';
-      }
-      return;
-    }
-  };
-
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-
-    setTabletTelemetry({ pressure: 0 });
-
-    // Restore previous tool if we auto-switched to physical eraser
-    if (previousToolBeforeEraserRef.current) {
-      setActiveTool(previousToolBeforeEraserRef.current);
-      previousToolBeforeEraserRef.current = null;
-    }
-
-    if (isPanningRef.current) {
-      stopPanning();
-      return;
-    }
-
-    if (activeTool === 'move' && moveDrag) {
-      endMove();
-      return;
-    }
-
-    if (gradientDrag && activeTool === 'gradient') {
-      applyGradient(gradientDrag.start, gradientDrag.current);
-      setGradientDrag(null);
-      gradientStartRef.current = null;
-      return;
-    }
-
-    if (shapeDrag && activeTool === 'shape') {
-      bakeShapeToCanvas(shapeDrag.start, shapeDrag.current);
-      setShapeDrag(null);
-      shapeStartRef.current = null;
-      return;
-    }
-
-    if (selectionStartRef.current && activeTool === 'selection') {
-      selectionStartRef.current = null;
-      const marquee = document.getElementById('fast-selection-marquee');
-      if (marquee) marquee.style.display = 'none';
-
-      const finalSel = selectionDragRef.current;
-      if (finalSel && finalSel.width > 5 && finalSel.height > 5) {
-        useEditorStore.getState().setSelection(finalSel);
-      }
-      selectionDragRef.current = null;
-      return;
-    }
-
-    if (activeTool === 'lasso' && selectionDragRef.current && selectionDragRef.current.path) {
-      const svgEl = document.getElementById('fast-lasso-svg');
-      if (svgEl) svgEl.style.display = 'none';
-
-      const finalSel = selectionDragRef.current;
-      if (finalSel.path && finalSel.path.length > 5) {
-        useEditorStore.getState().setSelection(finalSel);
-      }
-      selectionDragRef.current = null;
-      return;
-    }
-
-    if (isDrawingRef.current) {
-      endStroke();
-    }
-  };
+  // End of useCanvasInteractions hook usage
 
   if (!doc) {
     return (

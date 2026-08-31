@@ -13,7 +13,7 @@ import { HomeScreen } from '@/features/system/components/HomeScreen';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { HelpDialog } from '@/features/system/components/HelpDialog';
-import { useKeyboardShortcuts } from '@/features/system/hooks/useAppShortcuts';
+import { useAppShortcuts } from '@/features/system/hooks/useAppShortcuts';
 import { checkForAppUpdate } from '@/services/updaterService';
 export const App: React.FC = () => {
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
@@ -43,7 +43,7 @@ export const App: React.FC = () => {
   };
 
   // Global Cross-Platform Keyboard Shortcuts
-  useKeyboardShortcuts({
+  useAppShortcuts({
     onOpenNewDoc: () => setIsNewDocOpen(true),
     onOpenOpenFile: handleOpenFileDialog,
     onOpenCanvasSize: () => setIsCanvasSizeOpen(true),

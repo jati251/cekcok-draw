@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { BLEND_MODES } from '@/config/blendModes';
 import { Eye, EyeOff, Lock, Unlock, Shapes, Image as ImageIcon } from 'lucide-react';
@@ -6,6 +6,7 @@ import { BlendMode, LayerMetadata } from '@/types';
 import { LayerThumbnail } from '@/features/layers/components/LayerThumbnail';
 import { LayerContextMenu } from '@/features/layers/components/LayerContextMenu';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { motion } from 'framer-motion';
 
 export const LayerPanel: React.FC = () => {
   // Selector-based subscriptions so the panel only re-renders when the layer
@@ -22,6 +23,8 @@ export const LayerPanel: React.FC = () => {
   const toggleSelectLayer = useDocumentStore((s) => s.toggleSelectLayer);
   const selectLayerRange = useDocumentStore((s) => s.selectLayerRange);
 
+  const reorderLayer = useDocumentStore((s) => s.reorderLayer);
+
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [contextMenu, setContextMenu] = useState<{
@@ -29,14 +32,7 @@ export const LayerPanel: React.FC = () => {
     y: number;
     layer: LayerMetadata;
   } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (renamingId && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [renamingId]);
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
 
   if (!doc) return null;
 
@@ -121,20 +117,47 @@ export const LayerPanel: React.FC = () => {
           };
 
           return (
-            <div
+            <motion.div
+              layout
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
               key={layer.id}
+              draggable
+              onDragStart={(e) => {
+                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
+                setDraggedLayerId(layer.id);
+                dragEvent.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragEnd={() => setDraggedLayerId(null)}
+              onDragOver={(e) => {
+                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
+                dragEvent.preventDefault();
+                dragEvent.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
+                dragEvent.preventDefault();
+                if (draggedLayerId && draggedLayerId !== layer.id) {
+                  // Find the target index in the actual (non-reversed) array
+                  const targetIndex = doc.layers.findIndex((l) => l.id === layer.id);
+                  reorderLayer(draggedLayerId, targetIndex);
+                }
+                setDraggedLayerId(null);
+              }}
               onClick={handleLayerCardClick}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, layer });
               }}
-              className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer border transition-all duration-150 relative ${
+              className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-grab active:cursor-grabbing border transition-colors duration-150 relative ${
                 isPrimaryActive
                   ? 'bg-blue-600/20 border-blue-500/80 text-white shadow-sm ring-1 ring-blue-500/25'
                   : isSelected
                     ? 'bg-blue-600/10 border-blue-500/40 text-zinc-100 shadow-xs'
                     : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-white hover:border-ps-border/80'
-              }`}
+              } ${draggedLayerId === layer.id ? 'opacity-50 border-dashed border-blue-400' : ''}`}
             >
               {/* Active / Selected Layer Left Accent Bar */}
               {isSelected && (
@@ -216,7 +239,7 @@ export const LayerPanel: React.FC = () => {
                 {/* Layer Name / Inline Rename Input: strictly only renames on double clicking the text label */}
                 {renamingId === layer.id ? (
                   <input
-                    ref={inputRef}
+                    autoFocus
                     type="text"
                     value={renameText}
                     onChange={(e) => setRenameText(e.target.value)}
@@ -262,7 +285,7 @@ export const LayerPanel: React.FC = () => {
                   {layer.blend_mode.replace('_', ' ')}
                 </span>
               </div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
