@@ -46,6 +46,10 @@ interface EditorState {
   transformState: import('../types').TransformState | null;
   cropBounds: { x: number; y: number; width: number; height: number } | null;
 
+  bucketTolerance: number;
+  bucketContiguous: boolean;
+  setBucketTolerance: (tolerance: number) => void;
+  setBucketContiguous: (contiguous: boolean) => void;
   setActiveTool: (tool: ToolType) => void;
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
   setShapeSettings: (settings: Partial<ShapeSettings>) => void;
@@ -142,6 +146,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   },
   transformState: null,
   cropBounds: null,
+  bucketTolerance: 32,
+  bucketContiguous: true,
+
+  setBucketTolerance: (bucketTolerance) =>
+    set({ bucketTolerance: Math.max(0, Math.min(255, bucketTolerance)) }),
+  setBucketContiguous: (bucketContiguous) => set({ bucketContiguous }),
 
   setActiveTool: (activeTool) =>
     set({

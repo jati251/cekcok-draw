@@ -3,6 +3,7 @@ import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DocumentInfo } from '@/types';
 import { hexToRgba } from '@/utils/color';
+import { floodFill } from '@/features/tools/utils/floodFill';
 import * as bridge from '@/services/tauriBridge';
 
 interface UseVectorInteractionsProps {
@@ -21,6 +22,8 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     selection,
     setSelection,
     setActiveTextNode,
+    bucketTolerance,
+    bucketContiguous,
   } = useEditorStore();
 
   const bumpCanvasRevision = useDocumentStore((s) => s.bumpCanvasRevision);
@@ -72,13 +75,38 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
   const handlePaintBucket = useCallback(
     (pos: { x: number; y: number }) => {
       if (!doc || !doc.active_layer_id) return;
-      const canvas = layerCanvasesRef.current?.get(doc.active_layer_id);
+      const canvas =
+        layerCanvasesRef.current?.get(doc.active_layer_id) ||
+        (document.getElementById(
+          `layer-canvas-${doc.active_layer_id}`
+        ) as HTMLCanvasElement | null);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
       useDocumentStore.getState().pushCanvasSnapshot('Paint Bucket Fill');
       const fillColor = hexToRgba(primaryColor, Math.round(brushSettings.opacity * 255));
+      const tolerance = bucketTolerance ?? 32;
+      const contiguous = bucketContiguous ?? true;
+
+      // Synchronous DOM canvas flood fill for instant 60fps visual response
+      const filled = floodFill(
+        ctx,
+        doc.width,
+        doc.height,
+        pos.x,
+        pos.y,
+        fillColor,
+        tolerance,
+        selection,
+        contiguous
+      );
+
+      if (!filled) return;
+
+      bumpCanvasRevision();
+
+      // Fire-and-forget background sync to Rust backend for SparseGrid & CoW History
       const selBounds: [number, number, number, number] | undefined =
         selection && selection.active
           ? [
@@ -91,14 +119,22 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       const activeLayerId = doc.active_layer_id;
 
       bridge
-        .applyFloodFill(pos.x, pos.y, fillColor, 32, selBounds, activeLayerId)
+        .applyFloodFill(pos.x, pos.y, fillColor, tolerance, selBounds, activeLayerId)
         .then(() => {
           useDocumentStore.getState().refreshHistory();
-          bumpCanvasRevision();
         })
         .catch(() => {});
     },
-    [brushSettings.opacity, bumpCanvasRevision, doc, layerCanvasesRef, primaryColor, selection]
+    [
+      brushSettings.opacity,
+      bucketContiguous,
+      bucketTolerance,
+      bumpCanvasRevision,
+      doc,
+      layerCanvasesRef,
+      primaryColor,
+      selection,
+    ]
   );
 
   const applyGradient = useCallback(

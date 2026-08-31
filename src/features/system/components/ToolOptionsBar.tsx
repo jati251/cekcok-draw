@@ -90,6 +90,10 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
     setShowGrid,
     showRulers,
     setShowRulers,
+    bucketTolerance,
+    setBucketTolerance,
+    bucketContiguous,
+    setBucketContiguous,
   } = useEditorStore();
 
   const isMac =
@@ -251,6 +255,60 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
           {/* 5. Typography Text Options */}
           {activeTool === 'text' && (
             <TextOptions textSettings={textSettings} setTextSettings={setTextSettings} />
+          )}
+
+          {/* 6. Paint Bucket Options */}
+          {activeTool === 'paint_bucket' && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Tolerance */}
+              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
+                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
+                  Tolerance
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="255"
+                  value={bucketTolerance}
+                  onChange={(e) => setBucketTolerance(Number(e.target.value))}
+                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
+                />
+                <span className="text-zinc-200 text-[11px] font-mono w-7 text-right">
+                  {bucketTolerance}
+                </span>
+              </div>
+
+              {/* Opacity */}
+              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
+                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
+                  Opacity
+                </span>
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={Math.round(brushSettings.opacity * 100)}
+                  onChange={(e) => setBrushSettings({ opacity: Number(e.target.value) / 100 })}
+                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
+                />
+                <span className="text-zinc-200 text-[11px] font-mono w-8 text-right">
+                  {Math.round(brushSettings.opacity * 100)}%
+                </span>
+              </div>
+
+              {/* Contiguous Toggle */}
+              <label className="flex items-center space-x-1.5 px-2 h-6.5 rounded bg-zinc-800/60 border border-zinc-700/60 cursor-pointer hover:bg-zinc-800 text-[11px] text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={bucketContiguous}
+                  onChange={(e) => setBucketContiguous(e.target.checked)}
+                  className="rounded border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0 bg-zinc-700 cursor-pointer"
+                />
+                <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-400">
+                  Contiguous
+                </span>
+              </label>
+            </div>
           )}
 
           {/* Draggable Flexible Space */}
