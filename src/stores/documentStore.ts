@@ -16,6 +16,8 @@ export const useDocumentStore = create<DocumentState>((set, get, api) => ({
   pendingLayerPixels: null,
   selectedLayerIds: [],
   currentFilePath: null,
+  isDirty: false,
+  setIsDirty: (isDirty) => set({ isDirty }),
 
   ...createLayerSlice(set, get, api),
   ...createCanvasSlice(set, get, api),

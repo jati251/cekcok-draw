@@ -9,6 +9,17 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <script>
+      try {
+        const theme = localStorage.getItem('cekcok_theme');
+        if (
+          theme === 'light' ||
+          (theme === 'system' && !window.matchMedia('(prefers-color-scheme: dark)').matches)
+        ) {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="h-full bg-ps-bg text-ps-text font-sans antialiased overflow-hidden select-none">
     <div id="root" class="h-full w-full"></div>

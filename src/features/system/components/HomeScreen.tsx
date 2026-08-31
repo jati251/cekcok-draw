@@ -52,11 +52,11 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
   };
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col justify-between bg-[#0e0f12] text-zinc-300 select-none overflow-y-auto min-h-[480px]">
+    <div className="absolute inset-0 z-20 flex flex-col justify-between bg-ps-bg text-zinc-300 select-none overflow-y-auto min-h-[480px]">
       {/* Subdued Top Navigation Bar with App Logo and Traffic Light offset */}
       <header
         data-tauri-drag-region
-        className={`h-12 px-6 flex items-center justify-between border-b border-zinc-800/80 bg-[#121316] flex-shrink-0 ${
+        className={`h-12 px-6 flex items-center justify-between border-b border-zinc-800/80 bg-ps-header flex-shrink-0 ${
           isMac ? 'pl-[84px]' : 'pl-6'
         }`}
       >
@@ -119,7 +119,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
                 <Plus size={20} />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">
+                <div className="text-xs font-semibold text-zinc-200 group-hover:text-zinc-100 transition-colors">
                   New Canvas...
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
@@ -137,11 +137,11 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
             className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 text-left transition-all group shadow-sm active:scale-[0.99]"
           >
             <div className="flex items-center space-x-3.5">
-              <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-zinc-300 group-hover:bg-zinc-700 group-hover:text-white transition-colors flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0">
                 <FolderOpen size={18} />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-zinc-200 group-hover:text-white transition-colors">
+                <div className="text-xs font-semibold text-zinc-200 group-hover:text-zinc-100 transition-colors">
                   Open Project or Image...
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
@@ -175,7 +175,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
                       <FileBox size={14} />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
+                      <div className="text-xs font-medium text-zinc-200 group-hover:text-zinc-100 truncate">
                         {project.title}
                       </div>
                       <div
@@ -216,7 +216,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
                     {PRESET_ICONS[preset.iconName] || <Monitor size={15} />}
                   </span>
                   <div className="truncate">
-                    <div className="text-xs font-medium text-zinc-300 group-hover:text-white truncate">
+                    <div className="text-xs font-medium text-zinc-300 group-hover:text-zinc-100 truncate">
                       {preset.name}
                     </div>
                     <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
@@ -234,7 +234,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
       </main>
 
       {/* Clean Technical Studio Footer */}
-      <footer className="h-10 px-6 flex items-center justify-between border-t border-zinc-800/80 bg-[#121316] text-[11px] text-zinc-400 font-mono flex-shrink-0 flex-nowrap overflow-hidden">
+      <footer className="h-10 px-6 flex items-center justify-between border-t border-zinc-800/80 bg-ps-header text-[11px] text-zinc-400 font-mono flex-shrink-0 flex-nowrap overflow-hidden">
         <div className="flex items-center space-x-3 sm:space-x-4 flex-nowrap min-w-0">
           <span className="flex items-center space-x-1.5 flex-shrink-0">
             <Zap size={12} className="text-emerald-400" />

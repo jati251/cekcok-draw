@@ -12,6 +12,12 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
             ..Default::default()
         }))
         .separator()
+        .item(
+            &MenuItemBuilder::with_id("preferences", "Preferences...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?,
+        )
+        .separator()
         .item(&MenuItemBuilder::with_id("check_updates", "Check for Updates...").build(app)?)
         .separator()
         .services()

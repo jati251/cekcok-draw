@@ -160,10 +160,10 @@ export const LayerPanel: React.FC = () => {
               }}
               className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-grab active:cursor-grabbing border transition-colors duration-150 relative ${
                 isPrimaryActive
-                  ? 'bg-blue-600/20 border-blue-500/80 text-white shadow-sm ring-1 ring-blue-500/25'
+                  ? 'bg-blue-600/20 border-blue-500/80 text-zinc-100 dark:text-white shadow-sm ring-1 ring-blue-500/25 font-semibold'
                   : isSelected
                     ? 'bg-blue-600/10 border-blue-500/40 text-zinc-100 shadow-xs'
-                    : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-white hover:border-ps-border/80'
+                    : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-zinc-100 hover:border-ps-border/80'
               } ${draggedLayerId === layer.id ? 'opacity-90 shadow-2xl ring-1 ring-blue-400 z-50' : ''}`}
             >
               {/* Active / Selected Layer Left Accent Bar */}
@@ -204,10 +204,10 @@ export const LayerPanel: React.FC = () => {
                       e.stopPropagation();
                       toggleLayerVisibility(layer.id);
                     }}
-                    className="p-0.5 text-zinc-400 hover:text-white transition-colors flex-shrink-0 active:scale-90"
+                    className="p-0.5 text-zinc-400 hover:text-zinc-100 transition-colors flex-shrink-0 active:scale-90"
                   >
                     {layer.visible ? (
-                      <Eye size={13} className="text-zinc-300 group-hover:text-white" />
+                      <Eye size={13} className="text-zinc-300 group-hover:text-zinc-100" />
                     ) : (
                       <EyeOff size={13} className="text-zinc-600" />
                     )}
@@ -284,7 +284,7 @@ export const LayerPanel: React.FC = () => {
                       if (e.key === 'Escape') setRenamingId(null);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="bg-zinc-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-white outline-none w-full max-w-[110px]"
+                    className="bg-zinc-900 border border-blue-500 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none w-full max-w-[110px]"
                   />
                 ) : (
                   <span
@@ -293,7 +293,7 @@ export const LayerPanel: React.FC = () => {
                       handleStartRename(layer);
                     }}
                     title="Double-click to rename"
-                    className="font-medium text-[11px] truncate max-w-[90px] hover:text-white select-none cursor-text py-0.5"
+                    className="font-medium text-[11px] truncate max-w-[90px] hover:text-zinc-100 select-none cursor-text py-0.5"
                   >
                     {layer.name}
                   </span>
@@ -308,7 +308,7 @@ export const LayerPanel: React.FC = () => {
                       e.stopPropagation();
                       toggleLayerLock(layer.id);
                     }}
-                    className={`p-0.5 rounded hover:text-white transition-colors pointer-events-auto ${
+                    className={`p-0.5 rounded hover:text-zinc-100 transition-colors pointer-events-auto ${
                       layer.locked ? 'text-amber-400' : 'text-zinc-500 opacity-40 hover:opacity-100'
                     }`}
                   >

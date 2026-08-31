@@ -37,7 +37,7 @@ export const LayerActionsBar: React.FC = () => {
             onClick={() => {
               if (activeLayer) addNewLayer(`${activeLayer.name} Copy`);
             }}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md transition-all active:scale-90"
           >
             <Copy size={13} />
           </button>
@@ -65,7 +65,7 @@ export const LayerActionsBar: React.FC = () => {
                 ? false
                 : !activeLayer || doc.layers[0]?.id === activeLayer.id
             }
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
             <ArrowDown size={13} />
           </button>
@@ -82,7 +82,7 @@ export const LayerActionsBar: React.FC = () => {
               }
             }}
             disabled={!activeLayer || doc.layers[doc.layers.length - 1]?.id === activeLayer.id}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
             <ChevronUp size={14} />
           </button>
@@ -97,7 +97,7 @@ export const LayerActionsBar: React.FC = () => {
               }
             }}
             disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
             <ChevronDown size={14} />
           </button>

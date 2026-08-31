@@ -20,7 +20,10 @@ export interface TextLayerData {
   align?: 'left' | 'center' | 'right';
 }
 
+export type ThemeMode = 'dark' | 'light' | 'system';
+
 interface EditorState {
+  theme: ThemeMode;
   activeTool: ToolType;
   brushSettings: BrushSettings;
   shapeSettings: ShapeSettings;
@@ -39,6 +42,7 @@ interface EditorState {
   activePanel: 'layers' | 'history' | 'color' | 'adjustments' | 'all';
   activeAdjustmentTab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null;
   isSidebarCollapsed: boolean;
+  isPreferencesOpen: boolean;
   selection: SelectionArea | null;
   activeTextNode: { x: number; y: number; text: string; layerId?: string } | null;
   textLayersData: Record<string, TextLayerData>;
@@ -48,6 +52,8 @@ interface EditorState {
 
   bucketTolerance: number;
   bucketContiguous: boolean;
+
+  setTheme: (theme: ThemeMode) => void;
   setBucketTolerance: (tolerance: number) => void;
   setBucketContiguous: (contiguous: boolean) => void;
   setActiveTool: (tool: ToolType) => void;
@@ -71,6 +77,7 @@ interface EditorState {
   setShowGrid: (show: boolean) => void;
   setShowRulers: (show: boolean) => void;
   setIsSidebarCollapsed: (collapsed: boolean) => void;
+  setIsPreferencesOpen: (open: boolean) => void;
   setActivePanel: (panel: 'layers' | 'history' | 'color' | 'adjustments' | 'all') => void;
   setActiveAdjustmentTab: (
     tab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null
@@ -88,6 +95,10 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
+  theme:
+    typeof window !== 'undefined'
+      ? (localStorage.getItem('cekcok_theme') as ThemeMode) || 'dark'
+      : 'dark',
   activeTool: 'brush',
   brushSettings: {
     type: 'round_soft',
@@ -132,6 +143,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   showGrid: false,
   showRulers: true,
   isSidebarCollapsed: false,
+  isPreferencesOpen: false,
   activePanel: 'all',
   activeAdjustmentTab: null,
   selection: null,
@@ -149,6 +161,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   bucketTolerance: 32,
   bucketContiguous: true,
 
+  setTheme: (theme) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cekcok_theme', theme);
+    }
+    set({ theme });
+  },
   setBucketTolerance: (bucketTolerance) =>
     set({ bucketTolerance: Math.max(0, Math.min(255, bucketTolerance)) }),
   setBucketContiguous: (bucketContiguous) => set({ bucketContiguous }),
@@ -226,6 +244,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   setShowGrid: (showGrid) => set({ showGrid }),
   setShowRulers: (showRulers) => set({ showRulers }),
   setIsSidebarCollapsed: (isSidebarCollapsed) => set({ isSidebarCollapsed }),
+  setIsPreferencesOpen: (isPreferencesOpen) => set({ isPreferencesOpen }),
   setActivePanel: (activePanel) => set({ activePanel, isSidebarCollapsed: false }),
   setActiveAdjustmentTab: (activeAdjustmentTab) =>
     set({

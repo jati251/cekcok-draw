@@ -52,10 +52,10 @@ export const HistoryPanel: React.FC = () => {
                 onClick={() => jumpToHistoryIndex(idx)}
                 className={`flex items-center justify-between px-2.5 py-1 rounded-md cursor-pointer text-[11px] transition-all ${
                   isActive
-                    ? 'bg-blue-600/20 border border-blue-500/60 text-white font-semibold shadow-sm'
+                    ? 'bg-blue-600/20 border border-blue-500/60 text-zinc-100 dark:text-white font-semibold shadow-sm'
                     : isFuture
                       ? 'text-zinc-600 hover:bg-ps-surface/50 hover:text-zinc-400 opacity-60 border border-transparent'
-                      : 'text-zinc-300 hover:bg-ps-surface hover:text-white border border-transparent'
+                      : 'text-zinc-300 hover:bg-ps-surface hover:text-zinc-100 border border-transparent'
                 }`}
               >
                 <div className="flex items-center space-x-2 truncate">

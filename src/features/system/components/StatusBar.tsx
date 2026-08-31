@@ -2,15 +2,15 @@ import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { formatPercentage } from '@/utils/formatters';
-import { HardDrive, MousePointer, Sparkles, PenTool } from 'lucide-react';
+import { HardDrive, MousePointer, Sparkles, PenTool, Settings } from 'lucide-react';
 
 interface Props {
   onOpenUpdateModal?: () => void;
 }
 
 export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
-  const { doc } = useDocumentStore();
-  const { zoom, cursorPos, tabletTelemetry } = useEditorStore();
+  const { doc, isDirty } = useDocumentStore();
+  const { zoom, cursorPos, tabletTelemetry, setIsPreferencesOpen } = useEditorStore();
 
   const totalTiles = doc
     ? Math.ceil(doc.width / 512) * Math.ceil(doc.height / 512) * doc.layers.length
@@ -23,7 +23,7 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
   return (
     <footer className="h-6.5 bg-ps-header/95 backdrop-blur-md border-t border-ps-border flex items-center justify-between px-3 text-[11px] text-zinc-400 select-none z-30 shadow-inner-light">
       {/* Left zoom control & cursor position & tablet indicator */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 overflow-hidden">
         <div className="flex items-center space-x-1.5 font-mono text-[10px]">
           <span className="text-zinc-500 uppercase font-sans font-semibold">Zoom</span>
           <span className="text-zinc-200 font-semibold px-1 py-0.2 rounded bg-ps-surface border border-ps-border/50">
@@ -39,10 +39,14 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
           </span>
         </div>
 
-        {/* Canvas Resolution (DPI / PPI) */}
+        {/* Canvas Resolution (DPI / PPI) & Doc Name */}
         {doc && (
           <div className="flex items-center space-x-1 border-l border-ps-border/60 pl-3 font-mono text-[10px]">
-            <span className="text-zinc-500 uppercase font-sans font-semibold">Res</span>
+            <span className="text-zinc-200 font-semibold px-2 py-0.2 rounded bg-ps-surface border border-ps-border/50 max-w-[150px] truncate">
+              {doc.title || 'Untitled Project'}
+              {isDirty && <span className="text-amber-400 ml-0.5">*</span>}
+            </span>
+            <span className="text-zinc-500 uppercase font-sans font-semibold ml-2">Res</span>
             <span className="text-zinc-200 font-semibold px-1 py-0.2 rounded bg-ps-surface border border-ps-border/50">
               {doc.dpi || 72} DPI
             </span>
@@ -80,8 +84,8 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
         </div>
       </div>
 
-      {/* Right Engine Status & App Version Update Badge */}
-      <div className="flex items-center space-x-3.5 font-mono text-[10px] text-zinc-400">
+      {/* Right Engine Status & App Version Update Badge & Settings */}
+      <div className="flex items-center space-x-3 font-mono text-[10px] text-zinc-400 flex-shrink-0 ml-2">
         <div className="flex items-center space-x-1.5">
           <HardDrive size={10} className="text-emerald-400" />
           <span className="text-zinc-300">
@@ -93,13 +97,21 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
         {onOpenUpdateModal && (
           <button
             onClick={onOpenUpdateModal}
-            className="flex items-center space-x-1 border-l border-ps-border/60 pl-3 text-zinc-400 hover:text-blue-400 transition-colors cursor-pointer"
+            className="flex items-center space-x-1 border-l border-ps-border/60 pl-2.5 text-zinc-400 hover:text-blue-400 transition-colors cursor-pointer"
             title="Check for updates"
           >
             <Sparkles size={9} className="text-blue-400" />
             <span>v{__APP_VERSION__}</span>
           </button>
         )}
+
+        <button
+          onClick={() => setIsPreferencesOpen(true)}
+          className="flex items-center space-x-1 border-l border-ps-border/60 pl-2.5 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer p-0.5 rounded hover:bg-ps-hover"
+          title="Preferences (Cmd+,)"
+        >
+          <Settings size={12} className="text-zinc-400 hover:text-zinc-100" />
+        </button>
       </div>
     </footer>
   );

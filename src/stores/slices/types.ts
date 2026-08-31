@@ -12,6 +12,8 @@ export interface SharedState {
   pendingLayerPixels: Map<string, Uint8ClampedArray> | null;
   selectedLayerIds: string[];
   currentFilePath: string | null;
+  isDirty: boolean;
+  setIsDirty: (dirty: boolean) => void;
 }
 
 export interface LayerSlice {

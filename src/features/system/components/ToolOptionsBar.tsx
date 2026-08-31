@@ -20,7 +20,10 @@ import {
   Hand,
   ZoomIn,
   Crop,
+  Save,
 } from 'lucide-react';
+import { useDocumentStore } from '@/stores/documentStore';
+import { saveProjectFile } from '@/features/document/utils/project';
 import { TOOLS } from '@/config/tools';
 import { BrushOptions, BrushSecondaryOptions } from '@/features/tools/components/BrushOptions';
 import { ShapeOptions } from '@/features/tools/components/ShapeOptions';
@@ -95,6 +98,7 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
     bucketContiguous,
     setBucketContiguous,
   } = useEditorStore();
+  const isDirty = useDocumentStore((s) => s.isDirty);
 
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
@@ -353,6 +357,21 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
             >
               <Compass size={12} />
               <span className="text-[10px]">Rulers</span>
+            </button>
+          </Tooltip>
+
+          <Tooltip content="Save Project" shortcut={`${modKey}S`}>
+            <button
+              type="button"
+              onClick={() => saveProjectFile(false)}
+              className={`h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 border ${
+                isDirty
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-xs hover:bg-blue-500'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border-transparent'
+              }`}
+            >
+              <Save size={12} />
+              <span className="text-[10px]">Save</span>
             </button>
           </Tooltip>
 

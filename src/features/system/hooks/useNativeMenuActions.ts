@@ -111,6 +111,8 @@ export const useNativeMenuActions = ({
             actionsRef.current.onOpenHelpModal?.();
           } else if (action === 'doc_github') {
             handleOpenGithub();
+          } else if (action === 'preferences') {
+            useEditorStore.getState().setIsPreferencesOpen(true);
           } else if (action === 'free_transform' || action === 'free_transform_layer') {
             const currentDoc = useDocumentStore.getState().doc;
             if (currentDoc && currentDoc.active_layer_id) {

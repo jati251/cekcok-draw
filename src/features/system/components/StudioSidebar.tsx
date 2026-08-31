@@ -57,7 +57,7 @@ export const StudioSidebar: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsSidebarCollapsed(false)}
-            className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors active:scale-95"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors active:scale-95"
           >
             <PanelRightOpen size={15} />
           </button>
@@ -76,7 +76,7 @@ export const StudioSidebar: React.FC = () => {
             className={`p-1.5 rounded transition-all active:scale-95 ${
               expandColor && !isSidebarCollapsed
                 ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-ps-hover border border-transparent'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
             }`}
           >
             <Palette size={15} />
@@ -94,7 +94,7 @@ export const StudioSidebar: React.FC = () => {
             className={`p-1.5 rounded transition-all active:scale-95 ${
               expandAdjustments && !isSidebarCollapsed
                 ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-ps-hover border border-transparent'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
             }`}
           >
             <Sliders size={15} />
@@ -112,7 +112,7 @@ export const StudioSidebar: React.FC = () => {
             className={`p-1.5 rounded transition-all active:scale-95 ${
               expandHistory && !isSidebarCollapsed
                 ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-ps-hover border border-transparent'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
             }`}
           >
             <History size={15} />
@@ -132,7 +132,7 @@ export const StudioSidebar: React.FC = () => {
             className={`p-1.5 rounded transition-all active:scale-95 ${
               expandLayers && !isSidebarCollapsed
                 ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-ps-hover border border-transparent'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
             }`}
           >
             <Layers size={15} />
@@ -160,7 +160,7 @@ export const StudioSidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => handleToggleAll(false)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
             >
               <Minimize2 size={12} />
             </button>
@@ -170,7 +170,7 @@ export const StudioSidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => handleToggleAll(true)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
             >
               <Maximize2 size={12} />
             </button>
@@ -182,7 +182,7 @@ export const StudioSidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsSidebarCollapsed(true)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors active:scale-95"
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors active:scale-95"
             >
               <PanelRightClose size={13} />
             </button>

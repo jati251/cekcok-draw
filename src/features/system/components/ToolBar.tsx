@@ -86,7 +86,7 @@ export const ToolBar: React.FC = () => {
           return (
             <React.Fragment key={cat}>
               {catIdx > 0 && (
-                <div className="col-span-2 w-10 mx-auto h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent my-1" />
+                <div className="col-span-2 w-10 mx-auto h-[1px] bg-gradient-to-r from-transparent via-zinc-500/20 to-transparent my-1" />
               )}
               {catTools.map((tool) => {
                 const isActive = activeTool === tool.type;
@@ -102,7 +102,7 @@ export const ToolBar: React.FC = () => {
                       className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200 relative ${
                         isActive
                           ? 'bg-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)] ring-1 ring-blue-500/60'
-                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/10 hover:shadow-lg hover:-translate-y-0.5 active:scale-95'
+                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover hover:shadow-lg hover:-translate-y-0.5 active:scale-95'
                       }`}
                     >
                       {getToolIcon(tool.iconName)}
@@ -159,7 +159,7 @@ export const ToolBar: React.FC = () => {
                 setPrimaryColor('#000000');
                 setSecondaryColor('#ffffff');
               }}
-              className="w-4 h-4 flex items-center justify-center text-[9px] text-zinc-400 hover:text-white rounded hover:bg-ps-hover transition-colors"
+              className="w-4 h-4 flex items-center justify-center text-[9px] text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
             >
               <div className="w-2.5 h-2.5 border border-zinc-500 relative">
                 <div className="w-1.5 h-1.5 bg-black absolute top-0 left-0" />
@@ -172,7 +172,7 @@ export const ToolBar: React.FC = () => {
           <Tooltip content="Swap Colors (X)" shortcut="X" position="right">
             <button
               onClick={swapColors}
-              className="text-zinc-400 hover:text-white p-1 hover:bg-ps-hover rounded transition-all duration-200 hover:rotate-180 active:scale-90"
+              className="text-zinc-400 hover:text-zinc-100 p-1 hover:bg-ps-hover rounded transition-all duration-200 hover:rotate-180 active:scale-90"
             >
               <ArrowLeftRight size={11} />
             </button>

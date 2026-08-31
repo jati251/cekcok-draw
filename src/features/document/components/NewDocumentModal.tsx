@@ -207,7 +207,7 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex space-x-2 pt-4 border-t border-ps-border/50">
               <button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-ps-border rounded-lg text-xs font-semibold text-zinc-300 hover:bg-ps-hover hover:text-white transition-colors"
+                className="flex-1 px-4 py-2 border border-ps-border rounded-lg text-xs font-semibold text-zinc-300 hover:bg-ps-hover hover:text-zinc-100 transition-colors"
               >
                 Cancel
               </button>

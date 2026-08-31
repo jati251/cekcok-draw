@@ -48,6 +48,17 @@ export const RulersOverlay: React.FC = () => {
     const docLeftInTopRuler = docLeftInContainer - rulerOffset;
     const docTopInLeftRuler = docTopInContainer - rulerOffset;
 
+    const isDark =
+      typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true;
+
+    // Adaptive Theme Colors for 2D Canvas Rulers
+    const rulerBg = isDark ? '#141519' : '#eef0f3';
+    const rulerDocBg = isDark ? '#1c1d22' : '#ffffff';
+    const rulerBorder = isDark ? '#282b35' : '#d1d5db';
+    const rulerMajorTick = isDark ? '#4b5563' : '#6b7280';
+    const rulerMinorTick = isDark ? '#374151' : '#9ca3af';
+    const rulerText = isDark ? '#9ca3af' : '#374151';
+
     // 1. Draw Top Horizontal Ruler
     const topWidth = Math.max(1, containerWidth - rulerOffset);
     const topHeight = rulerOffset;
@@ -65,19 +76,19 @@ export const RulersOverlay: React.FC = () => {
       topCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // Base background (outside canvas)
-      topCtx.fillStyle = '#141519';
+      topCtx.fillStyle = rulerBg;
       topCtx.fillRect(0, 0, topWidth, topHeight);
 
       // Canvas boundary highlight (inside canvas)
       const docStartX = Math.max(0, docLeftInTopRuler);
       const docEndX = Math.min(topWidth, docLeftInTopRuler + doc.width * zoom);
       if (docEndX > docStartX) {
-        topCtx.fillStyle = '#1c1d22';
+        topCtx.fillStyle = rulerDocBg;
         topCtx.fillRect(docStartX, 0, docEndX - docStartX, topHeight);
       }
 
       // Bottom border line
-      topCtx.strokeStyle = '#282b35';
+      topCtx.strokeStyle = rulerBorder;
       topCtx.lineWidth = 1;
       topCtx.beginPath();
       topCtx.moveTo(0, topHeight - 0.5);
@@ -98,7 +109,7 @@ export const RulersOverlay: React.FC = () => {
         if (screenX < -20 || screenX > topWidth + 20) continue;
 
         // Major tick
-        topCtx.strokeStyle = '#4b5563';
+        topCtx.strokeStyle = rulerMajorTick;
         topCtx.lineWidth = 1;
         topCtx.beginPath();
         topCtx.moveTo(Math.round(screenX) + 0.5, topHeight - 9);
@@ -107,7 +118,7 @@ export const RulersOverlay: React.FC = () => {
 
         // Minor ticks
         const subStep = step / 5;
-        topCtx.strokeStyle = '#374151';
+        topCtx.strokeStyle = rulerMinorTick;
         for (let s = 1; s < 5; s++) {
           const subScreenX = screenX + subStep * s * zoom;
           if (subScreenX >= 0 && subScreenX <= topWidth) {
@@ -119,7 +130,7 @@ export const RulersOverlay: React.FC = () => {
         }
 
         // Label
-        topCtx.fillStyle = '#9ca3af';
+        topCtx.fillStyle = rulerText;
         topCtx.fillText(`${x}`, Math.round(screenX) + 3, 6);
       }
 
@@ -152,19 +163,19 @@ export const RulersOverlay: React.FC = () => {
       leftCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // Base background (outside canvas)
-      leftCtx.fillStyle = '#141519';
+      leftCtx.fillStyle = rulerBg;
       leftCtx.fillRect(0, 0, leftWidth, leftHeight);
 
       // Canvas boundary highlight (inside canvas)
       const docStartY = Math.max(0, docTopInLeftRuler);
       const docEndY = Math.min(leftHeight, docTopInLeftRuler + doc.height * zoom);
       if (docEndY > docStartY) {
-        leftCtx.fillStyle = '#1c1d22';
+        leftCtx.fillStyle = rulerDocBg;
         leftCtx.fillRect(0, docStartY, leftWidth, docEndY - docStartY);
       }
 
       // Right border line
-      leftCtx.strokeStyle = '#282b35';
+      leftCtx.strokeStyle = rulerBorder;
       leftCtx.lineWidth = 1;
       leftCtx.beginPath();
       leftCtx.moveTo(leftWidth - 0.5, 0);
@@ -185,7 +196,7 @@ export const RulersOverlay: React.FC = () => {
         if (screenY < -20 || screenY > leftHeight + 20) continue;
 
         // Major tick
-        leftCtx.strokeStyle = '#4b5563';
+        leftCtx.strokeStyle = rulerMajorTick;
         leftCtx.lineWidth = 1;
         leftCtx.beginPath();
         leftCtx.moveTo(leftWidth - 9, Math.round(screenY) + 0.5);
@@ -194,7 +205,7 @@ export const RulersOverlay: React.FC = () => {
 
         // Minor ticks
         const subStep = step / 5;
-        leftCtx.strokeStyle = '#374151';
+        leftCtx.strokeStyle = rulerMinorTick;
         for (let s = 1; s < 5; s++) {
           const subScreenY = screenY + subStep * s * zoom;
           if (subScreenY >= 0 && subScreenY <= leftHeight) {
@@ -206,7 +217,7 @@ export const RulersOverlay: React.FC = () => {
         }
 
         // Label
-        leftCtx.fillStyle = '#9ca3af';
+        leftCtx.fillStyle = rulerText;
         leftCtx.save();
         leftCtx.translate(12, Math.round(screenY) - 2);
         leftCtx.rotate(-Math.PI / 2);
@@ -228,9 +239,10 @@ export const RulersOverlay: React.FC = () => {
   }, [showRulers, doc, zoom, pan, cursorPos]);
 
   // Redraw on state changes
+  const theme = useEditorStore((s) => s.theme);
   useEffect(() => {
     drawRulers();
-  }, [drawRulers, isSidebarCollapsed]);
+  }, [drawRulers, isSidebarCollapsed, theme]);
 
   // ResizeObserver on container ensures smooth sync when sidebar toggles or window resizes
   useEffect(() => {

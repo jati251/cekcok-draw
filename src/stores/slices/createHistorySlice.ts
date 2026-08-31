@@ -6,6 +6,7 @@ export const createHistorySlice: StoreSlice<HistorySlice> = (set, get) => ({
     // Legacy UI call sites remain during the command migration. Raster history
     // itself is maintained by the Rust engine, not by DOM canvas snapshots.
     void description;
+    set({ isDirty: true });
   },
   triggerUndo: async () => {
     try {
@@ -17,6 +18,7 @@ export const createHistorySlice: StoreSlice<HistorySlice> = (set, get) => ({
         canvasRevision: get().canvasRevision + 1,
         rustSyncRevision: get().rustSyncRevision + 1,
         pendingLayerPixels: result.layerPixels,
+        isDirty: true,
       });
     } catch (err) {
       set({ error: String(err) });
@@ -32,6 +34,7 @@ export const createHistorySlice: StoreSlice<HistorySlice> = (set, get) => ({
         canvasRevision: get().canvasRevision + 1,
         rustSyncRevision: get().rustSyncRevision + 1,
         pendingLayerPixels: result.layerPixels,
+        isDirty: true,
       });
     } catch (err) {
       set({ error: String(err) });
@@ -45,7 +48,7 @@ export const createHistorySlice: StoreSlice<HistorySlice> = (set, get) => ({
   refreshHistory: async () => {
     try {
       const history = await bridge.getHistory();
-      set({ history, historyIndex: history.length - 1 });
+      set({ history, historyIndex: history.length - 1, isDirty: true });
     } catch (err) {
       set({ error: String(err) });
     }

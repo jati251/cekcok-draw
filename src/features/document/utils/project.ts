@@ -39,6 +39,7 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       await writeFile(filePath, new Uint8Array(buffer));
 
       store.setCurrentFilePath(filePath);
+      useDocumentStore.setState({ isDirty: false });
       addRecentProject(filePath, doc.title || 'Untitled Project');
 
       toast.dismiss(toastId);
@@ -59,6 +60,7 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       a.download = `${doc.title || 'Untitled'}.cdraw`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      useDocumentStore.setState({ isDirty: false });
       toast.dismiss(toastId);
       toast.success('Project Saved', 'Downloaded .cdraw file');
     } catch (e) {
@@ -101,6 +103,7 @@ export const openProjectFile = async (): Promise<void> => {
             rustSyncRevision: useDocumentStore.getState().rustSyncRevision + 1,
             pendingLayerPixels: result.layerPixels,
             currentFilePath: null,
+            isDirty: false,
           });
           toast.dismiss(toastId);
           toast.success('Project Opened', `Loaded ${file.name}`);
@@ -129,6 +132,7 @@ export const openProjectFromPath = async (filePath: string): Promise<void> => {
       rustSyncRevision: useDocumentStore.getState().rustSyncRevision + 1,
       pendingLayerPixels: result.layerPixels,
       currentFilePath: filePath,
+      isDirty: false,
     });
 
     addRecentProject(filePath, result.doc.title || 'Untitled Project');

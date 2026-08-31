@@ -31,7 +31,7 @@ export const HelpDialog: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-white p-1 rounded transition-colors"
+            className="text-zinc-400 hover:text-zinc-100 p-1 rounded transition-colors"
           >
             <X size={20} />
           </button>
@@ -40,7 +40,7 @@ export const HelpDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-8 text-sm text-zinc-300">
           <section className="space-y-3">
-            <h3 className="text-white font-semibold flex items-center text-base">
+            <h3 className="text-zinc-100 font-semibold flex items-center text-base">
               <Zap size={16} className="text-yellow-400 mr-2" />
               Core Architecture
             </h3>
@@ -57,7 +57,7 @@ export const HelpDialog: React.FC<Props> = ({ isOpen, onClose }) => {
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-white font-semibold flex items-center text-base">
+            <h3 className="text-zinc-100 font-semibold flex items-center text-base">
               <Layers size={16} className="text-blue-400 mr-2" />
               Tools & Features
             </h3>
@@ -78,7 +78,7 @@ export const HelpDialog: React.FC<Props> = ({ isOpen, onClose }) => {
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-white font-semibold flex items-center text-base">
+            <h3 className="text-zinc-100 font-semibold flex items-center text-base">
               <Keyboard size={16} className="text-emerald-400 mr-2" />
               Keyboard Shortcuts
             </h3>

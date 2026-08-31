@@ -51,6 +51,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     secondaryColor,
     pan,
     showGrid,
+    theme,
     setTabletTelemetry,
   } = useEditorStore();
 
@@ -286,7 +287,13 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
           height: `${doc.height}px`,
           transform: `translate3d(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px), 0) scale(${zoom})`,
           transformOrigin: 'center center',
-          boxShadow: '0 25px 60px -15px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.08)',
+          boxShadow:
+            theme === 'light' ||
+            (theme === 'system' &&
+              typeof window !== 'undefined' &&
+              !window.matchMedia('(prefers-color-scheme: dark)').matches)
+              ? '0 12px 36px -6px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)'
+              : '0 25px 60px -15px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.08)',
           willChange: isPanning || zoom !== 1 ? 'transform' : 'auto',
         }}
         className="transition-none backface-hidden"

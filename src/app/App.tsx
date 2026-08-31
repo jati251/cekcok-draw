@@ -13,6 +13,7 @@ import { HomeScreen } from '@/features/system/components/HomeScreen';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { HelpDialog } from '@/features/system/components/HelpDialog';
+import { PreferencesModal } from '@/features/system/components/PreferencesModal';
 import { useAppShortcuts } from '@/features/system/hooks/useAppShortcuts';
 import { checkForAppUpdate } from '@/services/updaterService';
 export const App: React.FC = () => {
@@ -22,6 +23,9 @@ export const App: React.FC = () => {
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const doc = useDocumentStore((state) => state.doc);
+  const theme = useEditorStore((state) => state.theme);
+  const isPreferencesOpen = useEditorStore((state) => state.isPreferencesOpen);
+  const setIsPreferencesOpen = useEditorStore((state) => state.setIsPreferencesOpen);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isOpeningFileRef = useRef(false);
@@ -103,6 +107,115 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  // Intercept window close to check for unsaved changes (Save / Don't Save / Cancel)
+  useEffect(() => {
+    let isMounted = true;
+    let unlistenFn: (() => void) | null = null;
+    let isHandlingClose = false;
+
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      import('@tauri-apps/api/window')
+        .then(async ({ getCurrentWindow }) => {
+          if (!isMounted) return;
+          const appWindow = getCurrentWindow();
+          const unlisten = await appWindow.onCloseRequested(async (event) => {
+            const isDirty = useDocumentStore.getState().isDirty;
+            if (!isDirty) return;
+
+            event.preventDefault(); // Stop window from closing immediately
+
+            if (isHandlingClose) return; // Prevent duplicate popup loops
+            isHandlingClose = true;
+
+            try {
+              const { message } = await import('@tauri-apps/plugin-dialog');
+              const { saveProjectFile } = await import('@/features/document/utils/project');
+              const docState = useDocumentStore.getState().doc;
+              const projectName = docState?.title || 'Untitled Project';
+
+              const choice = await message(
+                `Do you want to save the changes to "${projectName}" before closing?`,
+                {
+                  title: 'Unsaved Changes',
+                  kind: 'warning',
+                  buttons: {
+                    yes: 'Save',
+                    no: "Don't Save",
+                    cancel: 'Cancel',
+                  },
+                }
+              );
+
+              const terminateApp = async () => {
+                try {
+                  const { exit } = await import('@tauri-apps/plugin-process');
+                  await exit(0);
+                } catch {
+                  try {
+                    await appWindow.destroy();
+                  } catch {
+                    await appWindow.close();
+                  }
+                }
+              };
+
+              if (choice === 'Save' || choice === 'yes' || choice === 'Yes') {
+                await saveProjectFile(false);
+                // Only close window if user successfully saved (did not cancel file picker)
+                if (!useDocumentStore.getState().isDirty) {
+                  await terminateApp();
+                }
+              } else if (choice === "Don't Save" || choice === 'no' || choice === 'No') {
+                useDocumentStore.setState({ isDirty: false });
+                await terminateApp();
+              }
+              // If 'Cancel', simply do nothing and stay in app!
+            } catch (err) {
+              console.error('Close confirmation error:', err);
+            } finally {
+              setTimeout(() => {
+                isHandlingClose = false;
+              }, 400);
+            }
+          });
+
+          if (!isMounted) {
+            unlisten();
+          } else {
+            unlistenFn = unlisten;
+          }
+        })
+        .catch(console.error);
+    }
+
+    return () => {
+      isMounted = false;
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
+
+  // Theme observer
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const applyTheme = () => {
+      const isDark = theme === 'dark' || (theme === 'system' && mediaQuery.matches);
+      if (isDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+
+    if (theme === 'system') {
+      mediaQuery.addEventListener('change', applyTheme);
+      return () => mediaQuery.removeEventListener('change', applyTheme);
+    }
+  }, [theme]);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-ps-bg text-ps-text select-none">
       {/* 1. Top Menu Navigation (Native OS Handled) */}
@@ -151,6 +264,7 @@ export const App: React.FC = () => {
       <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
       <UpdateModal isOpen={isUpdateOpen} onClose={() => setIsUpdateOpen(false)} />
       <HelpDialog isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <PreferencesModal isOpen={isPreferencesOpen} onClose={() => setIsPreferencesOpen(false)} />
       <ToastContainer />
     </div>
   );

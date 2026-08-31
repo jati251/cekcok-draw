@@ -3,6 +3,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as bridge from '@/services/tauriBridge';
 import { saveProjectFile } from '@/features/document/utils/project';
+import { ToolType } from '@/types';
 
 interface KeyboardShortcutActions {
   onOpenNewDoc: () => void;
@@ -11,6 +12,7 @@ interface KeyboardShortcutActions {
   onOpenExport: () => void;
   onOpenHueSaturation: () => void;
   onOpenHelpModal?: () => void;
+  onOpenPreferences?: () => void;
   handleInvert: () => void;
   handleDesaturate: () => void;
 }
@@ -22,6 +24,7 @@ export const useKeyboardShortcuts = ({
   onOpenExport,
   onOpenHueSaturation,
   onOpenHelpModal,
+  onOpenPreferences,
   handleInvert,
   handleDesaturate,
 }: KeyboardShortcutActions) => {
@@ -42,7 +45,11 @@ export const useKeyboardShortcuts = ({
     swapColors,
     setZoom,
     resetView,
+    setIsPreferencesOpen,
   } = useEditorStore();
+
+  const previousToolBeforeSpaceRef = useRef<ToolType | null>(null);
+  const isSpacePressedRef = useRef(false);
 
   const actionsRef = useRef<KeyboardShortcutActions>({
     onOpenNewDoc,
@@ -51,6 +58,7 @@ export const useKeyboardShortcuts = ({
     onOpenExport,
     onOpenHueSaturation,
     onOpenHelpModal,
+    onOpenPreferences,
     handleInvert,
     handleDesaturate,
   });
@@ -63,6 +71,7 @@ export const useKeyboardShortcuts = ({
       onOpenExport,
       onOpenHueSaturation,
       onOpenHelpModal,
+      onOpenPreferences,
       handleInvert,
       handleDesaturate,
     };
@@ -71,6 +80,23 @@ export const useKeyboardShortcuts = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+      if (useEditorStore.getState().activeTextNode) {
+        return;
+      }
+
+      // Spacebar hold to pan (Photoshop / Figma behavior)
+      if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (!isSpacePressedRef.current) {
+          isSpacePressedRef.current = true;
+          const currentTool = useEditorStore.getState().activeTool;
+          if (currentTool !== 'hand') {
+            previousToolBeforeSpaceRef.current = currentTool;
+            setActiveTool('hand');
+          }
+        }
         return;
       }
 
@@ -88,6 +114,13 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           if (e.shiftKey) addNewLayer();
           else actionsRef.current.onOpenNewDoc();
+        } else if (e.key === ',') {
+          e.preventDefault();
+          if (actionsRef.current.onOpenPreferences) {
+            actionsRef.current.onOpenPreferences();
+          } else {
+            setIsPreferencesOpen(true);
+          }
         } else if (e.key.toLowerCase() === 'o') {
           e.preventDefault();
           actionsRef.current.onOpenOpenFile?.();
@@ -273,8 +306,36 @@ export const useKeyboardShortcuts = ({
       else if (e.key.toLowerCase() === 'z') setActiveTool('zoom');
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        if (isSpacePressedRef.current) {
+          isSpacePressedRef.current = false;
+          if (previousToolBeforeSpaceRef.current) {
+            setActiveTool(previousToolBeforeSpaceRef.current);
+            previousToolBeforeSpaceRef.current = null;
+          }
+        }
+      }
+    };
+
+    const handleBlur = () => {
+      if (isSpacePressedRef.current) {
+        isSpacePressedRef.current = false;
+        if (previousToolBeforeSpaceRef.current) {
+          setActiveTool(previousToolBeforeSpaceRef.current);
+          previousToolBeforeSpaceRef.current = null;
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
   }, [
     triggerUndo,
     triggerRedo,
@@ -290,6 +351,7 @@ export const useKeyboardShortcuts = ({
     swapColors,
     setZoom,
     resetView,
+    setIsPreferencesOpen,
     decreaseBrushSize,
     increaseBrushSize,
     setBrushSettings,
