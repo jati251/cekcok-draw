@@ -15,6 +15,7 @@ export const useDocumentStore = create<DocumentState>((set, get, api) => ({
   rustSyncRevision: 0,
   pendingLayerPixels: null,
   selectedLayerIds: [],
+  currentFilePath: null,
 
   ...createLayerSlice(set, get, api),
   ...createCanvasSlice(set, get, api),

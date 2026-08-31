@@ -1,5 +1,5 @@
 use super::Document;
-use crate::core::layer::{BlendMode, Layer};
+use crate::core::layer::{BlendMode, Layer, LayerType};
 use crate::core::tile::TILE_SIZE;
 use uuid::Uuid;
 
@@ -10,11 +10,31 @@ impl Document {
     }
 
     pub fn add_layer(&mut self, name: impl Into<String>) -> String {
-        let layer = Layer::new(name);
+        self.add_layer_with_type(name, None)
+    }
+
+    pub fn add_layer_with_type(
+        &mut self,
+        name: impl Into<String>,
+        layer_type: Option<LayerType>,
+    ) -> String {
+        let mut layer = Layer::new(name);
+        if let Some(lt) = layer_type {
+            layer.layer_type = lt;
+        }
         let id = layer.id.clone();
         self.layers.push(layer);
         self.active_layer_id = Some(id.clone());
         id
+    }
+
+    pub fn set_layer_type(&mut self, id: &str, layer_type: LayerType) -> bool {
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == id) {
+            layer.layer_type = layer_type;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn duplicate_layer(&mut self, id: &str) -> Option<String> {
@@ -27,6 +47,7 @@ impl Document {
         cloned_layer.opacity = original.opacity;
         cloned_layer.visible = original.visible;
         cloned_layer.locked = original.locked;
+        cloned_layer.layer_type = original.layer_type;
         cloned_layer.grid = original.grid.clone();
 
         self.layers.insert(pos + 1, cloned_layer);
@@ -162,29 +183,7 @@ impl Document {
             return false;
         };
 
-        let mut pixels = Vec::new();
-        for coord in layer.grid.get_allocated_coords() {
-            if let Some(tile) = layer.grid.get_tile(&coord) {
-                let origin_x = coord.x * TILE_SIZE as i32;
-                let origin_y = coord.y * TILE_SIZE as i32;
-                for y in 0..TILE_SIZE {
-                    for x in 0..TILE_SIZE {
-                        let pixel = tile.get_pixel(x, y);
-                        if pixel[3] > 0 {
-                            let target_x = origin_x + x as i32 + dx;
-                            let target_y = origin_y + y as i32 + dy;
-                            if (0..width).contains(&target_x) && (0..height).contains(&target_y) {
-                                pixels.push((target_x, target_y, pixel));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        layer.grid.clear();
-        for (x, y, pixel) in pixels {
-            layer.grid.set_pixel_cow(x, y, pixel);
-        }
+        layer.grid.translate(dx, dy, width, height);
         true
     }
 

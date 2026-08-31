@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { DocumentInfo, BlendMode } from '@/types';
+import { DocumentInfo, BlendMode, LayerType } from '@/types';
 import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
 
 export async function rotateLayer(layerId: string, degrees: number): Promise<DocumentInfo> {
@@ -32,9 +32,9 @@ export async function transformLayer(
   return { ...mockDoc };
 }
 
-export async function addLayer(name: string): Promise<DocumentInfo> {
+export async function addLayer(name: string, layerType?: LayerType): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('add_layer', { name });
+    return await invoke<DocumentInfo>('add_layer', { name, layerType: layerType || null });
   }
   const newId = `layer-${Date.now()}`;
   mockDoc.layers.push({
@@ -44,6 +44,7 @@ export async function addLayer(name: string): Promise<DocumentInfo> {
     opacity: 1,
     visible: true,
     locked: false,
+    layer_type: layerType || 'raster',
   });
   mockDoc.active_layer_id = newId;
   mockHistory.push({
@@ -51,6 +52,17 @@ export async function addLayer(name: string): Promise<DocumentInfo> {
     description: `Add Layer '${name}'`,
     timestamp: Date.now(),
   });
+  return { ...mockDoc };
+}
+
+export async function rasterizeLayer(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('rasterize_layer', { layerId });
+  }
+  const target = mockDoc.layers.find((l) => l.id === layerId);
+  if (target) {
+    target.layer_type = 'raster';
+  }
   return { ...mockDoc };
 }
 

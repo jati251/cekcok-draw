@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
-import { useDocumentStore } from '@/stores/documentStore';
+import { pasteClipboardImage } from '@/utils/clipboard';
 
 export const useClipboardLayer = () => {
-  const { doc, importImageAsLayer, openImageAsDocument } = useDocumentStore();
-
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -12,11 +10,8 @@ export const useClipboardLayer = () => {
         if (items[i].type.startsWith('image/')) {
           const blob = items[i].getAsFile();
           if (blob) {
-            if (doc) {
-              await importImageAsLayer(blob, 'Pasted Layer');
-            } else {
-              await openImageAsDocument(blob, 'Pasted Document');
-            }
+            await pasteClipboardImage(blob);
+            break; // Stop after first image format to avoid duplicates (e.g. image/png + image/tiff)
           }
         }
       }
@@ -24,5 +19,5 @@ export const useClipboardLayer = () => {
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [doc, importImageAsLayer, openImageAsDocument]);
+  }, []);
 };

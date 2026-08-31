@@ -13,23 +13,21 @@ interface Props {
 
 export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
   const initializedLayersRef = useRef<Set<string>>(new Set());
+  const lastDocIdRef = useRef<string>(doc.id);
   const lastDimensionsRef = useRef({ width: doc.width, height: doc.height });
   const transformState = useEditorStore((state) => state.transformState);
   const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
 
   // Stable signature of everything that can change actual layer pixel data:
-  // canvas dimensions, the set of layer ids (add/remove/merge), clipping flags,
-  // and the Rust sync revision (undo/redo/merge/delete). Style-only changes —
-  // opacity, visibility, blend mode, rename, reorder — do NOT invalidate it, so
-  // those no longer trigger a full re-fetch of every layer via IPC, which was
-  // the main source of lag when working with many layers.
+  // document ID, canvas dimensions, the set of layer ids (add/remove/merge), clipping flags,
+  // and the Rust sync revision (undo/redo/merge/delete).
   const pixelSignature = useMemo(
     () =>
-      `${doc.width}x${doc.height}|${doc.layers
+      `${doc.id}|${doc.width}x${doc.height}|${doc.layers
         .map((l) => `${l.id}:${l.is_clipped ? '1' : '0'}`)
         .sort()
         .join(',')}|${rustSyncRevision}`,
-    [doc.height, doc.layers, doc.width, rustSyncRevision]
+    [doc.id, doc.height, doc.layers, doc.width, rustSyncRevision]
   );
 
   // Sync layer canvases from Rust engine state.
@@ -42,9 +40,11 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
     if (!d) return;
 
     if (
+      lastDocIdRef.current !== d.id ||
       lastDimensionsRef.current.width !== d.width ||
       lastDimensionsRef.current.height !== d.height
     ) {
+      lastDocIdRef.current = d.id;
       lastDimensionsRef.current = { width: d.width, height: d.height };
       initializedLayersRef.current.clear();
     }

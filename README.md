@@ -59,6 +59,7 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 
 - **Adaptive Dynamic Grid**: 1-2-5 decade progression (`⌘'`) that automatically scales grid spacing across zoom levels (50px/10px at 100%, 200px/500px on zoom out, 1px sub-pixel grid on $\ge 400\%$ zoom in).
 - **Precision Rulers (`⌘R`)**: Dual-axis dynamic pixel rulers with live cursor tracking hair-lines.
+- **Export**: Exports lossless PNG, JPEG, SVG, WebP, PDF, and **native `.cdraw` project files** with layers intact.
 - **Color Adjustment Studio (`⌘U`)**: Real-time HSL color grading dialog (Hue, Saturation, Lightness), Brightness/Contrast, Gaussian Blur, Invert (`⌘I`), Desaturate (`⌘⇧U`), and Canvas Flipping (Horizontal / Vertical).
 - **Advanced Color Wheel**: Professional HSV Color Picker with an outer Hue ring and inner Saturation/Value square, fully CSS-gradient hardware accelerated.
 

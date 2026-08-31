@@ -291,8 +291,15 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
         }}
         className="transition-none backface-hidden"
       >
-        {/* Transparency checkerboard behind the layer stack (Photoshop-style) */}
-        <div className="absolute inset-0 viewport-checkerboard" aria-hidden="true" />
+        {/* Transparency checkerboard behind the layer stack (Photoshop-style screen-space constant size) */}
+        <div
+          className="absolute inset-0 viewport-checkerboard"
+          aria-hidden="true"
+          style={{
+            backgroundSize: `${16 / zoom}px ${16 / zoom}px`,
+            backgroundPosition: `0 0, 0 ${8 / zoom}px, ${8 / zoom}px -${8 / zoom}px, -${8 / zoom}px 0px`,
+          }}
+        />
         <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} viewport={nativeViewport} />
 
         <canvas
@@ -338,7 +345,7 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
 
         <PixelGrid showGrid={showGrid} zoom={zoom} />
         <MarchingAntsSelection />
-        <GradientVector gradientDrag={gradientDrag} />
+        <GradientVector gradientDrag={gradientDrag} zoom={zoom} />
         <ShapeOverlay
           shapeDrag={shapeDrag}
           shapeSettings={shapeSettings}

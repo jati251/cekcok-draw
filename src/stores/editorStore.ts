@@ -9,6 +9,17 @@ import {
 } from '@/types';
 import { hexToRgba } from '@/utils/color';
 
+export interface TextLayerData {
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: 'normal' | 'bold' | '600' | '800';
+  color: string;
+  align?: 'left' | 'center' | 'right';
+}
+
 interface EditorState {
   activeTool: ToolType;
   brushSettings: BrushSettings;
@@ -29,7 +40,8 @@ interface EditorState {
   activeAdjustmentTab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null;
   isSidebarCollapsed: boolean;
   selection: SelectionArea | null;
-  activeTextNode: { x: number; y: number; text: string } | null;
+  activeTextNode: { x: number; y: number; text: string; layerId?: string } | null;
+  textLayersData: Record<string, TextLayerData>;
   tabletTelemetry: TabletTelemetry;
   transformState: import('../types').TransformState | null;
   cropBounds: { x: number; y: number; width: number; height: number } | null;
@@ -60,7 +72,11 @@ interface EditorState {
     tab: 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick' | null
   ) => void;
   setSelection: (selection: SelectionArea | null) => void;
-  setActiveTextNode: (node: { x: number; y: number; text: string } | null) => void;
+  setActiveTextNode: (
+    node: { x: number; y: number; text: string; layerId?: string } | null
+  ) => void;
+  setTextLayerData: (layerId: string, data: TextLayerData) => void;
+  removeTextLayerData: (layerId: string) => void;
   setTabletTelemetry: (telemetry: Partial<TabletTelemetry>) => void;
   setTransformState: (transform: import('../types').TransformState | null) => void;
   setCropBounds: (bounds: { x: number; y: number; width: number; height: number } | null) => void;
@@ -209,6 +225,17 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
   setSelection: (selection) => set({ selection }),
   setActiveTextNode: (activeTextNode) => set({ activeTextNode }),
+  textLayersData: {},
+  setTextLayerData: (layerId, data) =>
+    set((state) => ({
+      textLayersData: { ...state.textLayersData, [layerId]: data },
+    })),
+  removeTextLayerData: (layerId) =>
+    set((state) => {
+      const next = { ...state.textLayersData };
+      delete next[layerId];
+      return { textLayersData: next };
+    }),
   setTabletTelemetry: (telemetry) =>
     set((state) => ({
       tabletTelemetry: { ...state.tabletTelemetry, ...telemetry },

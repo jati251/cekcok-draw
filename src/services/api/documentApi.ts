@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { DocumentInfo } from '@/types';
-import { isTauriEnvironment, mockDoc } from './coreApi';
+import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
 
 export async function createDocument(
   title: string,
@@ -121,4 +121,78 @@ export async function readFileBinary(path: string): Promise<Uint8Array> {
     return new Uint8Array(raw);
   }
   throw new Error('readFileBinary is only available in Tauri native mode');
+}
+
+export async function loadProject(
+  content: string
+): Promise<import('./historyApi').UndoRedoWithLayersResult> {
+  if (isTauriEnvironment()) {
+    const { decodePackedLayerResponse } = await import('./historyApi');
+    const raw = await invoke<ArrayBuffer>('load_project', { content });
+    return decodePackedLayerResponse(raw);
+  }
+
+  const parsed = JSON.parse(content);
+  const doc = parsed.document;
+  mockDoc.id = doc.id || `doc-${Date.now()}`;
+  mockDoc.title = doc.title || 'Untitled';
+  mockDoc.width = doc.width;
+  mockDoc.height = doc.height;
+  mockDoc.dpi = doc.dpi || 72;
+  interface ParsedProjectLayer {
+    id?: string;
+    name: string;
+    blend_mode?: import('@/types').BlendMode;
+    opacity?: number;
+    visible?: boolean;
+    locked?: boolean;
+    is_clipped?: boolean;
+  }
+
+  mockDoc.layers = (doc.layers as ParsedProjectLayer[]).map((l, idx) => ({
+    id: l.id || `layer-${idx}`,
+    name: l.name,
+    blend_mode: l.blend_mode || 'normal',
+    opacity: typeof l.opacity === 'number' ? l.opacity : 1,
+    visible: l.visible !== false,
+    locked: !!l.locked,
+    is_clipped: !!l.is_clipped,
+  }));
+  mockDoc.active_layer_id = doc.active_layer_id || mockDoc.layers[mockDoc.layers.length - 1]?.id;
+
+  return {
+    doc: { ...mockDoc },
+    history: [{ id: `h-${Date.now()}`, description: 'Open Project', timestamp: Date.now() }],
+    layerPixels: new Map(),
+  };
+}
+
+export async function importImageFile(
+  filePath: string
+): Promise<import('./historyApi').UndoRedoWithLayersResult> {
+  if (isTauriEnvironment()) {
+    const { decodePackedLayerResponse } = await import('./historyApi');
+    const raw = await invoke<ArrayBuffer>('import_image_file', { filePath });
+    return decodePackedLayerResponse(raw);
+  }
+  return {
+    doc: { ...mockDoc },
+    history: [...mockHistory],
+    layerPixels: new Map(),
+  };
+}
+
+export async function openImageFile(
+  filePath: string
+): Promise<import('./historyApi').UndoRedoWithLayersResult> {
+  if (isTauriEnvironment()) {
+    const { decodePackedLayerResponse } = await import('./historyApi');
+    const raw = await invoke<ArrayBuffer>('open_image_file', { filePath });
+    return decodePackedLayerResponse(raw);
+  }
+  return {
+    doc: { ...mockDoc },
+    history: [...mockHistory],
+    layerPixels: new Map(),
+  };
 }

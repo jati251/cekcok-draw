@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   FolderOpen,
@@ -9,9 +9,13 @@ import {
   Layers,
   Zap,
   HelpCircle,
+  FileBox,
+  Clock,
 } from 'lucide-react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DOCUMENT_PRESETS } from '@/config/presets';
+import { getRecentProjects, RecentProject } from '@/features/document/utils/recentProjects';
+import { openProjectFromPath } from '@/features/document/utils/project';
 
 interface Props {
   onNewDoc: () => void;
@@ -29,9 +33,23 @@ const PRESET_ICONS: Record<string, React.ReactNode> = {
 export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp }) => {
   const { initDocument } = useDocumentStore();
 
+  // Use lazy initialization for state to avoid useEffect sync setState warning
+  const [recentProjects] = useState<RecentProject[]>(() => getRecentProjects());
+
+  // Get static now timestamp for relative time calculation to prevent impure render warning
+  const [now] = useState(() => Date.now());
+
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl+';
+
+  const formatRelativeTime = (timestamp: number, currentTime: number) => {
+    const diffInSeconds = Math.floor((currentTime - timestamp) / 1000);
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  };
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col justify-between bg-[#0e0f12] text-zinc-300 select-none overflow-y-auto min-h-[480px]">
@@ -127,7 +145,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
                   Open Project or Image...
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
-                  Supports .png, .jpg, and .cekcok files
+                  Supports .png, .jpg, and .cdraw files
                 </div>
               </div>
             </div>
@@ -136,6 +154,44 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
             </kbd>
           </button>
         </div>
+
+        {recentProjects.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[11px] font-semibold text-zinc-400 tracking-wider uppercase flex items-center space-x-1.5">
+                <Clock size={12} />
+                <span>Recent Projects</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {recentProjects.slice(0, 4).map((project) => (
+                <button
+                  key={project.path}
+                  onClick={() => openProjectFromPath(project.path)}
+                  className="flex items-center justify-between p-3 rounded-lg bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800/80 hover:border-zinc-700 transition-all text-left group active:scale-[0.98]"
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-blue-400 transition-colors flex-shrink-0">
+                      <FileBox size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
+                        {project.title}
+                      </div>
+                      <div
+                        className="text-[10px] text-zinc-500 mt-0.5 truncate max-w-[200px]"
+                        title={project.path}
+                      >
+                        {project.path.split('/').pop()} •{' '}
+                        {formatRelativeTime(project.lastOpenedAt, now)}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Studio Standard Presets Section */}
         <div>

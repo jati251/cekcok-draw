@@ -54,8 +54,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             create_document,
+            load_project,
+            import_image_file,
+            open_image_file,
             get_document_info,
             add_layer,
+            rasterize_layer,
             duplicate_layer,
             remove_layer,
             clear_layer,

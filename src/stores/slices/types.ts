@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { DocumentInfo, HistoryAction, BlendMode } from '@/types';
+import { DocumentInfo, HistoryAction, BlendMode, LayerType } from '@/types';
 
 export interface SharedState {
   doc: DocumentInfo | null;
@@ -11,6 +11,7 @@ export interface SharedState {
   rustSyncRevision: number;
   pendingLayerPixels: Map<string, Uint8ClampedArray> | null;
   selectedLayerIds: string[];
+  currentFilePath: string | null;
 }
 
 export interface LayerSlice {
@@ -19,7 +20,8 @@ export interface LayerSlice {
   selectLayerRange: (toId: string) => void;
   deleteSelectedLayers: () => Promise<void>;
   mergeSelectedLayers: () => Promise<void>;
-  addNewLayer: (name?: string) => Promise<void>;
+  addNewLayer: (name?: string, layerType?: LayerType) => Promise<void>;
+  rasterizeLayer: (id: string) => Promise<void>;
   duplicateLayer: (id?: string) => Promise<void>;
   deleteLayer: (id: string) => Promise<void>;
   selectLayer: (id: string) => Promise<void>;
@@ -73,6 +75,7 @@ export interface FileSlice {
   importImagePathAsLayer: (filePath: string) => Promise<void>;
   openImageAsDocument: (fileOrBlob: File | Blob, customTitle?: string) => Promise<void>;
   openImagePathAsDocument: (filePath: string) => Promise<void>;
+  setCurrentFilePath: (path: string | null) => void;
 }
 
 export type DocumentState = SharedState & LayerSlice & CanvasSlice & HistorySlice & FileSlice;

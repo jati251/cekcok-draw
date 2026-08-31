@@ -166,8 +166,9 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
           top: `${cropBounds.y}px`,
           width: `${cropBounds.width}px`,
           height: `${cropBounds.height}px`,
+          borderWidth: `${Math.max(1, 1.5 / zoom)}px`,
         }}
-        className="border-2 border-white pointer-events-auto"
+        className="border-white border-solid pointer-events-auto"
       >
         {/* Inside Drag */}
         <div
@@ -179,50 +180,87 @@ export const CropOverlay: React.FC<Props> = ({ zoom }) => {
           }}
         >
           {/* Rule-of-Thirds Lines */}
-          <div className="absolute left-1/3 top-0 bottom-0 w-[1px] bg-white/30 pointer-events-none" />
-          <div className="absolute left-2/3 top-0 bottom-0 w-[1px] bg-white/30 pointer-events-none" />
-          <div className="absolute top-1/3 left-0 right-0 h-[1px] bg-white/30 pointer-events-none" />
-          <div className="absolute top-2/3 left-0 right-0 h-[1px] bg-white/30 pointer-events-none" />
+          <div
+            style={{ width: `${Math.max(1, 1 / zoom)}px` }}
+            className="absolute left-1/3 top-0 bottom-0 bg-white/40 pointer-events-none"
+          />
+          <div
+            style={{ width: `${Math.max(1, 1 / zoom)}px` }}
+            className="absolute left-2/3 top-0 bottom-0 bg-white/40 pointer-events-none"
+          />
+          <div
+            style={{ height: `${Math.max(1, 1 / zoom)}px` }}
+            className="absolute top-1/3 left-0 right-0 bg-white/40 pointer-events-none"
+          />
+          <div
+            style={{ height: `${Math.max(1, 1 / zoom)}px` }}
+            className="absolute top-2/3 left-0 right-0 bg-white/40 pointer-events-none"
+          />
         </div>
 
-        {/* 8 Crop Handles */}
+        {/* 8 Crop Handles with constant screen pixel size */}
         <div
-          className={`${handleStyle} -top-1.5 -left-1.5 cursor-nwse-resize`}
+          style={{ left: 0, top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nwse-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'nw')}
         />
         <div
-          className={`${handleStyle} -top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`}
+          style={{ left: '50%', top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-ns-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'n')}
         />
         <div
-          className={`${handleStyle} -top-1.5 -right-1.5 cursor-nesw-resize`}
+          style={{ left: '100%', top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nesw-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'ne')}
         />
         <div
-          className={`${handleStyle} top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize`}
+          style={{
+            left: '100%',
+            top: '50%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-ew-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'e')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 -right-1.5 cursor-nwse-resize`}
+          style={{
+            left: '100%',
+            top: '100%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-nwse-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'se')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`}
+          style={{
+            left: '50%',
+            top: '100%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-ns-resize`}
           onPointerDown={(e) => handlePointerDown(e, 's')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 -left-1.5 cursor-nesw-resize`}
+          style={{ left: 0, top: '100%', transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nesw-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'sw')}
         />
         <div
-          className={`${handleStyle} top-1/2 -left-1.5 -translate-y-1/2 cursor-ew-resize`}
+          style={{ left: 0, top: '50%', transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-ew-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'w')}
         />
 
         {/* Floating Top Options Bar */}
         <div
-          style={{ transform: `scale(${Math.max(0.6, 1 / zoom)})` }}
-          className="absolute -top-10 left-1/2 -translate-x-1/2 bg-ps-panel/95 border border-ps-border px-2.5 py-1 rounded-md shadow-2xl flex items-center space-x-2 text-[11px] text-zinc-200 z-40 whitespace-nowrap"
+          style={{
+            left: '50%',
+            top: 0,
+            transform: `translate(-50%, calc(-100% - ${24 / zoom}px)) scale(${1 / zoom})`,
+            transformOrigin: 'bottom center',
+          }}
+          className="absolute bg-ps-panel/95 border border-ps-border px-2.5 py-1 rounded-md shadow-2xl flex items-center space-x-2 text-[11px] text-zinc-200 z-40 whitespace-nowrap"
         >
           <span className="font-mono text-zinc-300">
             Crop: {cropBounds.width} × {cropBounds.height} px

@@ -7,212 +7,230 @@ import {
   calculateFittedPlacement,
 } from '@/features/document/utils/imageLoader';
 
-export const createFileSlice: StoreSlice<FileSlice> = (_set, get) => ({
-  importImageAsLayer: async (fileOrBlob, customName) => {
-    try {
-      const imgRes = await loadImageFromFile(fileOrBlob, customName || 'Image Layer');
-      const currentDoc = get().doc;
+let isImportingGlobalLock = false;
+let lastImportGlobalTime = 0;
 
-      if (!currentDoc) {
-        await get().openImageAsDocument(fileOrBlob, imgRes.name);
-        return;
+export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
+  const insertImageLayer = async (
+    imgRes: import('@/features/document/utils/imageLoader').LoadedImageResult
+  ) => {
+    const currentDoc = get().doc;
+    if (!currentDoc) {
+      await openImageDoc(imgRes);
+      return;
+    }
+
+    const placement = calculateFittedPlacement(
+      imgRes.width,
+      imgRes.height,
+      currentDoc.width,
+      currentDoc.height
+    );
+
+    // Extract ONLY the fitted image area (lightweight IPC transmission)
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = placement.width;
+    cropCanvas.height = placement.height;
+    const cCtx = cropCanvas.getContext('2d');
+    if (!cCtx) return;
+    cCtx.drawImage(imgRes.image, 0, 0, placement.width, placement.height);
+    const cropData = cCtx.getImageData(0, 0, placement.width, placement.height);
+
+    // Prepare full document-sized buffer for instant frontend DOM blitting via pendingLayerPixels
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = currentDoc.width;
+    fullCanvas.height = currentDoc.height;
+    const fCtx = fullCanvas.getContext('2d');
+    if (!fCtx) return;
+    fCtx.drawImage(imgRes.image, placement.x, placement.y, placement.width, placement.height);
+    const fullData = fCtx.getImageData(0, 0, currentDoc.width, currentDoc.height);
+
+    // Create the layer in the Rust backend
+    const updatedDoc = await bridge.addLayer(imgRes.name);
+    const newLayerId = updatedDoc.active_layer_id;
+    if (!newLayerId) return;
+
+    // Write pixels to Rust backend at ONLY the placement bounding box (fast!)
+    await bridge.writeLayerPixels(
+      placement.x,
+      placement.y,
+      placement.width,
+      placement.height,
+      cropData.data,
+      newLayerId
+    );
+    await bridge.commitStrokeHistory(`Import '${imgRes.name}'`);
+
+    const currentHistory = await bridge.getHistory();
+    const pendingPixels = new Map<string, Uint8ClampedArray>();
+    pendingPixels.set(newLayerId, fullData.data);
+
+    // Immediately update store with pendingLayerPixels for instant, race-free canvas hydration
+    set({
+      doc: updatedDoc,
+      history: currentHistory,
+      historyIndex: currentHistory.length - 1,
+      selectedLayerIds: [newLayerId],
+      canvasRevision: get().canvasRevision + 1,
+      rustSyncRevision: get().rustSyncRevision + 1,
+      pendingLayerPixels: pendingPixels,
+    });
+
+    toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
+  };
+
+  const openImageDoc = async (
+    imgRes: import('@/features/document/utils/imageLoader').LoadedImageResult
+  ) => {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imgRes.width;
+    tempCanvas.height = imgRes.height;
+    const ctx = tempCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
+    const imgData = ctx.getImageData(0, 0, imgRes.width, imgRes.height);
+
+    // Create document in Rust backend
+    const doc = await bridge.createDocument(imgRes.name, imgRes.width, imgRes.height, 72);
+    const targetLayerId =
+      doc.active_layer_id || doc.layers[doc.layers.length - 1]?.id || doc.layers[0]?.id;
+
+    if (targetLayerId) {
+      await bridge.writeLayerPixels(0, 0, imgRes.width, imgRes.height, imgData.data, targetLayerId);
+      await bridge.commitStrokeHistory(`Open Image '${imgRes.name}'`);
+    }
+
+    const currentHistory = await bridge.getHistory();
+    const pendingPixels = new Map<string, Uint8ClampedArray>();
+    if (targetLayerId) {
+      pendingPixels.set(targetLayerId, imgData.data);
+    }
+
+    set({
+      doc,
+      history: currentHistory,
+      historyIndex: currentHistory.length - 1,
+      selectedLayerIds: targetLayerId ? [targetLayerId] : [],
+      canvasRevision: get().canvasRevision + 1,
+      rustSyncRevision: get().rustSyncRevision + 1,
+      pendingLayerPixels: pendingPixels,
+    });
+
+    toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
+  };
+
+  return {
+    importImageAsLayer: async (fileOrBlob, customName) => {
+      const now = Date.now();
+      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      isImportingGlobalLock = true;
+      lastImportGlobalTime = now;
+
+      try {
+        const imgRes = await loadImageFromFile(fileOrBlob, customName || 'Image Layer');
+        await insertImageLayer(imgRes);
+      } catch (err) {
+        toast.error('Import Failed', String(err));
+      } finally {
+        setTimeout(() => {
+          isImportingGlobalLock = false;
+        }, 400);
       }
+    },
 
-      await get().addNewLayer(imgRes.name);
-      const updatedDoc = get().doc;
-      if (!updatedDoc) return;
+    openImageAsDocument: async (fileOrBlob, customTitle) => {
+      const now = Date.now();
+      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      isImportingGlobalLock = true;
+      lastImportGlobalTime = now;
 
-      const newLayerId = updatedDoc.active_layer_id;
-      if (!newLayerId) return;
-
-      setTimeout(() => {
-        const canvas = document.getElementById(
-          `layer-canvas-${newLayerId}`
-        ) as HTMLCanvasElement | null;
-        if (canvas) {
-          const placement = calculateFittedPlacement(
-            imgRes.width,
-            imgRes.height,
-            updatedDoc.width,
-            updatedDoc.height
-          );
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(
-              imgRes.image,
-              placement.x,
-              placement.y,
-              placement.width,
-              placement.height
-            );
-            const imgData = ctx.getImageData(
-              placement.x,
-              placement.y,
-              placement.width,
-              placement.height
-            );
-            bridge
-              .writeLayerPixels(
-                placement.x,
-                placement.y,
-                placement.width,
-                placement.height,
-                new Uint8Array(imgData.data.buffer),
-                newLayerId
-              )
-              .catch(() => {});
-            get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
-            get().bumpCanvasRevision();
-            toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
-          }
-        }
-      }, 50);
-    } catch (err) {
-      toast.error('Import Failed', String(err));
-    }
-  },
-
-  openImageAsDocument: async (fileOrBlob, customTitle) => {
-    try {
-      const imgRes = await loadImageFromFile(fileOrBlob, customTitle || 'Imported Image');
-      await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
-
-      setTimeout(() => {
-        const doc = get().doc;
-        if (!doc) return;
-        const targetLayerId = doc.active_layer_id || doc.layers[0]?.id;
-        if (targetLayerId) {
-          const canvas = document.getElementById(
-            `layer-canvas-${targetLayerId}`
-          ) as HTMLCanvasElement | null;
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
-              const imgData = ctx.getImageData(0, 0, imgRes.width, imgRes.height);
-              bridge
-                .writeLayerPixels(
-                  0,
-                  0,
-                  imgRes.width,
-                  imgRes.height,
-                  new Uint8Array(imgData.data.buffer),
-                  targetLayerId
-                )
-                .catch(() => {});
-              get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
-              get().bumpCanvasRevision();
-              toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
-            }
-          }
-        }
-      }, 80);
-    } catch (err) {
-      toast.error('Failed to open image', String(err));
-    }
-  },
-
-  importImagePathAsLayer: async (filePath) => {
-    try {
-      const imgRes = await loadImageFromNativePath(filePath);
-      const currentDoc = get().doc;
-
-      if (!currentDoc) {
-        await get().openImagePathAsDocument(filePath);
-        return;
+      try {
+        const imgRes = await loadImageFromFile(fileOrBlob, customTitle || 'Imported Image');
+        await openImageDoc(imgRes);
+      } catch (err) {
+        toast.error('Failed to open image', String(err));
+      } finally {
+        setTimeout(() => {
+          isImportingGlobalLock = false;
+        }, 400);
       }
+    },
 
-      await get().addNewLayer(imgRes.name);
-      const updatedDoc = get().doc;
-      if (!updatedDoc) return;
+    importImagePathAsLayer: async (filePath) => {
+      const now = Date.now();
+      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      isImportingGlobalLock = true;
+      lastImportGlobalTime = now;
 
-      const newLayerId = updatedDoc.active_layer_id;
-      if (!newLayerId) return;
-
-      setTimeout(() => {
-        const canvas = document.getElementById(
-          `layer-canvas-${newLayerId}`
-        ) as HTMLCanvasElement | null;
-        if (canvas) {
-          const placement = calculateFittedPlacement(
-            imgRes.width,
-            imgRes.height,
-            updatedDoc.width,
-            updatedDoc.height
+      try {
+        if (bridge.isTauriEnvironment()) {
+          const result = await bridge.importImageFile(filePath);
+          set({
+            doc: result.doc,
+            history: result.history,
+            historyIndex: result.history.length - 1,
+            selectedLayerIds: result.doc.active_layer_id ? [result.doc.active_layer_id] : [],
+            canvasRevision: get().canvasRevision + 1,
+            rustSyncRevision: get().rustSyncRevision + 1,
+            pendingLayerPixels: result.layerPixels,
+          });
+          const activeLayer = result.doc.layers.find((l) => l.id === result.doc.active_layer_id);
+          toast.success(
+            'Image Imported',
+            `Added '${activeLayer?.name || 'Image Layer'}' as new layer.`
           );
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(
-              imgRes.image,
-              placement.x,
-              placement.y,
-              placement.width,
-              placement.height
-            );
-            const imgData = ctx.getImageData(
-              placement.x,
-              placement.y,
-              placement.width,
-              placement.height
-            );
-            bridge
-              .writeLayerPixels(
-                placement.x,
-                placement.y,
-                placement.width,
-                placement.height,
-                new Uint8Array(imgData.data.buffer),
-                newLayerId
-              )
-              .catch(() => {});
-            get().pushCanvasSnapshot(`Import '${imgRes.name}'`);
-            get().bumpCanvasRevision();
-            toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
-          }
+          return;
         }
-      }, 50);
-    } catch (err) {
-      toast.error('Import Failed', String(err));
-    }
-  },
 
-  openImagePathAsDocument: async (filePath) => {
-    try {
-      const imgRes = await loadImageFromNativePath(filePath);
-      await get().initDocument(imgRes.name, imgRes.width, imgRes.height, false);
+        const imgRes = await loadImageFromNativePath(filePath);
+        await insertImageLayer(imgRes);
+      } catch (err) {
+        toast.error('Import Failed', String(err));
+      } finally {
+        setTimeout(() => {
+          isImportingGlobalLock = false;
+        }, 400);
+      }
+    },
 
-      setTimeout(() => {
-        const doc = get().doc;
-        if (!doc) return;
-        const targetLayerId = doc.active_layer_id || doc.layers[0]?.id;
-        if (targetLayerId) {
-          const canvas = document.getElementById(
-            `layer-canvas-${targetLayerId}`
-          ) as HTMLCanvasElement | null;
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(imgRes.image, 0, 0, imgRes.width, imgRes.height);
-              const imgData = ctx.getImageData(0, 0, imgRes.width, imgRes.height);
-              bridge
-                .writeLayerPixels(
-                  0,
-                  0,
-                  imgRes.width,
-                  imgRes.height,
-                  new Uint8Array(imgData.data.buffer),
-                  targetLayerId
-                )
-                .catch(() => {});
-              get().pushCanvasSnapshot(`Open Image '${imgRes.name}'`);
-              get().bumpCanvasRevision();
-              toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
-            }
-          }
+    openImagePathAsDocument: async (filePath) => {
+      const now = Date.now();
+      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      isImportingGlobalLock = true;
+      lastImportGlobalTime = now;
+
+      try {
+        if (bridge.isTauriEnvironment()) {
+          const result = await bridge.openImageFile(filePath);
+          set({
+            doc: result.doc,
+            history: result.history,
+            historyIndex: result.history.length - 1,
+            selectedLayerIds: result.doc.active_layer_id ? [result.doc.active_layer_id] : [],
+            canvasRevision: get().canvasRevision + 1,
+            rustSyncRevision: get().rustSyncRevision + 1,
+            pendingLayerPixels: result.layerPixels,
+          });
+          toast.success(
+            'Image Opened',
+            `${result.doc.title} (${result.doc.width}×${result.doc.height}px)`
+          );
+          return;
         }
-      }, 80);
-    } catch (err) {
-      toast.error('Failed to open image', String(err));
-    }
-  },
-});
+
+        const imgRes = await loadImageFromNativePath(filePath);
+        await openImageDoc(imgRes);
+      } catch (err) {
+        toast.error('Failed to open image', String(err));
+      } finally {
+        setTimeout(() => {
+          isImportingGlobalLock = false;
+        }, 400);
+      }
+    },
+
+    setCurrentFilePath: (path) => {
+      set({ currentFilePath: path });
+    },
+  };
+};

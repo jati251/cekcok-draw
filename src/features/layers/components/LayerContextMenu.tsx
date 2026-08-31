@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { LayerMetadata } from '@/types';
 import { useModalDismiss } from '@/hooks';
 
@@ -15,6 +16,7 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
   const {
     doc,
     addNewLayer,
+    rasterizeLayer,
     deleteLayer,
     toggleLayerLock,
     toggleLayerVisibility,
@@ -61,6 +63,7 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
   const hasMultipleSelected = selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id);
   const isOnlyLayer = (doc?.layers.length ?? 0) <= 1;
   const isBottomLayer = doc?.layers[0]?.id === layer.id;
+  const isTextLayer = layer.layer_type === 'text' || layer.name.startsWith('Text');
 
   return (
     <>
@@ -86,6 +89,60 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
         </div>
 
         <div className="py-1 space-y-0.5">
+          {!hasMultipleSelected && isTextLayer && (
+            <>
+              <button
+                onClick={() => {
+                  const textData = useEditorStore.getState().textLayersData[layer.id];
+                  useEditorStore.getState().setActiveTool('text');
+                  if (textData) {
+                    useEditorStore.getState().setTextSettings({
+                      fontSize: textData.fontSize,
+                      fontFamily: textData.fontFamily,
+                      fontWeight: textData.fontWeight,
+                      align: textData.align,
+                    });
+                    useEditorStore.getState().setPrimaryColor(textData.color);
+                    useEditorStore.getState().setActiveTextNode({
+                      x: textData.x,
+                      y: textData.y,
+                      text: textData.text,
+                      layerId: layer.id,
+                    });
+                  } else {
+                    useEditorStore.getState().setActiveTextNode({
+                      x: Math.round((doc?.width || 800) / 4),
+                      y: Math.round((doc?.height || 600) / 4),
+                      text: layer.name,
+                      layerId: layer.id,
+                    });
+                  }
+                  onClose();
+                }}
+                className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between items-center text-blue-300 font-medium"
+              >
+                <span>Edit Text...</span>
+                <span className="text-zinc-500 text-[10px] font-mono">T</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  rasterizeLayer(layer.id);
+                  useEditorStore.getState().removeTextLayerData(layer.id);
+                  onClose();
+                }}
+                className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between items-center text-purple-300"
+              >
+                <span>Rasterize Type</span>
+                <span className="text-[9px] font-mono text-purple-400 bg-purple-500/20 px-1 py-0.2 rounded border border-purple-500/30">
+                  Raster
+                </span>
+              </button>
+
+              <div className="border-t border-ps-border/70 my-1" />
+            </>
+          )}
+
           {!hasMultipleSelected && (
             <button
               onClick={() => {

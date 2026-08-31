@@ -21,24 +21,58 @@ export const App: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const doc = useDocumentStore((state) => state.doc);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { openImageAsDocument, importImageAsLayer, doc } = useDocumentStore();
+  const isOpeningFileRef = useRef(false);
 
-  const handleOpenFileDialog = React.useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
+  const handleOpenFileDialog = React.useCallback(async () => {
+    if (isOpeningFileRef.current) return;
+    isOpeningFileRef.current = true;
+    try {
+      if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const selected = await open({
+          filters: [
+            {
+              name: 'Images',
+              extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'ico', 'gif'],
+            },
+          ],
+          multiple: false,
+        });
+        if (selected && typeof selected === 'string') {
+          const store = useDocumentStore.getState();
+          if (store.doc) {
+            await store.importImagePathAsLayer(selected);
+          } else {
+            await store.openImagePathAsDocument(selected);
+          }
+        }
+      } else if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+      }
+    } catch (err) {
+      console.error('Failed to open file dialog:', err);
+    } finally {
+      setTimeout(() => {
+        isOpeningFileRef.current = false;
+      }, 400);
     }
   }, []);
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (doc) {
-      await importImageAsLayer(file);
+    const store = useDocumentStore.getState();
+    if (store.doc) {
+      await store.importImageAsLayer(file);
     } else {
-      await openImageAsDocument(file);
+      await store.openImageAsDocument(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 

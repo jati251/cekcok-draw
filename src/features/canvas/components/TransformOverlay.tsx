@@ -209,7 +209,7 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
   if (!transformState || !doc) return null;
 
   const handleStyle =
-    'w-2.5 h-2.5 bg-white border border-blue-600 rounded-sm absolute shadow-sm hover:scale-125 transition-transform z-30';
+    'w-2.5 h-2.5 bg-white border border-blue-600 rounded-xs absolute shadow-sm hover:scale-125 transition-transform z-30 pointer-events-auto';
 
   return (
     <>
@@ -231,8 +231,9 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
           height: `${transformState.height}px`,
           transform: `rotate(${transformState.rotation}deg)`,
           transformOrigin: 'center center',
+          borderWidth: `${Math.max(1, 1.5 / zoom)}px`,
         }}
-        className="border-2 border-dashed border-blue-500 pointer-events-auto z-30 select-none"
+        className="border-dashed border-blue-500 pointer-events-auto z-30 select-none"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
@@ -243,55 +244,88 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
         />
 
         {/* Rotation Stalk and Handle */}
-        <div className="absolute left-1/2 -top-6 -translate-x-1/2 flex flex-col items-center pointer-events-auto">
+        <div
+          style={{
+            left: '50%',
+            top: 0,
+            transform: `translate(-50%, -100%) scale(${1 / zoom})`,
+            transformOrigin: 'bottom center',
+          }}
+          className="absolute flex flex-col items-center pointer-events-auto"
+        >
           <div
-            className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-grab active:cursor-grabbing shadow hover:scale-125 transition-transform"
+            className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center cursor-grab active:cursor-grabbing shadow hover:scale-125 transition-transform"
             onPointerDown={(e) => handlePointerDown(e, 'rotate')}
             title="Rotate (Hold Shift for 15° steps)"
           >
-            <RotateCw size={8} />
+            <RotateCw size={9} />
           </div>
-          <div className="w-[1px] h-2.5 bg-blue-500" />
+          <div className="w-[1.5px] h-3.5 bg-blue-500" />
         </div>
 
-        {/* 8 Scale Handles */}
+        {/* 8 Scale Handles with constant screen pixel size */}
         <div
-          className={`${handleStyle} -top-1.5 -left-1.5 cursor-nwse-resize`}
+          style={{ left: 0, top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nwse-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'nw')}
         />
         <div
-          className={`${handleStyle} -top-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`}
+          style={{ left: '50%', top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-ns-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'n')}
         />
         <div
-          className={`${handleStyle} -top-1.5 -right-1.5 cursor-nesw-resize`}
+          style={{ left: '100%', top: 0, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nesw-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'ne')}
         />
         <div
-          className={`${handleStyle} top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize`}
+          style={{
+            left: '100%',
+            top: '50%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-ew-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'e')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 -right-1.5 cursor-nwse-resize`}
+          style={{
+            left: '100%',
+            top: '100%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-nwse-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'se')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`}
+          style={{
+            left: '50%',
+            top: '100%',
+            transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+          }}
+          className={`${handleStyle} cursor-ns-resize`}
           onPointerDown={(e) => handlePointerDown(e, 's')}
         />
         <div
-          className={`${handleStyle} -bottom-1.5 -left-1.5 cursor-nesw-resize`}
+          style={{ left: 0, top: '100%', transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-nesw-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'sw')}
         />
         <div
-          className={`${handleStyle} top-1/2 -left-1.5 -translate-y-1/2 cursor-ew-resize`}
+          style={{ left: 0, top: '50%', transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
+          className={`${handleStyle} cursor-ew-resize`}
           onPointerDown={(e) => handlePointerDown(e, 'w')}
         />
 
         {/* Floating Top Options Ribbon */}
         <div
-          style={{ transform: `scale(${Math.max(0.6, 1 / zoom)})` }}
-          className="absolute -top-11 left-1/2 -translate-x-1/2 bg-ps-panel/95 border border-ps-border px-2.5 py-1 rounded-md shadow-2xl flex items-center space-x-2 text-[11px] text-zinc-200 z-40 whitespace-nowrap"
+          style={{
+            left: '50%',
+            top: 0,
+            transform: `translate(-50%, calc(-100% - ${28 / zoom}px)) scale(${1 / zoom})`,
+            transformOrigin: 'bottom center',
+          }}
+          className="absolute bg-ps-panel/95 border border-ps-border px-2.5 py-1 rounded-md shadow-2xl flex items-center space-x-2 text-[11px] text-zinc-200 z-40 whitespace-nowrap"
         >
           <span className="font-mono text-zinc-400">
             {transformState.width} × {transformState.height} px

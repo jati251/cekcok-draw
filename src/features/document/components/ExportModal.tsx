@@ -63,10 +63,10 @@ const FORMATS: {
     badge: 'Vector',
   },
   {
-    id: 'cekcok',
+    id: 'cdraw',
     label: 'Cekcok Project',
     desc: 'Full multi-layer raw project archive',
-    ext: '.cekcok',
+    ext: '.cdraw',
     badge: 'Project',
   },
 ];

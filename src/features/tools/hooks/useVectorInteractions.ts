@@ -349,6 +349,14 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
               : { ...selection, x: selection.x + dx, y: selection.y + dy }
           );
       } else {
+        const textData = useEditorStore.getState().textLayersData[doc.active_layer_id];
+        if (textData) {
+          useEditorStore.getState().setTextLayerData(doc.active_layer_id, {
+            ...textData,
+            x: textData.x + dx,
+            y: textData.y + dy,
+          });
+        }
         bridge
           .moveLayerContent(doc.active_layer_id, dx, dy)
           .then(() => useDocumentStore.getState().refreshHistory())

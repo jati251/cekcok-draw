@@ -83,6 +83,92 @@ impl SparseTileGrid {
         tile.set_pixel(local_x, local_y, color);
     }
 
+    pub fn write_image_fast(
+        &mut self,
+        start_x: i32,
+        start_y: i32,
+        width: u32,
+        height: u32,
+        rgba_data: &[u8],
+    ) {
+        if width == 0 || height == 0 || rgba_data.is_empty() {
+            return;
+        }
+
+        let tile_size = TILE_SIZE as i32;
+        let end_doc_x = start_x + width as i32;
+        let end_doc_y = start_y + height as i32;
+
+        if end_doc_x <= 0 || end_doc_y <= 0 {
+            return;
+        }
+
+        let min_tx = (start_x.max(0)) / tile_size;
+        let min_ty = (start_y.max(0)) / tile_size;
+        let max_tx = (end_doc_x - 1).max(0) / tile_size;
+        let max_ty = (end_doc_y - 1).max(0) / tile_size;
+
+        for ty in min_ty..=max_ty {
+            for tx in min_tx..=max_tx {
+                let tile_gx = tx * tile_size;
+                let tile_gy = ty * tile_size;
+
+                let inter_min_x = tile_gx.max(start_x);
+                let inter_max_x = (tile_gx + tile_size).min(end_doc_x);
+                let inter_min_y = tile_gy.max(start_y);
+                let inter_max_y = (tile_gy + tile_size).min(end_doc_y);
+
+                if inter_max_x <= inter_min_x || inter_max_y <= inter_min_y {
+                    continue;
+                }
+
+                // Quick check if tile area has any non-transparent pixels
+                let mut has_content = false;
+                'check: for gy in inter_min_y..inter_max_y {
+                    let img_y = (gy - start_y) as usize;
+                    let img_x_start = (inter_min_x - start_x) as usize;
+                    let img_x_end = (inter_max_x - start_x) as usize;
+                    let row_start = (img_y * width as usize + img_x_start) * 4;
+                    let row_end = (img_y * width as usize + img_x_end) * 4;
+                    if row_end <= rgba_data.len() {
+                        for chunk in rgba_data[row_start..row_end].chunks_exact(4) {
+                            if chunk[3] > 0 {
+                                has_content = true;
+                                break 'check;
+                            }
+                        }
+                    }
+                }
+
+                if !has_content {
+                    continue;
+                }
+
+                let coord = TileCoord::new(tx, ty, 0);
+                let tile = self.get_or_create_mut(coord);
+
+                for gy in inter_min_y..inter_max_y {
+                    let py = (gy - tile_gy) as usize;
+                    let px = (inter_min_x - tile_gx) as usize;
+                    let count = (inter_max_x - inter_min_x) as usize;
+
+                    let img_y = (gy - start_y) as usize;
+                    let img_x = (inter_min_x - start_x) as usize;
+
+                    let src_start = (img_y * width as usize + img_x) * 4;
+                    let src_end = src_start + count * 4;
+                    let dst_start = (py * TILE_SIZE as usize + px) * 4;
+                    let dst_end = dst_start + count * 4;
+
+                    if src_end <= rgba_data.len() && dst_end <= tile.data.len() {
+                        tile.data[dst_start..dst_end]
+                            .copy_from_slice(&rgba_data[src_start..src_end]);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn write_region(
         &mut self,
         start_x: i32,
@@ -91,25 +177,83 @@ impl SparseTileGrid {
         height: u32,
         data: &[u8],
     ) {
-        if width == 0 || height == 0 || data.is_empty() {
+        self.write_image_fast(start_x, start_y, width, height, data);
+    }
+
+    pub fn translate(&mut self, dx: i32, dy: i32, width: i32, height: i32) {
+        if dx == 0 && dy == 0 {
             return;
         }
+        let old_tiles = std::mem::take(&mut self.tiles);
+        self.dirty_coords.clear();
 
-        let mut data_idx = 0;
-        for y_offset in 0..height {
-            let global_y = start_y + y_offset as i32;
-            for x_offset in 0..width {
-                let global_x = start_x + x_offset as i32;
+        for (coord, tile) in old_tiles {
+            let src_x = coord.x * TILE_SIZE as i32 + dx;
+            let src_y = coord.y * TILE_SIZE as i32 + dy;
 
-                if data_idx + 3 < data.len() {
-                    let r = data[data_idx];
-                    let g = data[data_idx + 1];
-                    let b = data[data_idx + 2];
-                    let a = data[data_idx + 3];
+            if src_x + TILE_SIZE as i32 <= 0
+                || src_y + TILE_SIZE as i32 <= 0
+                || src_x >= width
+                || src_y >= height
+            {
+                continue;
+            }
 
-                    self.set_pixel_cow(global_x, global_y, [r, g, b, a]);
+            for row in 0..TILE_SIZE as i32 {
+                let target_y = src_y + row;
+                if target_y < 0 || target_y >= height {
+                    continue;
                 }
-                data_idx += 4;
+
+                let mut col = 0;
+                while col < TILE_SIZE as i32 {
+                    let target_x = src_x + col;
+                    if target_x < 0 {
+                        col += -target_x;
+                        continue;
+                    }
+                    if target_x >= width {
+                        break;
+                    }
+
+                    let dest_tile_x = target_x / TILE_SIZE as i32;
+                    let local_dest_x = target_x % TILE_SIZE as i32;
+                    let dest_tile_y = target_y / TILE_SIZE as i32;
+                    let local_dest_y = target_y % TILE_SIZE as i32;
+
+                    let span = ((TILE_SIZE as i32 - col)
+                        .min(TILE_SIZE as i32 - local_dest_x)
+                        .min(width - target_x)) as usize;
+
+                    let src_idx = (row as usize * TILE_SIZE as usize + col as usize) * 4;
+                    let dst_idx =
+                        (local_dest_y as usize * TILE_SIZE as usize + local_dest_x as usize) * 4;
+
+                    let src_slice = &tile.data[src_idx..src_idx + span * 4];
+
+                    let mut has_content = false;
+                    for i in 0..span {
+                        if src_slice[i * 4 + 3] > 0 {
+                            has_content = true;
+                            break;
+                        }
+                    }
+
+                    if has_content {
+                        let dest_coord = TileCoord::new(dest_tile_x, dest_tile_y, 0);
+                        let dest_tile = self.get_or_create_mut(dest_coord);
+                        for i in 0..span {
+                            let s_off = i * 4;
+                            let d_off = dst_idx + s_off;
+                            if src_slice[s_off + 3] > 0 {
+                                dest_tile.data[d_off..d_off + 4]
+                                    .copy_from_slice(&src_slice[s_off..s_off + 4]);
+                            }
+                        }
+                    }
+
+                    col += span as i32;
+                }
             }
         }
     }

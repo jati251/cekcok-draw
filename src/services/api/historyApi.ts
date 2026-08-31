@@ -49,7 +49,7 @@ export interface UndoRedoWithLayersResult {
   layerPixels: Map<string, Uint8ClampedArray>;
 }
 
-function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersResult {
+export function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersResult {
   const view = new DataView(raw);
   const headerLen = view.getUint32(0, true);
   const headerBytes = new Uint8Array(raw, 4, headerLen);

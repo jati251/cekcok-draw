@@ -1,14 +1,39 @@
 use super::payloads::*;
 use crate::core::document::DocumentInfo;
-use crate::core::layer::BlendMode;
+use crate::core::layer::{BlendMode, LayerType};
 use tauri::State;
 
 #[tauri::command]
-pub fn add_layer(name: String, state: State<'_, SharedEngineState>) -> DocumentInfo {
+pub fn add_layer(
+    name: String,
+    layer_type: Option<LayerType>,
+    state: State<'_, SharedEngineState>,
+) -> DocumentInfo {
     let mut guard = state.lock();
     guard.push_history(format!("Add Layer '{}'", name));
-    guard.document.add_layer(name);
+    guard.document.add_layer_with_type(name, layer_type);
     guard.document.get_info()
+}
+
+#[tauri::command]
+pub fn rasterize_layer(
+    layer_id: String,
+    state: State<'_, SharedEngineState>,
+) -> Result<DocumentInfo, String> {
+    let mut guard = state.lock();
+    let layer_name = guard
+        .document
+        .layers
+        .iter()
+        .find(|l| l.id == layer_id)
+        .map(|l| l.name.clone())
+        .unwrap_or_else(|| "Layer".to_string());
+    guard.push_history(format!("Rasterize Layer '{}'", layer_name));
+    if guard.document.set_layer_type(&layer_id, LayerType::Raster) {
+        Ok(guard.document.get_info())
+    } else {
+        Err("Layer not found".into())
+    }
 }
 
 #[tauri::command]

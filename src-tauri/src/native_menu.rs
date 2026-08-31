@@ -37,8 +37,13 @@ pub fn build_native_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
         )
         .item(&MenuItemBuilder::with_id("open_project", "Open Project...").build(app)?)
         .item(
-            &MenuItemBuilder::with_id("save_project", "Save Project...")
+            &MenuItemBuilder::with_id("save_project", "Save Project")
                 .accelerator("CmdOrCtrl+S")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("save_project_as", "Save Project As...")
+                .accelerator("Shift+CmdOrCtrl+S")
                 .build(app)?,
         )
         .item(

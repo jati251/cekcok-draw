@@ -4,7 +4,7 @@ import * as bridge from '@/services/tauriBridge';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff' | 'svg' | 'pdf' | 'cekcok';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff' | 'svg' | 'pdf' | 'cdraw';
 
 export interface ExportOptions {
   format: ExportFormat;
@@ -169,7 +169,7 @@ startxref
 };
 
 /**
- * Export full multi-layer project package (.cekcok) with layer metadata & pixel data URLs
+ * Export full multi-layer project package (.cdraw) with layer metadata & pixel data URLs
  */
 export const exportCekcokProject = (doc: DocumentInfo): Blob => {
   const layerData: {
@@ -216,7 +216,7 @@ export const exportCekcokProject = (doc: DocumentInfo): Blob => {
 };
 
 /**
- * Master multi-format exporter supporting PNG, JPEG, WebP, BMP, TIFF, SVG, PDF, and .cekcok
+ * Master multi-format exporter supporting PNG, JPEG, WebP, BMP, TIFF, SVG, PDF, and .cdraw
  */
 export const compositeAndDownloadDocument = async (
   doc: DocumentInfo,
@@ -226,8 +226,8 @@ export const compositeAndDownloadDocument = async (
   const quality = options.quality ?? 0.92;
   const filename = `${doc.title || 'artwork'}.${format === 'jpeg' ? 'jpg' : format}`;
 
-  // 1. .cekcok Project Archive
-  if (format === 'cekcok') {
+  // 1. .cdraw Project Archive
+  if (format === 'cdraw') {
     const blob = exportCekcokProject(doc);
     await downloadBlob(blob, filename);
     return;

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { isTauriEnvironment } from '@/services/tauriBridge';
-import { copyActiveLayerSelection } from '@/utils/clipboard';
+import { copyActiveLayerSelection, pasteClipboardImage } from '@/utils/clipboard';
 import { saveProjectFile, openProjectFile } from '@/features/document/utils/project';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
@@ -98,7 +98,9 @@ export const useNativeMenuActions = ({
           } else if (action === 'open_project') {
             openProjectFile();
           } else if (action === 'save_project') {
-            saveProjectFile();
+            saveProjectFile(false);
+          } else if (action === 'save_project_as') {
+            saveProjectFile(true);
           } else if (action === 'canvas_size') {
             actionsRef.current.onOpenCanvasSize?.();
           } else if (action === 'export_image') {
@@ -186,16 +188,7 @@ export const useNativeMenuActions = ({
                     for (const type of item.types) {
                       if (type.startsWith('image/')) {
                         const blob = await item.getType(type);
-                        const currentDoc = useDocumentStore.getState().doc;
-                        if (currentDoc) {
-                          await useDocumentStore
-                            .getState()
-                            .importImageAsLayer(blob, 'Pasted Layer');
-                        } else {
-                          await useDocumentStore
-                            .getState()
-                            .openImageAsDocument(blob, 'Pasted Document');
-                        }
+                        await pasteClipboardImage(blob);
                         return;
                       }
                     }

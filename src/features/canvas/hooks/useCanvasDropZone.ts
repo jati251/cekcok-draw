@@ -2,15 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { isTauriEnvironment } from '@/services/tauriBridge';
 
+let globalLastDropTimestamp = 0;
+let isHandlingDropLock = false;
+
 export const useCanvasDropZone = () => {
   const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
-  const {
-    doc,
-    importImageAsLayer,
-    openImageAsDocument,
-    importImagePathAsLayer,
-    openImagePathAsDocument,
-  } = useDocumentStore();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -30,28 +26,41 @@ export const useCanvasDropZone = () => {
     e.stopPropagation();
     setIsDraggingFile(false);
 
-    // In native Tauri desktop app mode, Tauri's onDragDropEvent already handles the file drop natively!
+    // In native Tauri desktop app mode, Tauri's onDragDropEvent already handles the file drop natively
     if (isTauriEnvironment()) return;
 
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-    if (files.length === 0) return;
+    const now = Date.now();
+    if (isHandlingDropLock || now - globalLastDropTimestamp < 600) return;
+    globalLastDropTimestamp = now;
+    isHandlingDropLock = true;
 
-    for (const file of files) {
-      if (doc) {
-        await importImageAsLayer(file);
-      } else {
-        await openImageAsDocument(file);
+    try {
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      if (files.length > 0) {
+        const store = useDocumentStore.getState();
+        if (store.doc) {
+          await store.importImageAsLayer(files[0]);
+        } else {
+          await store.openImageAsDocument(files[0]);
+        }
       }
+    } finally {
+      setTimeout(() => {
+        isHandlingDropLock = false;
+      }, 400);
     }
   };
 
   // Listen to native OS drag & drop events (Finder on macOS, Explorer on Windows)
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let isMounted = true;
+    let unlistenFn: (() => void) | null = null;
+
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => {
+        if (!isMounted) return;
         getCurrentWebview()
-          .onDragDropEvent((event) => {
+          .onDragDropEvent(async (event) => {
             const payload = event.payload;
             if (payload.type === 'enter' || payload.type === 'over') {
               setIsDraggingFile(true);
@@ -59,28 +68,48 @@ export const useCanvasDropZone = () => {
               setIsDraggingFile(false);
             } else if (payload.type === 'drop') {
               setIsDraggingFile(false);
-              const paths = payload.paths;
-              if (paths && paths.length > 0) {
-                for (const filePath of paths) {
-                  const currentDoc = useDocumentStore.getState().doc;
-                  if (currentDoc) {
-                    importImagePathAsLayer(filePath);
-                  } else {
-                    openImagePathAsDocument(filePath);
+
+              // Debounce rapid duplicate drop events using module-level lock
+              const now = Date.now();
+              if (isHandlingDropLock || now - globalLastDropTimestamp < 600) return;
+              globalLastDropTimestamp = now;
+              isHandlingDropLock = true;
+
+              try {
+                const paths = payload.paths;
+                if (paths && paths.length > 0) {
+                  for (const filePath of paths) {
+                    const store = useDocumentStore.getState();
+                    if (store.doc) {
+                      await store.importImagePathAsLayer(filePath);
+                    } else {
+                      await store.openImagePathAsDocument(filePath);
+                    }
+                    break; // Process one file at a time to prevent accidental multi-layer flooding
                   }
                 }
+              } finally {
+                setTimeout(() => {
+                  isHandlingDropLock = false;
+                }, 400);
               }
             }
           })
           .then((fn) => {
-            unlisten = fn;
+            if (!isMounted) {
+              fn();
+            } else {
+              unlistenFn = fn;
+            }
           });
       });
     }
+
     return () => {
-      if (unlisten) unlisten();
+      isMounted = false;
+      if (unlistenFn) unlistenFn();
     };
-  }, [importImagePathAsLayer, openImagePathAsDocument]);
+  }, []);
 
   return {
     isDraggingFile,

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { BLEND_MODES } from '@/config/blendModes';
 import { Eye, EyeOff, Lock, Unlock, Shapes, Image as ImageIcon } from 'lucide-react';
 import { BlendMode, LayerMetadata } from '@/types';
 import { LayerThumbnail } from '@/features/layers/components/LayerThumbnail';
 import { LayerContextMenu } from '@/features/layers/components/LayerContextMenu';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { motion } from 'framer-motion';
+import { Reorder } from 'framer-motion';
 
 export const LayerPanel: React.FC = () => {
   // Selector-based subscriptions so the panel only re-renders when the layer
@@ -32,7 +33,17 @@ export const LayerPanel: React.FC = () => {
     y: number;
     layer: LayerMetadata;
   } | null>(null);
+
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [reorderedList, setReorderedList] = useState<LayerMetadata[] | null>(null);
+
+  // Purely derived layers list during render (conforming to React 19 best practices)
+  const layersOrder = React.useMemo(() => {
+    if (draggedLayerId && reorderedList) {
+      return reorderedList;
+    }
+    return doc ? [...doc.layers].reverse() : [];
+  }, [doc, draggedLayerId, reorderedList]);
 
   if (!doc) return null;
 
@@ -99,8 +110,14 @@ export const LayerPanel: React.FC = () => {
       </div>
 
       {/* Layer Stack List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-[140px]">
-        {[...doc.layers].reverse().map((layer) => {
+      <Reorder.Group
+        as="div"
+        axis="y"
+        values={layersOrder}
+        onReorder={setReorderedList}
+        className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-[140px]"
+      >
+        {layersOrder.map((layer) => {
           const isPrimaryActive = layer.id === doc.active_layer_id;
           const isSelected = selectedLayerIds.includes(layer.id) || isPrimaryActive;
           const isText = layer.name.startsWith('Text') || layer.layer_type === 'text';
@@ -117,37 +134,27 @@ export const LayerPanel: React.FC = () => {
           };
 
           return (
-            <motion.div
-              layout
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+            <Reorder.Item
+              as="div"
+              value={layer}
               key={layer.id}
-              draggable
-              onDragStart={(e) => {
-                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
-                setDraggedLayerId(layer.id);
-                dragEvent.dataTransfer.effectAllowed = 'move';
-              }}
-              onDragEnd={() => setDraggedLayerId(null)}
-              onDragOver={(e) => {
-                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
-                dragEvent.preventDefault();
-                dragEvent.dataTransfer.dropEffect = 'move';
-              }}
-              onDrop={(e) => {
-                const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
-                dragEvent.preventDefault();
-                if (draggedLayerId && draggedLayerId !== layer.id) {
-                  // Find the target index in the actual (non-reversed) array
-                  const targetIndex = doc.layers.findIndex((l) => l.id === layer.id);
-                  reorderLayer(draggedLayerId, targetIndex);
+              onDragStart={() => setDraggedLayerId(layer.id)}
+              onDragEnd={() => {
+                const currentOrder = reorderedList || layersOrder;
+                const fromIndex = doc.layers.findIndex((l) => l.id === layer.id);
+                const newVisualIndex = currentOrder.findIndex((l) => l.id === layer.id);
+
+                if (fromIndex !== -1 && newVisualIndex !== -1) {
+                  const toIndex = currentOrder.length - 1 - newVisualIndex;
+                  if (fromIndex !== toIndex) {
+                    reorderLayer(layer.id, toIndex);
+                  }
                 }
                 setDraggedLayerId(null);
+                setReorderedList(null);
               }}
               onClick={handleLayerCardClick}
-              onContextMenu={(e) => {
+              onContextMenu={(e: React.MouseEvent) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, layer });
               }}
@@ -157,7 +164,7 @@ export const LayerPanel: React.FC = () => {
                   : isSelected
                     ? 'bg-blue-600/10 border-blue-500/40 text-zinc-100 shadow-xs'
                     : 'bg-ps-surface/50 border-ps-border/40 text-zinc-300 hover:bg-ps-surface hover:text-white hover:border-ps-border/80'
-              } ${draggedLayerId === layer.id ? 'opacity-50 border-dashed border-blue-400' : ''}`}
+              } ${draggedLayerId === layer.id ? 'opacity-90 shadow-2xl ring-1 ring-blue-400 z-50' : ''}`}
             >
               {/* Active / Selected Layer Left Accent Bar */}
               {isSelected && (
@@ -208,18 +215,46 @@ export const LayerPanel: React.FC = () => {
                 </Tooltip>
 
                 {/* Layer Thumbnail Container */}
-                <div className="w-7 h-7 rounded border border-ps-border bg-transparency-grid overflow-hidden flex-shrink-0 shadow-sm">
+                <div className="w-7 h-7 rounded border border-ps-border bg-transparency-grid overflow-hidden flex-shrink-0 shadow-sm pointer-events-none">
                   <LayerThumbnail layerId={layer.id} />
                 </div>
 
                 {/* Layer Type Badge */}
                 {isText ? (
-                  <span
-                    className="rounded bg-purple-500/15 border border-purple-500/30 text-purple-400 font-serif font-bold text-[9px] w-4 h-4 flex items-center justify-center flex-shrink-0"
-                    title="Typography Text Layer"
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const textData = useEditorStore.getState().textLayersData[layer.id];
+                      useEditorStore.getState().setActiveTool('text');
+                      if (textData) {
+                        useEditorStore.getState().setTextSettings({
+                          fontSize: textData.fontSize,
+                          fontFamily: textData.fontFamily,
+                          fontWeight: textData.fontWeight,
+                          align: textData.align,
+                        });
+                        useEditorStore.getState().setPrimaryColor(textData.color);
+                        useEditorStore.getState().setActiveTextNode({
+                          x: textData.x,
+                          y: textData.y,
+                          text: textData.text,
+                          layerId: layer.id,
+                        });
+                      } else {
+                        useEditorStore.getState().setActiveTextNode({
+                          x: Math.round((doc?.width || 800) / 4),
+                          y: Math.round((doc?.height || 600) / 4),
+                          text: layer.name,
+                          layerId: layer.id,
+                        });
+                      }
+                    }}
+                    className="rounded bg-purple-500/15 border border-purple-500/30 text-purple-400 font-serif font-bold text-[9px] w-4 h-4 flex items-center justify-center flex-shrink-0 hover:bg-purple-500/30 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                    title="Typography Text Layer - Click to edit text"
                   >
                     T
-                  </span>
+                  </button>
                 ) : isShape ? (
                   <span
                     className="rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center flex-shrink-0 w-4 h-4"
@@ -265,7 +300,7 @@ export const LayerPanel: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex items-center space-x-2 text-zinc-500 flex-shrink-0">
+              <div className="flex items-center space-x-2 text-zinc-500 flex-shrink-0 pointer-events-none">
                 {/* Lock Toggle */}
                 <Tooltip content={layer.locked ? 'Unlock Layer' : 'Lock Layer'} position="left">
                   <button
@@ -273,7 +308,7 @@ export const LayerPanel: React.FC = () => {
                       e.stopPropagation();
                       toggleLayerLock(layer.id);
                     }}
-                    className={`p-0.5 rounded hover:text-white transition-colors ${
+                    className={`p-0.5 rounded hover:text-white transition-colors pointer-events-auto ${
                       layer.locked ? 'text-amber-400' : 'text-zinc-500 opacity-40 hover:opacity-100'
                     }`}
                   >
@@ -285,10 +320,10 @@ export const LayerPanel: React.FC = () => {
                   {layer.blend_mode.replace('_', ' ')}
                 </span>
               </div>
-            </motion.div>
+            </Reorder.Item>
           );
         })}
-      </div>
+      </Reorder.Group>
 
       {/* Layer Right-Click Context Menu */}
       {contextMenu && (

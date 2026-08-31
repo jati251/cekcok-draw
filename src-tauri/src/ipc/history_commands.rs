@@ -65,7 +65,10 @@ pub fn redo_with_layers(
     Ok(pack_doc_with_layers(&guard.document, &guard.history))
 }
 
-fn pack_doc_with_layers(doc: &Document, history: &HistoryEngine) -> tauri::ipc::Response {
+pub(crate) fn pack_doc_with_layers(
+    doc: &Document,
+    history: &HistoryEngine,
+) -> tauri::ipc::Response {
     let doc_info = doc.get_info();
     let history_list = history.get_history_list();
     let w = doc.width;

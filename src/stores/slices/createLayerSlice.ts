@@ -94,12 +94,12 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
       toast.error('Failed to merge selected layers', String(err));
     }
   },
-  addNewLayer: async (name) => {
+  addNewLayer: async (name, layerType) => {
     const currentDoc = get().doc;
     const layerCount = currentDoc ? currentDoc.layers.length : 1;
     const layerName = name || `Layer ${layerCount}`;
     try {
-      const doc = await bridge.addLayer(layerName);
+      const doc = await bridge.addLayer(layerName, layerType);
       const history = await bridge.getHistory();
       set({
         doc,
@@ -111,6 +111,22 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
     } catch (err) {
       set({ error: String(err) });
       toast.error('Could not create layer', String(err));
+    }
+  },
+  rasterizeLayer: async (id) => {
+    try {
+      const doc = await bridge.rasterizeLayer(id);
+      const history = await bridge.getHistory();
+      set({
+        doc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: get().canvasRevision + 1,
+      });
+      toast.success('Layer Rasterized', 'Converted to normal raster paint layer.');
+    } catch (err) {
+      set({ error: String(err) });
+      toast.error('Could not rasterize layer', String(err));
     }
   },
   duplicateLayer: async (id) => {

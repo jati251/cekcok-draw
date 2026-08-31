@@ -61,3 +61,22 @@ export async function copyActiveLayerSelection(cut = false): Promise<boolean> {
 
   return true;
 }
+
+let lastPasteTimestamp = 0;
+
+/**
+ * Pastes an image blob into the active document as a new layer, or opens it as a new document.
+ * Automatically debounces rapid duplicate paste calls within 400ms.
+ */
+export async function pasteClipboardImage(blob: Blob): Promise<void> {
+  const now = Date.now();
+  if (now - lastPasteTimestamp < 400) return;
+  lastPasteTimestamp = now;
+
+  const store = useDocumentStore.getState();
+  if (store.doc) {
+    await store.importImageAsLayer(blob, 'Pasted Layer');
+  } else {
+    await store.openImageAsDocument(blob, 'Pasted Document');
+  }
+}
