@@ -174,7 +174,8 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
   return (
     <>
       {doc.layers.map((layer) => {
-        const isBeingTransformed = transformState?.layerId === layer.id;
+        const isBeingTransformed =
+          transformState?.layerId === layer.id && !transformState?.isSelection;
 
         return (
           <canvas

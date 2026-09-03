@@ -1,3 +1,32 @@
+# CekcokDraw v0.4.0 - The "Free Transform, Perspective Warp & Studio Architecture" Update
+
+This milestone release introduces an authentic Photoshop-grade Free Transform suite, perspective quad Warp mesh deformation, Selection-scoped transforms, major architectural refactoring, and high-performance dirty-rect pixel pipeline optimizations.
+
+## 📐 Complete Free Transform & Perspective Warp Suite
+
+- **Comprehensive Transform Modes**: Seamlessly switch between **Free Transform** (scale, rotate, skew) and **Warp** (4-corner quad distortion mesh) directly from the floating ribbon or shortcuts.
+- **Selection-Scoped Transform**: Transform only the active marquee selection (Rectangular Marquee or Polygonal Lasso) without altering the rest of the layer. Automatically lifts, previews, and blits pixels back upon commit (`Enter`).
+- **Interactive Controls & Snapping**:
+  - 8-point bounding box handles with aspect ratio lock/unlock toggle.
+  - Rotation stalk with 15° snapping when holding `Shift`.
+  - Edge midpoint skew handles (`Ctrl` + drag edge handle).
+  - 4 interactive Warp corner pins with dashed quad SVG wireframe.
+- **Universal Activation**: One-click invocation across canvas right-click context menu, layer panel context menu, native application menu (`Edit` → `Free Transform`), and cross-platform shortcut (`⌘T` on macOS / `Ctrl+T` on Windows/Linux).
+
+## 🚀 High-Performance Rasterizer & GC Optimizations
+
+- **Dirty-Rect Quad Rasterization**: Replaced whole-document (4K/8K) full-screen allocations with tight bounding box memory allocation (`createImageData(bbW, bbH)`), eliminating garbage collection spikes.
+- **32-Bit Direct Memory Blitting (`Uint32Array`)**: Pixel reads and writes use 32-bit aligned memory words, quadrupling rasterization throughput.
+- **`requestAnimationFrame` Throttling**: Preview canvas updates are synchronized with display refresh rate (60/120 Hz) with frame cancellation to eliminate pointer drag lag.
+- **Fixed Bilinear Coordinate Math**: Solved inverted coordinate signs in inverse bilinear interpolation across both TypeScript live preview and Rust core engine.
+
+## 🏛️ Codebase Refactoring & Architecture
+
+- **Centralized Transform State (`transformUtils.ts`)**: Unified snapshot creation, fallback resolution, and store synchronization across all 4 entry points.
+- **Modularized Overlay**: Decomposed repetitive handle JSX into data-driven maps and clean type definitions.
+
+---
+
 # CekcokDraw v0.3.9 - The "Universal Themes & Studio Experience" Update
 
 This release brings full dual-theme support (Light & Dark mode), enhanced workspace navigation with Spacebar pan, an expanded Preferences suite, and robust unsaved changes protection.

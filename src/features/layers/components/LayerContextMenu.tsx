@@ -3,6 +3,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { LayerMetadata } from '@/types';
 import { useModalDismiss } from '@/hooks';
+import { initiateFreeTransform } from '@/features/canvas/utils/transformUtils';
 
 interface Props {
   x: number;
@@ -15,7 +16,6 @@ interface Props {
 export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStartRename }) => {
   const {
     doc,
-    addNewLayer,
     rasterizeLayer,
     deleteLayer,
     toggleLayerLock,
@@ -25,6 +25,7 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
     selectedLayerIds,
     deleteSelectedLayers,
     mergeSelectedLayers,
+    duplicateLayer,
   } = useDocumentStore();
 
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -146,13 +147,52 @@ export const LayerContextMenu: React.FC<Props> = ({ x, y, layer, onClose, onStar
           {!hasMultipleSelected && (
             <button
               onClick={() => {
-                addNewLayer(`${layer.name} Copy`);
+                initiateFreeTransform(layer.id);
+                onClose();
+              }}
+              className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between items-center text-blue-400"
+            >
+              <span>Free Transform Layer</span>
+              <span className="text-zinc-500 text-[10px] font-mono">⌘T</span>
+            </button>
+          )}
+
+          {!hasMultipleSelected && (
+            <button
+              onClick={() => {
+                duplicateLayer(layer.id);
                 onClose();
               }}
               className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between items-center"
             >
               <span>Duplicate Layer</span>
               <span className="text-zinc-500 text-[10px] font-mono">⌘J</span>
+            </button>
+          )}
+
+          {!hasMultipleSelected && (
+            <button
+              onClick={async () => {
+                await useDocumentStore.getState().duplicateLayer(layer.id);
+                useDocumentStore.getState().flipActiveLayer('horizontal');
+                onClose();
+              }}
+              className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded"
+            >
+              Duplicate & Flip Horizontal
+            </button>
+          )}
+
+          {!hasMultipleSelected && (
+            <button
+              onClick={async () => {
+                await useDocumentStore.getState().duplicateLayer(layer.id);
+                useDocumentStore.getState().flipActiveLayer('vertical');
+                onClose();
+              }}
+              className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded"
+            >
+              Duplicate & Flip Vertical
             </button>
           )}
 

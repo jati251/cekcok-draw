@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { DocumentInfo, BlendMode, LayerType } from '@/types';
+import { DocumentInfo, BlendMode, LayerType, WarpCorners } from '@/types';
 import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
 
 export async function rotateLayer(layerId: string, degrees: number): Promise<DocumentInfo> {
@@ -22,11 +22,31 @@ export async function transformLayer(
   y: number,
   width: number,
   height: number,
-  rotation: number
+  rotation: number,
+  skewX: number,
+  skewY: number,
+  warpCorners?: WarpCorners
 ): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('transform_layer', {
-      payload: { layer_id: layerId, x, y, width, height, rotation },
+      payload: {
+        layer_id: layerId,
+        x,
+        y,
+        width,
+        height,
+        rotation,
+        skew_x: skewX,
+        skew_y: skewY,
+        warp_corners: warpCorners
+          ? {
+              top_left: [warpCorners.topLeft.dx, warpCorners.topLeft.dy],
+              top_right: [warpCorners.topRight.dx, warpCorners.topRight.dy],
+              bottom_left: [warpCorners.bottomLeft.dx, warpCorners.bottomLeft.dy],
+              bottom_right: [warpCorners.bottomRight.dx, warpCorners.bottomRight.dy],
+            }
+          : null,
+      },
     });
   }
   return { ...mockDoc };

@@ -5,6 +5,7 @@ import { BRUSH_TYPES, BrushDefinition } from '@/config/brushes';
 import { BrushType } from '@/types';
 import * as bridge from '@/services/tauriBridge';
 import { useModalDismiss } from '@/hooks';
+import { initiateFreeTransform } from '@/features/canvas/utils/transformUtils';
 
 interface Props {
   x: number;
@@ -179,29 +180,7 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
   };
 
   const handleFreeTransform = () => {
-    if (!doc || !doc.active_layer_id) return;
-    const canvas = document.getElementById(
-      `layer-canvas-${doc.active_layer_id}`
-    ) as HTMLCanvasElement | null;
-    if (canvas) {
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = canvas.width;
-      sourceCanvas.height = canvas.height;
-      const sCtx = sourceCanvas.getContext('2d');
-      if (sCtx) sCtx.drawImage(canvas, 0, 0);
-
-      useEditorStore.getState().setTransformState({
-        x: 0,
-        y: 0,
-        width: doc.width,
-        height: doc.height,
-        rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
-        sourceCanvas,
-        layerId: doc.active_layer_id,
-      });
-    }
+    initiateFreeTransform();
     onClose();
   };
 
@@ -209,9 +188,14 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
     <>
       <div
         className="fixed inset-0 z-50"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         onClick={onClose}
         onContextMenu={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           onClose();
         }}
       />
@@ -221,7 +205,13 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
           left: `${pos.left}px`,
           top: `${pos.top}px`,
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         className="fixed z-50 w-64 max-h-[calc(100vh-24px)] overflow-y-auto bg-ps-surface border border-ps-border rounded-lg shadow-2xl p-2.5 text-xs select-none text-zinc-200"
       >
         {/* Brush Quick Adjustments */}
@@ -289,16 +279,28 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
           </div>
         )}
 
+        {/* Free Transform — always available */}
+        <div className="py-1 space-y-0.5">
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              handleFreeTransform();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleFreeTransform();
+            }}
+            className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between"
+          >
+            <span>Free Transform</span>
+            <span className="text-zinc-500 text-[10px] font-mono">⌘T</span>
+          </button>
+        </div>
+
         {/* Selection Actions */}
         {isSelectionActive ? (
-          <div className="py-1 space-y-0.5">
-            <button
-              onClick={handleFreeTransform}
-              className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between"
-            >
-              <span>Free Transform</span>
-              <span className="text-zinc-500 text-[10px] font-mono">⌘T</span>
-            </button>
+          <div className="py-1 space-y-0.5 border-t border-ps-border">
             <button
               onClick={handleDeselect}
               className="w-full text-left px-2 py-1.5 hover:bg-ps-active hover:text-white rounded flex justify-between"
@@ -322,7 +324,7 @@ export const ContextMenu: React.FC<Props> = ({ x, y, onClose }) => {
             </button>
           </div>
         ) : (
-          <div className="py-1 space-y-0.5">
+          <div className="py-1 space-y-0.5 border-t border-ps-border">
             <button
               onClick={() => {
                 if (doc)

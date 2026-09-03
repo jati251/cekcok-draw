@@ -315,6 +315,18 @@ export const useCanvasInteractions = (props: UseCanvasInteractionsProps) => {
       for (const rawEv of coalescedEvents) {
         const subDetails = extractPointerDetails(rawEv);
         const subCanvasPos = screenToCanvas(subDetails.point.x, subDetails.point.y);
+
+        if (e.shiftKey && strokePointsRef.current.length > 0) {
+          const originPt = strokePointsRef.current[0];
+          const dx = Math.abs(subCanvasPos.x - originPt.x);
+          const dy = Math.abs(subCanvasPos.y - originPt.y);
+          if (dx > dy) {
+            subCanvasPos.y = originPt.y;
+          } else {
+            subCanvasPos.x = originPt.x;
+          }
+        }
+
         const rawSubPt: BrushPoint = {
           x: subCanvasPos.x,
           y: subCanvasPos.y,

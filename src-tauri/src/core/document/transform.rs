@@ -43,6 +43,8 @@ impl Document {
         width: f32,
         height: f32,
         rotation: f32,
+        skew_x: f32,
+        skew_y: f32,
     ) -> bool {
         let (doc_w, doc_h) = (self.width as f32, self.height as f32);
         let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == id) else {
@@ -50,21 +52,46 @@ impl Document {
         };
         let source = layer.grid.clone();
         layer.grid.clear();
-        let radians = -rotation.to_radians();
-        let (sin, cos) = radians.sin_cos();
-        let center_x = x + width / 2.0;
-        let center_y = y + height / 2.0;
+
         let scale_x = width / doc_w;
         let scale_y = height / doc_h;
         if scale_x.abs() < f32::EPSILON || scale_y.abs() < f32::EPSILON {
             return true;
         }
+
+        let center_x = x + width / 2.0;
+        let center_y = y + height / 2.0;
+
+        // Build the forward affine matrix:
+        //   translate(center) * rotate * skew * scale * translate(-doc_center)
+        // We need the INVERSE to map target → source.
+        let rot_rad = -rotation.to_radians();
+        let (sin_r, cos_r) = rot_rad.sin_cos();
+        let tan_sx = skew_x.to_radians().tan();
+        let tan_sy = skew_y.to_radians().tan();
+
+        // Inverse scale
+        let inv_sx = 1.0 / scale_x;
+        let inv_sy = 1.0 / scale_y;
+
         for target_y in 0..self.height as i32 {
             for target_x in 0..self.width as i32 {
+                // Translate to center
                 let dx = target_x as f32 + 0.5 - center_x;
                 let dy = target_y as f32 + 0.5 - center_y;
-                let local_x = (dx * cos - dy * sin) / scale_x + doc_w / 2.0;
-                let local_y = (dx * sin + dy * cos) / scale_y + doc_h / 2.0;
+
+                // Inverse rotate
+                let rx = dx * cos_r - dy * sin_r;
+                let ry = dx * sin_r + dy * cos_r;
+
+                // Inverse skew
+                let kx = rx - ry * tan_sx;
+                let ky = ry - rx * tan_sy;
+
+                // Inverse scale + translate to source center
+                let local_x = kx * inv_sx + doc_w / 2.0;
+                let local_y = ky * inv_sy + doc_h / 2.0;
+
                 let source_x = local_x.floor() as i32;
                 let source_y = local_y.floor() as i32;
                 if !(0..doc_w as i32).contains(&source_x) || !(0..doc_h as i32).contains(&source_y)
@@ -85,6 +112,161 @@ impl Document {
             }
         }
         true
+    }
+
+    /// Perspective quad warp: maps 4 corner offsets to a distorted quad.
+    /// Uses inverse bilinear interpolation (target → source).
+    pub fn warp_layer(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corners: &crate::ipc::payloads::WarpCorners,
+    ) -> bool {
+        let (doc_w, doc_h) = (self.width as f32, self.height as f32);
+        let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == id) else {
+            return false;
+        };
+        let source = layer.grid.clone();
+        layer.grid.clear();
+
+        // Destination quad corners (absolute pixel coordinates)
+        let tl = (x + corners.top_left[0], y + corners.top_left[1]);
+        let tr = (x + width + corners.top_right[0], y + corners.top_right[1]);
+        let bl = (
+            x + corners.bottom_left[0],
+            y + height + corners.bottom_left[1],
+        );
+        let br = (
+            x + width + corners.bottom_right[0],
+            y + height + corners.bottom_right[1],
+        );
+
+        // Compute bounding box of the quad
+        let min_x = tl.0.min(tr.0).min(bl.0).min(br.0).floor().max(0.0) as i32;
+        let min_y = tl.1.min(tr.1).min(bl.1).min(br.1).floor().max(0.0) as i32;
+        let max_x = tl.0.max(tr.0).max(bl.0).max(br.0).ceil().min(doc_w) as i32;
+        let max_y = tl.1.max(tr.1).max(bl.1).max(br.1).ceil().min(doc_h) as i32;
+
+        for ty in min_y..max_y {
+            for tx in min_x..max_x {
+                let px = tx as f32 + 0.5;
+                let py = ty as f32 + 0.5;
+
+                // Inverse bilinear: find (u, v) in [0..1] such that
+                // lerp(lerp(tl, tr, u), lerp(bl, br, u), v) = (px, py)
+                if let Some((u, v)) = Self::inverse_bilinear(px, py, tl, tr, bl, br) {
+                    if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
+                        continue;
+                    }
+                    let source_x = (u * doc_w).floor() as i32;
+                    let source_y = (v * doc_h).floor() as i32;
+                    if !(0..doc_w as i32).contains(&source_x)
+                        || !(0..doc_h as i32).contains(&source_y)
+                    {
+                        continue;
+                    }
+                    let coord =
+                        TileCoord::new(source_x / TILE_SIZE as i32, source_y / TILE_SIZE as i32, 0);
+                    if let Some(tile) = source.get_tile(&coord) {
+                        let pixel = tile.get_pixel(
+                            (source_x % TILE_SIZE as i32) as u32,
+                            (source_y % TILE_SIZE as i32) as u32,
+                        );
+                        if pixel[3] > 0 {
+                            layer.grid.set_pixel_cow(tx, ty, pixel);
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Solve inverse bilinear mapping for a quad defined by 4 corners.
+    /// Returns (u, v) in [0..1]² if the point is inside the quad.
+    fn inverse_bilinear(
+        px: f32,
+        py: f32,
+        tl: (f32, f32),
+        tr: (f32, f32),
+        bl: (f32, f32),
+        br: (f32, f32),
+    ) -> Option<(f32, f32)> {
+        // Q(u,v) = (1-v)*((1-u)*tl + u*tr) + v*((1-u)*bl + u*br)
+        // Rewrite as: Q = A + u*B + v*C + u*v*D
+        let ax = tl.0;
+        let ay = tl.1;
+        let bx = tr.0 - tl.0;
+        let by = tr.1 - tl.1;
+        let cx = bl.0 - tl.0;
+        let cy = bl.1 - tl.1;
+        let dx = tl.0 - tr.0 - bl.0 + br.0;
+        let dy = tl.1 - tr.1 - bl.1 + br.1;
+
+        let ex = px - ax;
+        let ey = py - ay;
+
+        // cross2d helper
+        let cross = |a0: f32, a1: f32, b0: f32, b1: f32| -> f32 { a0 * b1 - a1 * b0 };
+
+        let k2 = cross(dx, dy, cx, cy);
+        let k1 = cross(dx, dy, ex, ey) - cross(bx, by, cx, cy);
+        let k0 = cross(bx, by, ex, ey);
+
+        // Solve k2*v² + k1*v + k0 = 0
+        if k2.abs() < 1e-6 {
+            // Linear case
+            if k1.abs() < 1e-6 {
+                return None;
+            }
+            let v = -k0 / k1;
+            let denom = bx + dx * v;
+            let u = if denom.abs() > 1e-6 {
+                (ex - cx * v) / denom
+            } else {
+                let denom2 = by + dy * v;
+                if denom2.abs() > 1e-6 {
+                    (ey - cy * v) / denom2
+                } else {
+                    return None;
+                }
+            };
+            return Some((u, v));
+        }
+
+        let disc = k1 * k1 - 4.0 * k0 * k2;
+        if disc < 0.0 {
+            return None;
+        }
+        let sqrt_disc = disc.sqrt();
+
+        // Try both roots, pick the one in [0,1]
+        for sign in &[1.0_f32, -1.0_f32] {
+            let v = (-k1 + sign * sqrt_disc) / (2.0 * k2);
+            if v < -0.01 || v > 1.01 {
+                continue;
+            }
+            let v = v.clamp(0.0, 1.0);
+            let denom = bx + dx * v;
+            let u = if denom.abs() > 1e-6 {
+                (ex - cx * v) / denom
+            } else {
+                let denom2 = by + dy * v;
+                if denom2.abs() > 1e-6 {
+                    (ey - cy * v) / denom2
+                } else {
+                    continue;
+                }
+            };
+            if u >= -0.01 && u <= 1.01 {
+                return Some((u.clamp(0.0, 1.0), v));
+            }
+        }
+
+        None
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

@@ -217,14 +217,28 @@ pub fn transform_layer(
 ) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
     guard.push_history("Free Transform");
-    if guard.document.transform_layer(
-        &payload.layer_id,
-        payload.x,
-        payload.y,
-        payload.width,
-        payload.height,
-        payload.rotation,
-    ) {
+    let success = if let Some(ref corners) = payload.warp_corners {
+        guard.document.warp_layer(
+            &payload.layer_id,
+            payload.x,
+            payload.y,
+            payload.width,
+            payload.height,
+            corners,
+        )
+    } else {
+        guard.document.transform_layer(
+            &payload.layer_id,
+            payload.x,
+            payload.y,
+            payload.width,
+            payload.height,
+            payload.rotation,
+            payload.skew_x,
+            payload.skew_y,
+        )
+    };
+    if success {
         Ok(guard.document.get_info())
     } else {
         Err("Layer not found".into())

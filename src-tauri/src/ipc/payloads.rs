@@ -119,6 +119,14 @@ pub struct CropPayload {
     pub height: u32,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct WarpCorners {
+    pub top_left: [f32; 2],
+    pub top_right: [f32; 2],
+    pub bottom_left: [f32; 2],
+    pub bottom_right: [f32; 2],
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct TransformLayerPayload {
     pub layer_id: String,
@@ -127,6 +135,9 @@ pub struct TransformLayerPayload {
     pub width: f32,
     pub height: f32,
     pub rotation: f32,
+    pub skew_x: f32,
+    pub skew_y: f32,
+    pub warp_corners: Option<WarpCorners>,
 }
 
 #[derive(Serialize, Deserialize)]

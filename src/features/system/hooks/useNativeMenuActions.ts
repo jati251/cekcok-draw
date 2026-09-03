@@ -4,6 +4,7 @@ import { useEditorStore } from '@/stores/editorStore';
 import { isTauriEnvironment } from '@/services/tauriBridge';
 import { copyActiveLayerSelection, pasteClipboardImage } from '@/utils/clipboard';
 import { saveProjectFile, openProjectFile } from '@/features/document/utils/project';
+import { initiateFreeTransform } from '@/features/canvas/utils/transformUtils';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
 interface NativeMenuActions {
@@ -114,31 +115,7 @@ export const useNativeMenuActions = ({
           } else if (action === 'preferences') {
             useEditorStore.getState().setIsPreferencesOpen(true);
           } else if (action === 'free_transform' || action === 'free_transform_layer') {
-            const currentDoc = useDocumentStore.getState().doc;
-            if (currentDoc && currentDoc.active_layer_id) {
-              const canvas = document.getElementById(
-                `layer-canvas-${currentDoc.active_layer_id}`
-              ) as HTMLCanvasElement | null;
-              if (canvas) {
-                const sourceCanvas = document.createElement('canvas');
-                sourceCanvas.width = canvas.width;
-                sourceCanvas.height = canvas.height;
-                const sCtx = sourceCanvas.getContext('2d');
-                if (sCtx) sCtx.drawImage(canvas, 0, 0);
-
-                useEditorStore.getState().setTransformState({
-                  x: 0,
-                  y: 0,
-                  width: currentDoc.width,
-                  height: currentDoc.height,
-                  rotation: 0,
-                  scaleX: 1,
-                  scaleY: 1,
-                  sourceCanvas,
-                  layerId: currentDoc.active_layer_id,
-                });
-              }
-            }
+            initiateFreeTransform();
           } else if (action === 'crop_selection') {
             const sel = useEditorStore.getState().selection;
             if (sel && sel.active && sel.width > 0 && sel.height > 0) {

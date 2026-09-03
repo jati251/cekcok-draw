@@ -3,6 +3,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorStore } from '@/stores/editorStore';
 import * as bridge from '@/services/tauriBridge';
 import { saveProjectFile } from '@/features/document/utils/project';
+import { initiateFreeTransform } from '@/features/canvas/utils/transformUtils';
 import { ToolType } from '@/types';
 
 interface KeyboardShortcutActions {
@@ -129,31 +130,7 @@ export const useKeyboardShortcuts = ({
           saveProjectFile();
         } else if (e.key.toLowerCase() === 't') {
           e.preventDefault();
-          const currentDoc = useDocumentStore.getState().doc;
-          if (currentDoc && currentDoc.active_layer_id) {
-            const canvas = document.getElementById(
-              `layer-canvas-${currentDoc.active_layer_id}`
-            ) as HTMLCanvasElement | null;
-            if (canvas) {
-              const sourceCanvas = document.createElement('canvas');
-              sourceCanvas.width = canvas.width;
-              sourceCanvas.height = canvas.height;
-              const sCtx = sourceCanvas.getContext('2d');
-              if (sCtx) sCtx.drawImage(canvas, 0, 0);
-
-              useEditorStore.getState().setTransformState({
-                x: 0,
-                y: 0,
-                width: currentDoc.width,
-                height: currentDoc.height,
-                rotation: 0,
-                scaleX: 1,
-                scaleY: 1,
-                sourceCanvas,
-                layerId: currentDoc.active_layer_id,
-              });
-            }
-          }
+          initiateFreeTransform();
         } else if (e.altKey && e.key.toLowerCase() === 'c') {
           e.preventDefault();
           actionsRef.current.onOpenCanvasSize?.();

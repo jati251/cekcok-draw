@@ -17,6 +17,15 @@ export type ToolType =
   | 'hand'
   | 'zoom';
 
+export type TransformMode = 'free' | 'warp';
+
+export interface WarpCorners {
+  topLeft: { dx: number; dy: number };
+  topRight: { dx: number; dy: number };
+  bottomLeft: { dx: number; dy: number };
+  bottomRight: { dx: number; dy: number };
+}
+
 export interface TransformState {
   x: number;
   y: number;
@@ -25,8 +34,14 @@ export interface TransformState {
   rotation: number; // degrees
   scaleX: number;
   scaleY: number;
+  skewX: number; // degrees
+  skewY: number; // degrees
+  mode: TransformMode;
+  warpCorners: WarpCorners;
   sourceCanvas: HTMLCanvasElement | null;
   layerId: string;
+  isSelection?: boolean;
+  baseLayerCanvas?: HTMLCanvasElement | null;
 }
 
 export type ShapeType = 'rectangle' | 'ellipse' | 'line' | 'arrow';
