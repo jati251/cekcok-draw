@@ -84,8 +84,9 @@ pub fn toggle_layer_clipping(
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
+    let before = guard.document.clone();
     guard.document.toggle_layer_clipping(&layer_id)?;
-    guard.push_history("Toggle Clipping Mask");
+    guard.history.push_state("Toggle Clipping Mask", &before);
     Ok(guard.document.get_info())
 }
 

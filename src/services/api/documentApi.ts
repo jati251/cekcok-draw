@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { DocumentInfo } from '@/types';
 import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
+import { parseProject, decodeProjectPixels } from '@/features/document/utils/projectCodec';
 
 export async function createDocument(
   title: string,
@@ -11,6 +12,33 @@ export async function createDocument(
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('create_document', { title, width, height, dpi });
   }
+  mockDoc.id = crypto.randomUUID();
+  mockDoc.layers = [
+    {
+      id: crypto.randomUUID(),
+      name: 'Background',
+      blend_mode: 'normal',
+      opacity: 1,
+      visible: true,
+      locked: false,
+      layer_type: 'background',
+    },
+    {
+      id: crypto.randomUUID(),
+      name: 'Layer 1',
+      blend_mode: 'normal',
+      opacity: 1,
+      visible: true,
+      locked: false,
+      layer_type: 'raster',
+    },
+  ];
+  mockDoc.active_layer_id = mockDoc.layers[1].id;
+  mockHistory.splice(0, mockHistory.length, {
+    id: crypto.randomUUID(),
+    description: 'Initialize Document',
+    timestamp: Date.now(),
+  });
   mockDoc.title = title;
   mockDoc.width = width;
   mockDoc.height = height;
@@ -132,39 +160,22 @@ export async function loadProject(
     return decodePackedLayerResponse(raw);
   }
 
-  const parsed = JSON.parse(content);
-  const doc = parsed.document;
-  mockDoc.id = doc.id || `doc-${Date.now()}`;
-  mockDoc.title = doc.title || 'Untitled';
-  mockDoc.width = doc.width;
-  mockDoc.height = doc.height;
-  mockDoc.dpi = doc.dpi || 72;
-  interface ParsedProjectLayer {
-    id?: string;
-    name: string;
-    blend_mode?: import('@/types').BlendMode;
-    opacity?: number;
-    visible?: boolean;
-    locked?: boolean;
-    is_clipped?: boolean;
-  }
-
-  mockDoc.layers = (doc.layers as ParsedProjectLayer[]).map((l, idx) => ({
-    id: l.id || `layer-${idx}`,
-    name: l.name,
-    blend_mode: l.blend_mode || 'normal',
-    opacity: typeof l.opacity === 'number' ? l.opacity : 1,
-    visible: l.visible !== false,
-    locked: !!l.locked,
-    is_clipped: !!l.is_clipped,
-  }));
-  mockDoc.active_layer_id = doc.active_layer_id || mockDoc.layers[mockDoc.layers.length - 1]?.id;
-
-  return {
-    doc: { ...mockDoc },
-    history: [{ id: `h-${Date.now()}`, description: 'Open Project', timestamp: Date.now() }],
-    layerPixels: new Map(),
+  const parsed = parseProject(content);
+  const layerPixels = await decodeProjectPixels(parsed);
+  const doc = {
+    ...parsed,
+    layers: parsed.layers.map(({ dataUrl: _pixels, ...layer }) => {
+      void _pixels;
+      return layer;
+    }),
   };
+  Object.assign(mockDoc, doc);
+  mockHistory.splice(0, mockHistory.length, {
+    id: crypto.randomUUID(),
+    description: 'Open Project',
+    timestamp: Date.now(),
+  });
+  return { doc, history: [...mockHistory], layerPixels };
 }
 
 export async function importImageFile(

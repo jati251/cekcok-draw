@@ -162,10 +162,21 @@ pub fn load_project(
         .map_err(|e| format!("Failed to parse project JSON: {}", e))?;
 
     let doc_input = project.document;
-    if doc_input.width == 0 || doc_input.height == 0 {
+    if doc_input.width == 0
+        || doc_input.height == 0
+        || doc_input.width > 32768
+        || doc_input.height > 32768
+    {
         return Err("Invalid document dimensions".into());
     }
 
+    if doc_input
+        .dpi
+        .is_some_and(|dpi| !dpi.is_finite() || dpi <= 0.0)
+    {
+        return Err("Invalid document resolution".into());
+    }
+    let mut layer_ids = std::collections::HashSet::new();
     let mut new_doc = Document {
         id: doc_input
             .id
@@ -184,6 +195,13 @@ pub fn load_project(
             if !id.is_empty() {
                 layer.id = id;
             }
+        }
+        if !layer_ids.insert(layer.id.clone()) {
+            return Err("Duplicate layer ID".into());
+        }
+        if let Some(kind) = layer_meta.layer_type {
+            layer.layer_type = serde_json::from_value(serde_json::Value::String(kind))
+                .map_err(|_| "Invalid layer type")?;
         }
         if let Some(bm) = layer_meta.blend_mode {
             layer.blend_mode = match bm.to_lowercase().as_str() {
@@ -226,18 +244,21 @@ pub fn load_project(
                     &data_url
                 };
 
-                if let Ok(png_bytes) = BASE64_STANDARD.decode(base64_str.trim()) {
-                    if let Ok(dyn_img) = image::load_from_memory(&png_bytes) {
-                        let rgba = dyn_img.to_rgba8();
-                        layer.grid.write_image_fast(
-                            0,
-                            0,
-                            rgba.width(),
-                            rgba.height(),
-                            rgba.as_raw(),
-                        );
-                    }
+                let png_bytes = BASE64_STANDARD
+                    .decode(base64_str.trim())
+                    .map_err(|_| format!("Invalid image data in layer {}", layer.name))?;
+                let dyn_img = image::load_from_memory(&png_bytes)
+                    .map_err(|_| format!("Cannot decode layer {}", layer.name))?;
+                if dyn_img.width() != new_doc.width || dyn_img.height() != new_doc.height {
+                    return Err(format!(
+                        "Layer {} dimensions do not match document",
+                        layer.name
+                    ));
                 }
+                let rgba = dyn_img.to_rgba8();
+                layer
+                    .grid
+                    .write_image_fast(0, 0, rgba.width(), rgba.height(), rgba.as_raw());
             }
         }
 
@@ -308,6 +329,7 @@ pub fn import_image_file(
         (tw, th, sx, sy, resized.to_rgba8())
     };
 
+    guard.push_history(format!("Import '{}'", file_name));
     let new_layer_id = guard.document.add_layer_with_type(file_name.clone(), None);
     if let Some(layer) = guard
         .document
@@ -319,8 +341,6 @@ pub fn import_image_file(
             .grid
             .write_image_fast(start_x, start_y, target_w, target_h, rgba.as_raw());
     }
-
-    guard.push_history(format!("Import '{}'", file_name));
 
     Ok(super::history_commands::pack_doc_with_layers(
         &guard.document,

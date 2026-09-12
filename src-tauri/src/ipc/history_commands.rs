@@ -75,24 +75,9 @@ pub(crate) fn pack_doc_with_layers(
     let h = doc.height;
     let layer_pixel_bytes = (w as usize) * (h as usize) * 4;
 
-    let mut layer_buffers: Vec<(String, Vec<u8>)> = Vec::with_capacity(doc_info.layers.len());
-    for layer_info in &doc_info.layers {
-        let rgba = doc
-            .render_layer_viewport_rgba(&layer_info.id, 0, 0, w, h)
-            .unwrap_or_else(|| vec![0u8; layer_pixel_bytes]);
-        layer_buffers.push((layer_info.id.clone(), rgba));
-    }
-
-    let mut offset = 0usize;
-    let mut layer_entries = Vec::new();
-    for (id, buf) in &layer_buffers {
-        layer_entries.push(serde_json::json!({
-            "id": id,
-            "offset": offset,
-            "length": buf.len(),
-        }));
-        offset += buf.len();
-    }
+    let layer_entries: Vec<_> = doc_info.layers.iter().enumerate().map(|(index, layer)| {
+        serde_json::json!({ "id": layer.id, "offset": index * layer_pixel_bytes, "length": layer_pixel_bytes })
+    }).collect();
 
     let header = serde_json::json!({
         "doc": doc_info,
@@ -102,12 +87,16 @@ pub(crate) fn pack_doc_with_layers(
     let header_bytes = serde_json::to_vec(&header).unwrap_or_default();
     let header_len = header_bytes.len() as u32;
 
-    let total_pixel_bytes: usize = layer_buffers.iter().map(|(_, b)| b.len()).sum();
+    let total_pixel_bytes = doc_info.layers.len() * layer_pixel_bytes;
     let mut out = Vec::with_capacity(4 + header_bytes.len() + total_pixel_bytes);
     out.extend_from_slice(&header_len.to_le_bytes());
     out.extend_from_slice(&header_bytes);
-    for (_, buf) in layer_buffers {
-        out.extend_from_slice(&buf);
+    for layer in &doc_info.layers {
+        if let Some(pixels) = doc.render_layer_viewport_rgba(&layer.id, 0, 0, w, h) {
+            out.extend_from_slice(&pixels);
+        } else {
+            out.resize(out.len() + layer_pixel_bytes, 0);
+        }
     }
 
     tauri::ipc::Response::new(out)

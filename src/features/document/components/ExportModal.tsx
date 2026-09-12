@@ -6,6 +6,7 @@ import {
   ExportFormat,
 } from '@/features/document/utils/export';
 import { useModalDismiss } from '@/hooks';
+import { toast } from '@/stores/toastStore';
 import { X, Download, FileImage, Layers, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -20,6 +21,20 @@ const FORMATS: {
   ext: string;
   badge: string;
 }[] = [
+  {
+    id: 'psd',
+    label: 'Photoshop PSD',
+    desc: 'Layered RGB artwork for Photoshop / Procreate',
+    ext: '.psd',
+    badge: 'Layers',
+  },
+  {
+    id: 'pdf',
+    label: 'PDF Document',
+    desc: 'Flattened artwork at document print resolution',
+    ext: '.pdf',
+    badge: 'Print',
+  },
   {
     id: 'png',
     label: 'PNG Image',
@@ -72,7 +87,8 @@ const FORMATS: {
 ];
 
 export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { doc } = useDocumentStore();
+  const doc = useDocumentStore((state) => state.doc);
+  const [exporting, setExporting] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('png');
   const [quality, setQuality] = useState(0.92);
   const [transparentBg, setTransparentBg] = useState(true);
@@ -83,21 +99,9 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (!isOpen || !doc) return null;
     try {
       const isTransparent =
-        (format === 'png' || format === 'webp' || format === 'svg') && transparentBg;
-      const compCanvas = compositeVisibleLayersToCanvas(doc, isTransparent);
-      const maxThumbSize = 160;
-      const scale = Math.min(1, maxThumbSize / Math.max(doc.width, doc.height));
-      const thumbWidth = Math.max(1, Math.round(doc.width * scale));
-      const thumbHeight = Math.max(1, Math.round(doc.height * scale));
-
-      const thumbCanvas = document.createElement('canvas');
-      thumbCanvas.width = thumbWidth;
-      thumbCanvas.height = thumbHeight;
-      const tCtx = thumbCanvas.getContext('2d');
-      if (tCtx) {
-        tCtx.drawImage(compCanvas, 0, 0, thumbWidth, thumbHeight);
-        return thumbCanvas.toDataURL('image/png');
-      }
+        (format === 'png' || format === 'webp' || format === 'svg' || format === 'tiff') &&
+        transparentBg;
+      return compositeVisibleLayersToCanvas(doc, isTransparent, 160).toDataURL('image/png');
     } catch {
       return null;
     }
@@ -107,12 +111,20 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
   if (!isOpen || !doc) return null;
 
   const handleExport = async () => {
-    await compositeAndDownloadDocument(doc, {
-      format,
-      quality,
-      transparentBg: (format === 'png' || format === 'webp' || format === 'svg') && transparentBg,
-    });
-    onClose();
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await compositeAndDownloadDocument(doc, {
+        format,
+        quality,
+        transparentBg: ['png', 'webp', 'svg', 'tiff', 'psd'].includes(format) && transparentBg,
+      });
+      onClose();
+    } catch (error) {
+      toast.error('Export failed', String(error));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const selectedFormatObj = FORMATS.find((f) => f.id === format) || FORMATS[0];
@@ -126,7 +138,7 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
       <div
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
-        className="w-[540px] bg-ps-panel border border-ps-border rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        className="max-h-[90vh] overflow-y-auto w-[540px] max-w-[95vw] bg-ps-panel border border-ps-border rounded-xl shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="h-11 px-5 bg-ps-header border-b border-ps-border flex items-center justify-between">
@@ -241,7 +253,7 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {(format === 'png' || format === 'webp' || format === 'svg') && (
+          {(format === 'png' || format === 'webp' || format === 'svg' || format === 'tiff') && (
             <div className="p-3 bg-ps-surface/60 border border-ps-border/50 rounded-lg flex items-center justify-between">
               <div>
                 <span className="block text-xs font-semibold text-zinc-200">
@@ -270,10 +282,13 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </button>
             <button
               onClick={handleExport}
+              disabled={exporting}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20 flex items-center justify-center space-x-1.5 transition-colors"
             >
               <Sparkles size={13} />
-              <span>Export {selectedFormatObj.label.split(' ')[0]}</span>
+              <span>
+                {exporting ? 'Exporting...' : `Export ${selectedFormatObj.label.split(' ')[0]}`}
+              </span>
             </button>
           </div>
         </div>

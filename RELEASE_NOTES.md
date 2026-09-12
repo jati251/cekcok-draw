@@ -1,3 +1,32 @@
+# CekcokDraw v0.4.1 - The "Interchange Formats, Binary Pixel IPC & Hardening" Update
+
+This release introduces native layered Photoshop PSD export, production-grade PDF & baseline TIFF publishing encoders, direct zero-copy binary pixel IPC blitting over Tauri, hardened project serialization, and comprehensive automated test coverage.
+
+## 🎨 Professional Interchange & Export Suite
+
+- **Multi-Layer Photoshop PSD Export (`.psd`)**: Full multi-layer RGB export powered by `ag-psd`. Faithfully preserves layer hierarchy, individual layer opacities, Photoshop blend modes (`normal`, `multiply`, `screen`, `overlay`, etc.), clipping mask relationships, and document DPI resolution.
+- **Production-Grade PDF Document Export (`.pdf`)**: Native single-page PDF generator embedding full raster streams with exact points/inches dimensions derived from canvas dimensions and document DPI.
+- **Baseline TIFF 6.0 Export (`.tiff`)**: 32-bit RGBA uncompressed TIFF output featuring baseline TIFF 6.0 tags, resolution metadata, and unassociated alpha channel support.
+- **Enhanced Export Modal**: Modernized export dialog featuring format categories ("Layers", "Print", "Raster", "Project"), live high-fidelity thumbnail preview, and adaptive transparent background toggling.
+
+## ⚡ High-Performance Binary Pixel IPC & Brush Pipeline
+
+- **Zero-Copy Binary IPC (`write_layer_pixels_binary`)**: Replaced Base64-encoded JSON payloads with raw little-endian binary buffers over Tauri IPC. Drastically cuts memory overhead and eliminates GC pauses during continuous painting.
+- **Dirty-Rect Sub-Pixel Bounds**: The drawing engine calculates precise bounding boxes (`minX`, `minY`, `maxX`, `maxY`) for brush, eraser, dodge, and burn strokes, writing only modified sub-regions directly to backend sparse tile memory.
+- **Bounded Stamp LRU Cache**: Implemented a byte-bounded stamp cache (capped at 32MB and 120 entries) with exact byte tracking and color alpha modulation.
+
+## 🛡️ Robust Project Serialization & Data Integrity
+
+- **Strict `.cdraw` Codec & Validation (`projectCodec.ts`)**: Enforces document bounds (1 to 32,768 px), valid DPI, layer uniqueness, and strict data URL validation to prevent project corruption.
+- **Race-Condition-Proof Document Saving**: Prevents stale overwrites when switching documents or making fast edits during file writes by tracking canvas revision tokens.
+- **Clean Layer Stack Compositing**: Streamlined DOM layer stack hydration with instant blit for pending undo/redo pixels and seamless clipping mask compositing.
+
+## 🧪 Automated Testing & Continuous Verification
+
+- **Vitest & `@napi-rs/canvas` Test Suite**: End-to-end unit tests verifying project round-trip persistence, invalid dimension rejection, layer clipping preservation, PSD structure verification, SVG title escaping, and TIFF/PDF header integrity.
+
+---
+
 # CekcokDraw v0.4.0 - The "Free Transform, Perspective Warp & Studio Architecture" Update
 
 This milestone release introduces an authentic Photoshop-grade Free Transform suite, perspective quad Warp mesh deformation, Selection-scoped transforms, major architectural refactoring, and high-performance dirty-rect pixel pipeline optimizations.

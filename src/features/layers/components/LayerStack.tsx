@@ -4,6 +4,7 @@ import { getCssBlendMode } from '@/config/blendModes';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { isTauriEnvironment, renderLayerViewport } from '@/services/tauriBridge';
+import { toast } from '@/stores/toastStore';
 
 interface Props {
   doc: DocumentInfo;
@@ -11,181 +12,102 @@ interface Props {
   viewport?: { x: number; y: number; width: number; height: number };
 }
 
-export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
-  const initializedLayersRef = useRef<Set<string>>(new Set());
-  const lastDocIdRef = useRef<string>(doc.id);
-  const lastDimensionsRef = useRef({ width: doc.width, height: doc.height });
-  const transformState = useEditorStore((state) => state.transformState);
-  const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
+function updateMasks(doc: DocumentInfo, canvases: Map<string, HTMLCanvasElement>) {
+  let base: HTMLCanvasElement | undefined;
+  let baseVisible = false;
+  let mask: string | undefined;
+  for (const layer of doc.layers) {
+    const canvas = canvases.get(layer.id);
+    if (!canvas) continue;
+    if (!layer.is_clipped) {
+      base = canvas;
+      baseVisible = layer.visible;
+      mask = undefined;
+      canvas.style.maskImage = '';
+      canvas.style.webkitMaskImage = '';
+    } else {
+      mask ??=
+        base && baseVisible
+          ? `url(${base.toDataURL()})`
+          : 'linear-gradient(transparent, transparent)';
+      canvas.style.maskImage = mask;
+      canvas.style.webkitMaskImage = mask;
+    }
+  }
+}
 
-  // Stable signature of everything that can change actual layer pixel data:
-  // document ID, canvas dimensions, the set of layer ids (add/remove/merge), clipping flags,
-  // and the Rust sync revision (undo/redo/merge/delete).
+export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
+  const initialized = useRef(new Set<string>());
+  const transformState = useEditorStore((state) => state.transformState);
+  const canvasRevision = useDocumentStore((state) => state.canvasRevision);
+  const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
   const pixelSignature = useMemo(
     () =>
       `${doc.id}|${doc.width}x${doc.height}|${doc.layers
-        .map((l) => `${l.id}:${l.is_clipped ? '1' : '0'}`)
+        .map((l) => l.id)
         .sort()
         .join(',')}|${rustSyncRevision}`,
-    [doc.id, doc.height, doc.layers, doc.width, rustSyncRevision]
+    [doc.id, doc.width, doc.height, doc.layers, rustSyncRevision]
   );
 
-  // Sync layer canvases from Rust engine state.
-  // Uses pre-fetched pixels from combined undo/redo IPC when available (instant),
-  // falls back to individual IPC calls only on init / dimension / pixel changes.
   useEffect(() => {
-    // Read the latest doc straight from the store so the effect never depends
-    // on the frequently-changing `doc.layers` prop reference.
     const d = useDocumentStore.getState().doc;
     if (!d) return;
-
-    if (
-      lastDocIdRef.current !== d.id ||
-      lastDimensionsRef.current.width !== d.width ||
-      lastDimensionsRef.current.height !== d.height
-    ) {
-      lastDocIdRef.current = d.id;
-      lastDimensionsRef.current = { width: d.width, height: d.height };
-      initializedLayersRef.current.clear();
-    }
-
     let cancelled = false;
-
     const hydrate = async () => {
-      if (!isTauriEnvironment()) {
-        // Browser mock fallback
-        d.layers.forEach((layer) => {
-          const canvas = layerCanvasesRef.current?.get(layer.id);
-          if (!canvas || initializedLayersRef.current.has(layer.id) || layer.name !== 'Background')
-            return;
-          const ctx = canvas?.getContext('2d');
-          if (ctx) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, d.width, d.height);
-          }
-          initializedLayersRef.current.add(layer.id);
-        });
-        return;
-      }
-
-      if (d.width < 1 || d.height < 1) return;
-
-      // Check for pre-fetched pixels from combined undo/redo IPC
-      const store = useDocumentStore.getState();
-      const pendingPixels = store.pendingLayerPixels;
-
-      if (pendingPixels && pendingPixels.size > 0) {
-        // Instant blit: pixels already arrived with the undo/redo response
-        for (const layer of d.layers) {
-          if (cancelled) return;
-          const rawBytes = pendingPixels.get(layer.id);
-          if (!rawBytes) continue;
-          const canvas = layerCanvasesRef.current?.get(layer.id);
-          const ctx = canvas?.getContext('2d');
-          if (canvas && ctx) {
-            const imgData = ctx.createImageData(d.width, d.height);
-            imgData.data.set(rawBytes);
-            ctx.putImageData(imgData, 0, 0);
-            initializedLayersRef.current.add(layer.id);
-          }
-        }
-        // Apply clipping masks visually in the DOM for instant blit.
-        let currentBaseLayerId: string | null = null;
-        for (const layer of d.layers) {
-          if (!layer.is_clipped) {
-            currentBaseLayerId = layer.id;
-          } else if (currentBaseLayerId) {
-            const clippedCanvas = layerCanvasesRef.current?.get(layer.id);
-            const baseCanvas = layerCanvasesRef.current?.get(currentBaseLayerId);
-            if (clippedCanvas && baseCanvas) {
-              const ctx = clippedCanvas.getContext('2d');
-              if (ctx) {
-                ctx.globalCompositeOperation = 'destination-in';
-                ctx.drawImage(baseCanvas, 0, 0);
-                ctx.globalCompositeOperation = 'source-over';
-              }
-            }
-          }
-        }
-
-        // Consume: clear pending pixels so they aren't re-applied
-        useDocumentStore.setState({ pendingLayerPixels: null });
-        return;
-      }
-
-      // Fallback: fetch pixels via individual IPC (init, dimension changes, etc.)
-      // Background placeholder while initial render arrives
-      const background = d.layers.find((layer) => layer.name === 'Background');
-      if (background && !initializedLayersRef.current.has(background.id)) {
-        const canvas = layerCanvasesRef.current?.get(background.id);
+      const pending = useDocumentStore.getState().pendingLayerPixels;
+      for (const layer of d.layers) {
+        if (cancelled) return;
+        const raw =
+          pending?.get(layer.id) ??
+          (isTauriEnvironment()
+            ? await renderLayerViewport(layer.id, 0, 0, d.width, d.height)
+            : null);
+        if (cancelled) return;
+        const canvas = layerCanvasesRef.current.get(layer.id);
         const ctx = canvas?.getContext('2d');
-        if (ctx) {
+        if (!canvas || !ctx) continue;
+        if (raw) {
+          if (raw.length !== d.width * d.height * 4) throw new Error('Invalid layer pixel data');
+          const pixels = ctx.createImageData(d.width, d.height);
+          pixels.data.set(raw);
+          ctx.putImageData(pixels, 0, 0);
+        } else if (!initialized.current.has(layer.id) && layer.layer_type === 'background') {
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, d.width, d.height);
-          initializedLayersRef.current.add(background.id);
         }
+        initialized.current.add(layer.id);
       }
-
-      await Promise.all(
-        d.layers.map(async (layer) => {
-          const rawBytes = await renderLayerViewport(layer.id, 0, 0, d.width, d.height);
-          if (cancelled || !rawBytes) return;
-          const canvas = layerCanvasesRef.current?.get(layer.id);
-          const ctx = canvas?.getContext('2d');
-          if (canvas && ctx) {
-            const imgData = ctx.createImageData(d.width, d.height);
-            imgData.data.set(rawBytes);
-            ctx.putImageData(imgData, 0, 0);
-            initializedLayersRef.current.add(layer.id);
-          }
-        })
-      );
-
       if (cancelled) return;
-
-      // Apply clipping masks visually in the DOM.
-      // We iterate from bottom to top to find base layers.
-      let currentBaseLayerId: string | null = null;
-      for (const layer of d.layers) {
-        if (!layer.is_clipped) {
-          currentBaseLayerId = layer.id;
-        } else if (currentBaseLayerId) {
-          const clippedCanvas = layerCanvasesRef.current?.get(layer.id);
-          const baseCanvas = layerCanvasesRef.current?.get(currentBaseLayerId);
-          if (clippedCanvas && baseCanvas) {
-            const ctx = clippedCanvas.getContext('2d');
-            if (ctx) {
-              ctx.globalCompositeOperation = 'destination-in';
-              ctx.drawImage(baseCanvas, 0, 0);
-              ctx.globalCompositeOperation = 'source-over';
-            }
-          }
-        }
+      if (pending && useDocumentStore.getState().pendingLayerPixels === pending) {
+        useDocumentStore.setState({ pendingLayerPixels: null });
       }
+      const latest = useDocumentStore.getState().doc;
+      if (latest?.id === d.id) updateMasks(latest, layerCanvasesRef.current);
     };
-
-    hydrate().catch((error) => console.error('Failed to hydrate layer cache:', error));
-
+    void hydrate().catch((error) => {
+      if (!cancelled) toast.error('Could not load canvas', String(error));
+    });
     return () => {
       cancelled = true;
     };
   }, [pixelSignature, layerCanvasesRef]);
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => updateMasks(doc, layerCanvasesRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [doc, canvasRevision, layerCanvasesRef]);
+
   return (
     <>
       {doc.layers.map((layer) => {
-        const isBeingTransformed =
-          transformState?.layerId === layer.id && !transformState?.isSelection;
-
+        const transforming = transformState?.layerId === layer.id && !transformState?.isSelection;
         return (
           <canvas
             key={layer.id}
             ref={(el) => {
-              if (el && layerCanvasesRef.current) {
-                layerCanvasesRef.current.set(layer.id, el);
-              } else if (layerCanvasesRef.current) {
-                layerCanvasesRef.current.delete(layer.id);
-              }
+              if (el) layerCanvasesRef.current.set(layer.id, el);
+              else layerCanvasesRef.current.delete(layer.id);
             }}
             data-layer-id={layer.id}
             id={`layer-canvas-${layer.id}`}
@@ -194,7 +116,7 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
             style={{
               width: `${doc.width}px`,
               height: `${doc.height}px`,
-              opacity: layer.visible && !isBeingTransformed ? layer.opacity : 0,
+              opacity: layer.visible && !transforming ? layer.opacity : 0,
               mixBlendMode: getCssBlendMode(layer.blend_mode),
               display: layer.visible ? 'block' : 'none',
             }}

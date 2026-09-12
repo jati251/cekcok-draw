@@ -86,6 +86,7 @@ pub fn run() {
             crop_document,
             transform_layer,
             write_layer_pixels,
+            write_layer_pixels_binary,
             commit_stroke_history,
             apply_layer_filter,
             get_layer_histogram,

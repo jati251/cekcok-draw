@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { DocumentInfo, BlendMode, LayerType, WarpCorners } from '@/types';
-import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
+import { isTauriEnvironment, mockDoc, mockHistory, queueBackendOperation } from './coreApi';
+import { encodePixelPayload } from '@/utils/pixelPayload';
 
 export async function rotateLayer(layerId: string, degrees: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
@@ -229,21 +230,24 @@ export async function writeLayerPixels(
   width: number,
   height: number,
   data: Uint8Array | Uint8ClampedArray,
-  layerId?: string
+  layerId?: string,
+  actionName?: string
 ): Promise<string> {
-  if (isTauriEnvironment()) {
-    return await invoke<string>('write_layer_pixels', {
-      payload: {
-        layer_id: layerId || null,
-        start_x: Math.round(x),
-        start_y: Math.round(y),
-        width: Math.round(width),
-        height: Math.round(height),
-        data: Array.from(data),
-      },
-    });
-  }
-  return 'Mock pixels written';
+  const payload = encodePixelPayload(
+    {
+      layer_id: layerId,
+      start_x: Math.round(x),
+      start_y: Math.round(y),
+      width,
+      height,
+      action_name: actionName,
+    },
+    data
+  );
+  return queueBackendOperation(async () => {
+    if (isTauriEnvironment()) return invoke<string>('write_layer_pixels_binary', payload);
+    return 'Browser pixels written';
+  });
 }
 
 export async function layerViaCopy(

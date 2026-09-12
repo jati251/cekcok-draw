@@ -34,12 +34,18 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
     try {
       // Yield to let the loading toast render before heavy stringification
       await new Promise((resolve) => setTimeout(resolve, 50));
+      if (useDocumentStore.getState().doc !== doc)
+        throw new Error('Document changed while saving. Please save again.');
+      const savedRevision = useDocumentStore.getState().canvasRevision;
       const blob = exportCekcokProject(doc);
       const buffer = await blob.arrayBuffer();
       await writeFile(filePath, new Uint8Array(buffer));
 
-      store.setCurrentFilePath(filePath);
-      useDocumentStore.setState({ isDirty: false });
+      if (useDocumentStore.getState().doc?.id === doc.id) store.setCurrentFilePath(filePath);
+      const current = useDocumentStore.getState();
+      if (current.doc === doc && current.canvasRevision === savedRevision) {
+        useDocumentStore.setState({ isDirty: false });
+      }
       addRecentProject(filePath, doc.title || 'Untitled Project');
 
       toast.dismiss(toastId);
@@ -53,6 +59,9 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
     const toastId = toast.loading('Saving project...');
     try {
       await new Promise((resolve) => setTimeout(resolve, 50));
+      if (useDocumentStore.getState().doc !== doc)
+        throw new Error('Document changed while saving. Please save again.');
+      const savedRevision = useDocumentStore.getState().canvasRevision;
       const blob = exportCekcokProject(doc);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -60,7 +69,10 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       a.download = `${doc.title || 'Untitled'}.cdraw`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      useDocumentStore.setState({ isDirty: false });
+      const current = useDocumentStore.getState();
+      if (current.doc === doc && current.canvasRevision === savedRevision) {
+        useDocumentStore.setState({ isDirty: false });
+      }
       toast.dismiss(toastId);
       toast.success('Project Saved', 'Downloaded .cdraw file');
     } catch (e) {

@@ -7,6 +7,8 @@ import { BrushSettings } from '@/types';
  */
 
 const stampCache = new Map<string, HTMLCanvasElement>();
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
+let cacheBytes = 0;
 
 // Pseudo-random deterministic hash for reproducible organic brush noise
 const pseudoNoise = (x: number, y: number, seed = 1337): number => {
@@ -42,8 +44,8 @@ export const createStampCanvas = (
       center,
       radius
     );
-    grad.addColorStop(0, `${colStr} 1)`);
-    grad.addColorStop(0.5, `${colStr} 0.5)`);
+    grad.addColorStop(0, `${colStr} ${color[3] / 255})`);
+    grad.addColorStop(0.5, `${colStr} ${color[3] / 510})`);
     grad.addColorStop(1, `${colStr} 0)`);
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -206,7 +208,7 @@ export const createStampCanvas = (
         data[idx] = color[0];
         data[idx + 1] = color[1];
         data[idx + 2] = color[2];
-        data[idx + 3] = Math.round(Math.min(1.0, Math.max(0.0, alpha)) * 255);
+        data[idx + 3] = Math.round(Math.min(1.0, Math.max(0.0, alpha)) * color[3]);
       }
     }
   }
@@ -230,15 +232,34 @@ export const getOrCreateStamp = (
   const key = `${brushType}_${roundedRadius}_${roundedHardness}_${angle}_${grain}_${scatter}_${color[0]}_${color[1]}_${color[2]}_${color[3]}`;
 
   const cached = stampCache.get(key);
-  if (cached) return cached;
-
-  if (stampCache.size > 120) {
-    const firstKey = stampCache.keys().next().value;
-    if (firstKey) stampCache.delete(firstKey);
+  if (cached) {
+    stampCache.delete(key);
+    stampCache.set(key, cached);
+    return cached;
   }
 
-  const stamp = createStampCanvas(roundedRadius, settings, color);
-  stampCache.set(key, stamp);
+  const stamp = createStampCanvas(
+    roundedRadius,
+    {
+      ...settings,
+      hardness: roundedHardness,
+      angle,
+      grain,
+      scatter,
+    },
+    color
+  );
+  const bytes = stamp.width * stamp.height * 4;
+  while (stampCache.size && (cacheBytes + bytes > MAX_CACHE_BYTES || stampCache.size >= 120)) {
+    const firstKey = stampCache.keys().next().value!;
+    const oldest = stampCache.get(firstKey)!;
+    cacheBytes -= oldest.width * oldest.height * 4;
+    stampCache.delete(firstKey);
+  }
+  if (bytes <= MAX_CACHE_BYTES) {
+    stampCache.set(key, stamp);
+    cacheBytes += bytes;
+  }
   return stamp;
 };
 

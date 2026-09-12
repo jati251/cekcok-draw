@@ -302,10 +302,11 @@ export const useCanvasInteractions = (props: UseCanvasInteractionsProps) => {
     }
 
     if (isDrawingRef.current) {
-      const coalescedEvents =
+      let coalescedEvents =
         typeof e.nativeEvent.getCoalescedEvents === 'function'
           ? e.nativeEvent.getCoalescedEvents()
           : [e.nativeEvent];
+      if (!coalescedEvents.length) coalescedEvents = [e.nativeEvent];
 
       let lastPt =
         strokePointsRef.current.length > 0
