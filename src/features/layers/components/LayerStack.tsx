@@ -3,7 +3,7 @@ import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
-import { isTauriEnvironment, renderLayerViewport } from '@/services/tauriBridge';
+import { renderLayerViewport } from '@/services/tauriBridge';
 import { toast } from '@/stores/toastStore';
 
 interface Props {
@@ -54,15 +54,13 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
     const d = useDocumentStore.getState().doc;
     if (!d) return;
     let cancelled = false;
+    useDocumentStore.setState({ isLoading: true });
     const hydrate = async () => {
       const pending = useDocumentStore.getState().pendingLayerPixels;
       for (const layer of d.layers) {
         if (cancelled) return;
         const raw =
-          pending?.get(layer.id) ??
-          (isTauriEnvironment()
-            ? await renderLayerViewport(layer.id, 0, 0, d.width, d.height)
-            : null);
+          pending?.get(layer.id) ?? (await renderLayerViewport(layer.id, 0, 0, d.width, d.height));
         if (cancelled) return;
         const canvas = layerCanvasesRef.current.get(layer.id);
         const ctx = canvas?.getContext('2d');
@@ -84,9 +82,13 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
       }
       const latest = useDocumentStore.getState().doc;
       if (latest?.id === d.id) updateMasks(latest, layerCanvasesRef.current);
+      useDocumentStore.setState({ isLoading: false });
     };
     void hydrate().catch((error) => {
-      if (!cancelled) toast.error('Could not load canvas', String(error));
+      if (!cancelled) {
+        useDocumentStore.setState({ isLoading: false, error: String(error) });
+        toast.error('Could not load canvas', String(error));
+      }
     });
     return () => {
       cancelled = true;

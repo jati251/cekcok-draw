@@ -46,7 +46,9 @@ export const useStrokeBaker = ({
     let bounds = box;
     if (direct) {
       const pad = brushSettings.size * 2 + 4;
-      bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+      bounds = box
+        ? { ...box }
+        : { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
       for (const p of points) {
         bounds.minX = Math.min(bounds.minX, p.x - pad);
         bounds.minY = Math.min(bounds.minY, p.y - pad);

@@ -160,6 +160,10 @@ pub fn set_layer_opacity(
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
+    if !guard.document.layers.iter().any(|l| l.id == layer_id) {
+        return Err("Layer not found".into());
+    }
+    guard.push_history("Layer Opacity");
     if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
         layer.opacity = opacity.clamp(0.0, 1.0);
         Ok(guard.document.get_info())
@@ -175,6 +179,10 @@ pub fn set_layer_visibility(
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
+    if !guard.document.layers.iter().any(|l| l.id == layer_id) {
+        return Err("Layer not found".into());
+    }
+    guard.push_history("Layer Visibility");
     if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
         layer.visible = visible;
         Ok(guard.document.get_info())
@@ -206,6 +214,10 @@ pub fn set_layer_lock(
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
     let mut guard = state.lock();
+    if !guard.document.layers.iter().any(|l| l.id == layer_id) {
+        return Err("Layer not found".into());
+    }
+    guard.push_history("Layer Lock");
     if let Some(layer) = guard.document.layers.iter_mut().find(|l| l.id == layer_id) {
         layer.locked = locked;
         Ok(guard.document.get_info())

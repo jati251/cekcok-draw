@@ -163,6 +163,8 @@ export const TransformOverlay: React.FC<Props> = ({ zoom }) => {
         const history = await bridge.getHistory();
         useDocumentStore.setState((state) => ({
           doc: updatedDoc,
+          isDirty: true,
+          rustSyncRevision: state.rustSyncRevision + 1,
           history,
           historyIndex: history.length - 1,
           canvasRevision: state.canvasRevision + 1,

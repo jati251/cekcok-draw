@@ -89,7 +89,8 @@ export const StatusBar: React.FC<Props> = ({ onOpenUpdateModal }) => {
         <div className="flex items-center space-x-1.5">
           <HardDrive size={10} className="text-emerald-400" />
           <span className="text-zinc-300">
-            Pool: <span className="text-emerald-400 font-semibold">{totalTiles}</span> Tiles (~
+            Layer estimate: <span className="text-emerald-400 font-semibold">{totalTiles}</span>{' '}
+            Tiles (~
             {estimatedRamMb} MB)
           </span>
         </div>

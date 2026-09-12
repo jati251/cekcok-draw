@@ -1,3 +1,4 @@
+import { confirmReplaceDocument } from '../utils/unsavedChanges';
 import React, { useState } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DOCUMENT_PRESETS } from '@/config/presets';
@@ -40,9 +41,10 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleCreate = () => {
-    initDocument(title, width, height, true, dpi);
-    onClose();
+  const handleCreate = async () => {
+    if (!(await confirmReplaceDocument())) return;
+    await initDocument(title, width, height, true, dpi);
+    if (!useDocumentStore.getState().error) onClose();
   };
 
   return (

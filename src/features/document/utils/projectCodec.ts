@@ -1,3 +1,4 @@
+import { validateDimensions } from '@/utils/documentLimits';
 import { DocumentInfo, LayerMetadata } from '@/types';
 
 export interface ProjectLayer extends LayerMetadata {
@@ -23,11 +24,13 @@ export function parseProject(content: string): ProjectDocument {
   ) {
     throw new Error('Invalid project document or dimensions');
   }
+  validateDimensions(doc.width, doc.height, doc.dpi ?? 72);
   if (!Number.isFinite(doc.dpi ?? 72) || (doc.dpi ?? 72) <= 0)
     throw new Error('Invalid resolution');
   const ids = new Set<string>();
   const layers = doc.layers.map((layer: ProjectLayer) => {
     if (!layer || typeof layer.name !== 'string') throw new Error('Invalid project layer');
+    if (!Number.isFinite(layer.opacity ?? 1)) throw new Error('Invalid layer opacity');
     const id = layer.id || crypto.randomUUID();
     if (typeof id !== 'string' || ids.has(id)) throw new Error('Duplicate or invalid layer ID');
     ids.add(id);

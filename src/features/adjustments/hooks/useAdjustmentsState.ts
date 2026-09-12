@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import * as filters from '@/features/adjustments/utils/filters';
-import * as bridge from '@/services/tauriBridge';
+import { persistCanvas } from '@/features/canvas/utils/persistCanvas';
 
 export type AdjustmentTab = 'brightness' | 'huesat' | 'levels' | 'blur' | 'quick';
 
@@ -61,7 +61,12 @@ export const useAdjustmentsState = (currentTab: AdjustmentTab) => {
       tab: AdjustmentTab,
       params?: { b?: number; c?: number; h?: number; s?: number; l?: number; r?: number }
     ) => {
-      if (!doc || !doc.active_layer_id) return;
+      if (
+        !doc ||
+        !doc.active_layer_id ||
+        doc.layers.find((layer) => layer.id === doc.active_layer_id)?.locked
+      )
+        return;
       const canvas = document.getElementById(
         `layer-canvas-${doc.active_layer_id}`
       ) as HTMLCanvasElement | null;
@@ -141,85 +146,14 @@ export const useAdjustmentsState = (currentTab: AdjustmentTab) => {
   const handleApplyCommit = async () => {
     if (!doc || !doc.active_layer_id) return;
 
-    switch (currentTab) {
-      case 'brightness':
-        pushCanvasSnapshot(`Brightness (${brightness}) / Contrast (${contrast})`);
-        await bridge
-          .applyLayerFilter({
-            type: 'brightness_contrast',
-            brightness,
-            contrast,
-            layer_id: doc.active_layer_id,
-          })
-          .catch(() => {});
-        await bridge.commitStrokeHistory(`Brightness / Contrast`);
-        break;
-
-      case 'huesat':
-        pushCanvasSnapshot(`Hue (${hue}°) / Saturation (${saturation})`);
-        await bridge
-          .applyLayerFilter({
-            type: 'hue_saturation',
-            hue,
-            saturation,
-            lightness,
-            layer_id: doc.active_layer_id,
-          })
-          .catch(() => {});
-        await bridge.commitStrokeHistory(`Hue / Saturation`);
-        break;
-
-      case 'levels':
-        pushCanvasSnapshot('Levels Adjustment');
-        await bridge
-          .applyLayerFilter({
-            type: 'levels',
-            in_black: inBlack,
-            in_gamma: inGamma,
-            in_white: inWhite,
-            out_black: outBlack,
-            out_white: outWhite,
-            layer_id: doc.active_layer_id,
-          })
-          .catch(() => {});
-        await bridge.commitStrokeHistory(`Levels Adjustment`);
-        break;
-
-      case 'blur': {
-        pushCanvasSnapshot(`Gaussian Blur (${blurRadius}px)`);
-        const canvas = document.getElementById(
-          `layer-canvas-${doc.active_layer_id}`
-        ) as HTMLCanvasElement | null;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            const imgData = ctx.getImageData(0, 0, doc.width, doc.height);
-            await bridge
-              .writeLayerPixels(
-                0,
-                0,
-                doc.width,
-                doc.height,
-                new Uint8Array(imgData.data.buffer),
-                doc.active_layer_id
-              )
-              .catch(() => {});
-          }
-        }
-        await bridge
-          .applyLayerFilter({
-            type: 'gaussian_blur',
-            radius: blurRadius,
-            layer_id: doc.active_layer_id,
-          })
-          .catch(() => {});
-        await bridge.commitStrokeHistory(`Gaussian Blur`);
-        break;
-      }
-
-      default:
-        break;
-    }
+    if (doc.layers.find((layer) => layer.id === doc.active_layer_id)?.locked) return;
+    const canvas = document.getElementById(
+      `layer-canvas-${doc.active_layer_id}`
+    ) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    applyLivePreview(currentTab);
+    pushCanvasSnapshot(`${currentTab} adjustment`);
+    await persistCanvas(canvas, doc, doc.active_layer_id, `${currentTab} adjustment`);
 
     // Refresh baseline with new state
     baselineDataRef.current = null;
@@ -269,7 +203,12 @@ export const useAdjustmentsState = (currentTab: AdjustmentTab) => {
         else filters.applyDesaturate(ctx, doc.width, doc.height);
         bumpCanvasRevision();
 
-        await bridge.applyLayerFilter({ type, layer_id: doc.active_layer_id }).catch(() => {});
+        await persistCanvas(
+          canvas,
+          doc,
+          doc.active_layer_id,
+          type === 'invert' ? 'Invert Colors' : 'Desaturate'
+        );
         baselineDataRef.current = null;
         captureBaseline();
       }

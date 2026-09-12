@@ -19,7 +19,7 @@ impl HistoryEngine {
         Self {
             undo_stack: Vec::with_capacity(max_history),
             redo_stack: Vec::new(),
-            max_history,
+            max_history: max_history.max(2),
         }
     }
 
@@ -43,17 +43,12 @@ impl HistoryEngine {
     }
 
     pub fn undo(&mut self, current_doc: &mut Document) -> Option<HistoryAction> {
+        if self.undo_stack.len() <= 1 {
+            return None;
+        }
         let (action, prev_doc) = self.undo_stack.pop()?;
 
-        let redo_action = HistoryAction {
-            id: uuid::Uuid::new_v4().to_string(),
-            description: format!("Before {}", action.description),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        };
-        self.redo_stack.push((redo_action, current_doc.clone()));
+        self.redo_stack.push((action.clone(), current_doc.clone()));
         *current_doc = prev_doc;
 
         Some(action)
@@ -62,15 +57,7 @@ impl HistoryEngine {
     pub fn redo(&mut self, current_doc: &mut Document) -> Option<HistoryAction> {
         let (action, next_doc) = self.redo_stack.pop()?;
 
-        let undo_action = HistoryAction {
-            id: uuid::Uuid::new_v4().to_string(),
-            description: format!("Undo {}", action.description),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        };
-        self.undo_stack.push((undo_action, current_doc.clone()));
+        self.undo_stack.push((action.clone(), current_doc.clone()));
         *current_doc = next_doc;
 
         Some(action)
@@ -80,7 +67,44 @@ impl HistoryEngine {
         self.undo_stack.iter().map(|(a, _)| a.clone()).collect()
     }
 
+    pub fn rename_last(&mut self, description: String) {
+        if let Some((action, _)) = self.undo_stack.last_mut() {
+            action.description = description;
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.undo_stack.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn undo_redo_preserve_pixels_labels_and_initial_state() {
+        let mut doc = Document::new("Test", 4, 4);
+        let mut history = HistoryEngine::new(50);
+        history.push_state("Initialize", &doc);
+        assert!(history.undo(&mut doc).is_none());
+        history.push_state("Paint", &doc);
+        doc.layers[1].grid.set_pixel_cow(1, 1, [255, 0, 0, 255]);
+        history.rename_last("Red dot".into());
+        assert_eq!(history.undo(&mut doc).unwrap().description, "Red dot");
+        assert_eq!(doc.layers[1].grid.get_pixel(1, 1), [0, 0, 0, 0]);
+        assert_eq!(history.redo(&mut doc).unwrap().description, "Red dot");
+        assert_eq!(doc.layers[1].grid.get_pixel(1, 1), [255, 0, 0, 255]);
+        history.undo(&mut doc);
+        history.push_state("New branch", &doc);
+        assert!(history.redo(&mut doc).is_none());
+    }
+    #[test]
+    fn zero_capacity_does_not_panic() {
+        let doc = Document::new("Test", 1, 1);
+        let mut history = HistoryEngine::new(0);
+        for _ in 0..10 {
+            history.push_state("Action", &doc);
+        }
+        assert_eq!(history.len(), 2);
     }
 }

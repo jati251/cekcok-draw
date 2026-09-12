@@ -74,6 +74,7 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
       canvasRevision: get().canvasRevision + 1,
       rustSyncRevision: get().rustSyncRevision + 1,
       pendingLayerPixels: pendingPixels,
+      isDirty: true,
     });
 
     toast.success('Image Imported', `Added '${imgRes.name}' as new layer.`);
@@ -108,12 +109,14 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
 
     set({
       doc,
+      currentFilePath: null,
       history: currentHistory,
       historyIndex: currentHistory.length - 1,
       selectedLayerIds: targetLayerId ? [targetLayerId] : [],
       canvasRevision: get().canvasRevision + 1,
       rustSyncRevision: get().rustSyncRevision + 1,
       pendingLayerPixels: pendingPixels,
+      isDirty: true,
     });
 
     toast.success('Image Opened', `${imgRes.name} (${imgRes.width}×${imgRes.height}px)`);
@@ -173,6 +176,7 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
             canvasRevision: get().canvasRevision + 1,
             rustSyncRevision: get().rustSyncRevision + 1,
             pendingLayerPixels: result.layerPixels,
+            isDirty: true,
           });
           const activeLayer = result.doc.layers.find((l) => l.id === result.doc.active_layer_id);
           toast.success(
@@ -204,12 +208,14 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
           const result = await bridge.openImageFile(filePath);
           set({
             doc: result.doc,
+            currentFilePath: null,
             history: result.history,
             historyIndex: result.history.length - 1,
             selectedLayerIds: result.doc.active_layer_id ? [result.doc.active_layer_id] : [],
             canvasRevision: get().canvasRevision + 1,
             rustSyncRevision: get().rustSyncRevision + 1,
             pendingLayerPixels: result.layerPixels,
+            isDirty: true,
           });
           toast.success(
             'Image Opened',

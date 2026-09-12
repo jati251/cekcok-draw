@@ -1,4 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
+import { editBrowserLayer } from '../browser/canvas';
+import { drawShape } from '../browser/shapes';
+import { browserPixels } from '../browser/history';
+import { invoke as nativeInvoke } from '@tauri-apps/api/core';
+import { invokeOrdered as invoke } from './coreApi';
 import { DocumentInfo, BrushPoint, BrushSettings } from '@/types';
 import { isTauriEnvironment, mockDoc, queueBackendOperation } from './coreApi';
 
@@ -10,7 +14,7 @@ export async function applyBrushStroke(
 ): Promise<string> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      return await invoke<string>('apply_brush_stroke', {
+      return await nativeInvoke<string>('apply_brush_stroke', {
         payload: {
           points,
           settings,
@@ -117,7 +121,45 @@ export async function applyShape(
       },
     });
   }
-  return 'Mock shape rasterized';
+  return queueBackendOperation(async () => {
+    editBrowserLayer(layerId ?? mockDoc.active_layer_id!, `Shape: ${shapeType}`, (ctx) => {
+      drawShape(
+        ctx,
+        shapeType,
+        startX,
+        startY,
+        endX,
+        endY,
+        strokeColor,
+        fillColor,
+        strokeWidth,
+        radius,
+        hasFill,
+        hasStroke
+      );
+    });
+    return 'Shape rasterized';
+  });
+}
+
+export async function clearLayerRegion(
+  layerId: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<string> {
+  if (isTauriEnvironment()) {
+    return await invoke<string>('clear_layer_region', {
+      payload: { layer_id: layerId, x, y, width, height },
+    });
+  }
+  return queueBackendOperation(async () => {
+    editBrowserLayer(layerId, 'Clear Selection', (ctx) => {
+      ctx.clearRect(x, y, width, height);
+    });
+    return 'Selection cleared';
+  });
 }
 
 export async function renderViewport(
@@ -148,5 +190,14 @@ export async function renderLayerViewport(
     });
     return raw instanceof ArrayBuffer ? new Uint8ClampedArray(raw) : new Uint8ClampedArray(raw);
   }
-  return null;
+  const source = browserPixels(layerId);
+  const output = new Uint8ClampedArray(vw * vh * 4);
+  for (let y = 0; y < vh; y++) {
+    for (let x = 0; x < vw; x++) {
+      if (x + vx < 0 || x + vx >= mockDoc.width || y + vy < 0 || y + vy >= mockDoc.height) continue;
+      const index = ((y + vy) * mockDoc.width + x + vx) * 4;
+      output.set(source.subarray(index, index + 4), (y * vw + x) * 4);
+    }
+  }
+  return output;
 }

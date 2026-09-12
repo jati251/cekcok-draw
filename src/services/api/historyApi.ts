@@ -1,43 +1,40 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as nativeInvoke } from '@tauri-apps/api/core';
 import { DocumentInfo, HistoryAction } from '@/types';
-import { isTauriEnvironment, mockDoc, mockHistory, queueBackendOperation } from './coreApi';
+import { isTauriEnvironment, mockHistory, queueBackendOperation } from './coreApi';
+import { labelBrowserHistory, restoreBrowserHistory } from '../browser/history';
 
 export async function commitStrokeHistory(description: string): Promise<void> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      await invoke('commit_stroke_history', { description });
+      await nativeInvoke('commit_stroke_history', { description });
       return;
     }
-    mockHistory.push({
-      id: `h-${Date.now()}`,
-      description,
-      timestamp: Date.now(),
-    });
+    labelBrowserHistory(description);
   });
 }
 
 export async function undo(): Promise<DocumentInfo> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      return await invoke<DocumentInfo>('undo');
+      return await nativeInvoke<DocumentInfo>('undo');
     }
-    return { ...mockDoc };
+    return restoreBrowserHistory().doc;
   });
 }
 
 export async function redo(): Promise<DocumentInfo> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      return await invoke<DocumentInfo>('redo');
+      return await nativeInvoke<DocumentInfo>('redo');
     }
-    return { ...mockDoc };
+    return restoreBrowserHistory(true).doc;
   });
 }
 
 export async function getHistory(): Promise<HistoryAction[]> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      return await invoke<HistoryAction[]>('get_history');
+      return await nativeInvoke<HistoryAction[]>('get_history');
     }
     return [...mockHistory];
   });
@@ -50,8 +47,10 @@ export interface UndoRedoWithLayersResult {
 }
 
 export function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersResult {
+  if (raw.byteLength < 4) throw new Error('Truncated layer response');
   const view = new DataView(raw);
   const headerLen = view.getUint32(0, true);
+  if (headerLen > raw.byteLength - 4) throw new Error('Truncated layer header');
   const headerBytes = new Uint8Array(raw, 4, headerLen);
   const header = JSON.parse(new TextDecoder().decode(headerBytes));
 
@@ -59,6 +58,14 @@ export function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersR
   const layerPixels = new Map<string, Uint8ClampedArray>();
 
   for (const entry of header.layers as { id: string; offset: number; length: number }[]) {
+    if (
+      !Number.isSafeInteger(entry.offset) ||
+      !Number.isSafeInteger(entry.length) ||
+      entry.offset < 0 ||
+      entry.length !== header.doc.width * header.doc.height * 4 ||
+      entry.offset + entry.length > raw.byteLength - pixelDataStart
+    )
+      throw new Error('Invalid layer pixel range');
     const start = pixelDataStart + entry.offset;
     const bytes = new Uint8ClampedArray(raw, start, entry.length);
     layerPixels.set(entry.id, bytes);
@@ -74,19 +81,19 @@ export function decodePackedLayerResponse(raw: ArrayBuffer): UndoRedoWithLayersR
 export async function undoWithLayers(): Promise<UndoRedoWithLayersResult> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      const raw = await invoke<ArrayBuffer>('undo_with_layers');
+      const raw = await nativeInvoke<ArrayBuffer>('undo_with_layers');
       return decodePackedLayerResponse(raw);
     }
-    return { doc: { ...mockDoc }, history: [...mockHistory], layerPixels: new Map() };
+    return restoreBrowserHistory();
   });
 }
 
 export async function redoWithLayers(): Promise<UndoRedoWithLayersResult> {
   return queueBackendOperation(async () => {
     if (isTauriEnvironment()) {
-      const raw = await invoke<ArrayBuffer>('redo_with_layers');
+      const raw = await nativeInvoke<ArrayBuffer>('redo_with_layers');
       return decodePackedLayerResponse(raw);
     }
-    return { doc: { ...mockDoc }, history: [...mockHistory], layerPixels: new Map() };
+    return restoreBrowserHistory(true);
   });
 }

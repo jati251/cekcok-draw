@@ -379,6 +379,20 @@ export const BrushOptions: React.FC<Props> = (props) => {
   return (
     <div className="flex items-center gap-2 flex-shrink-0">
       <BrushPrimaryOptions {...props} />
+      <select
+        aria-label="Painting symmetry"
+        title="Mirror brush and eraser strokes around the canvas center"
+        value={props.brushSettings.symmetry ?? 'none'}
+        onChange={(event) =>
+          props.setBrushSettings({ symmetry: event.target.value as BrushSettings['symmetry'] })
+        }
+        className="bg-ps-surface border border-ps-border rounded px-2 py-1 text-xs text-ps-text"
+      >
+        <option value="none">Symmetry off</option>
+        <option value="vertical">Vertical mirror</option>
+        <option value="horizontal">Horizontal mirror</option>
+        <option value="quadrant">Four-way mirror</option>
+      </select>
       <div className="hidden xl:flex items-center gap-2">
         <BrushSecondaryOptions {...props} />
       </div>

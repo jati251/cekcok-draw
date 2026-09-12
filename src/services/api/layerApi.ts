@@ -1,20 +1,42 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as nativeInvoke } from '@tauri-apps/api/core';
+import { invokeOrdered as invoke } from './coreApi';
 import { DocumentInfo, BlendMode, LayerType, WarpCorners } from '@/types';
-import { isTauriEnvironment, mockDoc, mockHistory, queueBackendOperation } from './coreApi';
+import { isTauriEnvironment, mockDoc, queueBackendOperation } from './coreApi';
 import { encodePixelPayload } from '@/utils/pixelPayload';
+import { writeBrowserPixels } from '../browser/history';
+import {
+  rotateBrowserLayer,
+  flipBrowserLayer,
+  transformBrowserLayer,
+  addBrowserLayer,
+  rasterizeBrowserLayer,
+  duplicateBrowserLayer,
+  mergeDownBrowser,
+  toggleBrowserLayerClipping,
+  reorderBrowserLayer,
+  removeBrowserLayer,
+  setBrowserLayerOpacity,
+  setBrowserLayerVisibility,
+  setBrowserLayerLock,
+  renameBrowserLayer,
+  setBrowserLayerBlendMode,
+  moveBrowserSelectionContent,
+  moveBrowserLayerContent,
+  clearBrowserLayer,
+} from '../browser/layers';
 
 export async function rotateLayer(layerId: string, degrees: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('rotate_layer', { layerId, degrees });
   }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => rotateBrowserLayer(layerId, degrees));
 }
 
 export async function flipLayer(layerId: string, direction: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('flip_layer', { layerId, direction });
   }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => flipBrowserLayer(layerId, direction));
 }
 
 export async function transformLayer(
@@ -50,122 +72,58 @@ export async function transformLayer(
       },
     });
   }
-  return { ...mockDoc };
+  return queueBackendOperation(async () =>
+    transformBrowserLayer(layerId, x, y, width, height, rotation, skewX, skewY, warpCorners)
+  );
 }
 
 export async function addLayer(name: string, layerType?: LayerType): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('add_layer', { name, layerType: layerType || null });
   }
-  const newId = `layer-${Date.now()}`;
-  mockDoc.layers.push({
-    id: newId,
-    name,
-    blend_mode: 'normal',
-    opacity: 1,
-    visible: true,
-    locked: false,
-    layer_type: layerType || 'raster',
-  });
-  mockDoc.active_layer_id = newId;
-  mockHistory.push({
-    id: `h-${Date.now()}`,
-    description: `Add Layer '${name}'`,
-    timestamp: Date.now(),
-  });
-  return { ...mockDoc };
+  return queueBackendOperation(async () => addBrowserLayer(name, layerType));
 }
 
 export async function rasterizeLayer(layerId: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('rasterize_layer', { layerId });
   }
-  const target = mockDoc.layers.find((l) => l.id === layerId);
-  if (target) {
-    target.layer_type = 'raster';
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => rasterizeBrowserLayer(layerId));
 }
 
 export async function duplicateLayer(layerId?: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('duplicate_layer', { layerId: layerId || null });
   }
-  const targetId = layerId || mockDoc.active_layer_id;
-  const target = mockDoc.layers.find((l) => l.id === targetId);
-  if (target) {
-    const newId = `layer-${Date.now()}`;
-    mockDoc.layers.push({
-      ...target,
-      id: newId,
-      name: `${target.name} Copy`,
-    });
-    mockDoc.active_layer_id = newId;
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => duplicateBrowserLayer(layerId));
 }
 
 export async function mergeDown(layerId: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('merge_down', { layerId });
   }
-  const idx = mockDoc.layers.findIndex((l) => l.id === layerId);
-  if (idx > 0) {
-    mockDoc.layers.splice(idx, 1);
-    mockDoc.active_layer_id = mockDoc.layers[idx - 1].id;
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => mergeDownBrowser(layerId));
 }
 
 export const toggleLayerClipping = async (layerId: string): Promise<DocumentInfo> => {
   if (isTauriEnvironment()) {
     return await invoke('toggle_layer_clipping', { layerId });
   }
-  throw new Error('Not implemented for browser mockup');
+  return queueBackendOperation(async () => toggleBrowserLayerClipping(layerId));
 };
 
 export async function reorderLayer(fromIndex: number, toIndex: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('reorder_layer', { fromIndex, toIndex });
   }
-  const [moved] = mockDoc.layers.splice(fromIndex, 1);
-  mockDoc.layers.splice(toIndex, 0, moved);
-  return { ...mockDoc };
+  return queueBackendOperation(async () => reorderBrowserLayer(fromIndex, toIndex));
 }
 
 export async function removeLayer(layerId: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('remove_layer', { layerId });
   }
-  if (mockDoc.layers.length > 1) {
-    mockDoc.layers = mockDoc.layers.filter((l) => l.id !== layerId);
-    if (mockDoc.active_layer_id === layerId) {
-      mockDoc.active_layer_id = mockDoc.layers[mockDoc.layers.length - 1].id;
-    }
-  }
-  return { ...mockDoc };
-}
-
-export async function clearLayer(layerId: string): Promise<DocumentInfo> {
-  if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('clear_layer', { layerId });
-  }
-  return { ...mockDoc };
-}
-
-export async function clearLayerRegion(
-  layerId: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number
-): Promise<string> {
-  if (isTauriEnvironment()) {
-    return await invoke<string>('clear_layer_region', {
-      payload: { layer_id: layerId, x, y, width, height },
-    });
-  }
-  return 'Selection cleared';
+  return queueBackendOperation(async () => removeBrowserLayer(layerId));
 }
 
 export async function setActiveLayer(layerId: string): Promise<DocumentInfo> {
@@ -176,40 +134,39 @@ export async function setActiveLayer(layerId: string): Promise<DocumentInfo> {
   return { ...mockDoc };
 }
 
+export async function clearLayer(layerId: string): Promise<DocumentInfo> {
+  if (isTauriEnvironment()) {
+    return await invoke<DocumentInfo>('clear_layer', { layerId });
+  }
+  return queueBackendOperation(async () => clearBrowserLayer(layerId));
+}
+
 export async function setLayerOpacity(layerId: string, opacity: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_layer_opacity', { layerId, opacity });
   }
-  const l = mockDoc.layers.find((layer) => layer.id === layerId);
-  if (l) l.opacity = opacity;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => setBrowserLayerOpacity(layerId, opacity));
 }
 
 export async function setLayerVisibility(layerId: string, visible: boolean): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_layer_visibility', { layerId, visible });
   }
-  const l = mockDoc.layers.find((layer) => layer.id === layerId);
-  if (l) l.visible = visible;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => setBrowserLayerVisibility(layerId, visible));
 }
 
 export async function setLayerLock(layerId: string, locked: boolean): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_layer_lock', { layerId, locked });
   }
-  const l = mockDoc.layers.find((layer) => layer.id === layerId);
-  if (l) l.locked = locked;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => setBrowserLayerLock(layerId, locked));
 }
 
 export async function renameLayer(layerId: string, name: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('rename_layer', { layerId, name });
   }
-  const l = mockDoc.layers.find((layer) => layer.id === layerId);
-  if (l) l.name = name;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => renameBrowserLayer(layerId, name));
 }
 
 export async function setLayerBlendMode(
@@ -219,9 +176,7 @@ export async function setLayerBlendMode(
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_layer_blend_mode', { layerId, blendMode });
   }
-  const l = mockDoc.layers.find((layer) => layer.id === layerId);
-  if (l) l.blend_mode = blendMode;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => setBrowserLayerBlendMode(layerId, blendMode));
 }
 
 export async function writeLayerPixels(
@@ -245,7 +200,16 @@ export async function writeLayerPixels(
     data
   );
   return queueBackendOperation(async () => {
-    if (isTauriEnvironment()) return invoke<string>('write_layer_pixels_binary', payload);
+    if (isTauriEnvironment()) return nativeInvoke<string>('write_layer_pixels_binary', payload);
+    writeBrowserPixels(
+      layerId ?? mockDoc.active_layer_id!,
+      Math.round(x),
+      Math.round(y),
+      width,
+      height,
+      data,
+      actionName
+    );
     return 'Browser pixels written';
   });
 }
@@ -268,7 +232,9 @@ export async function layerViaCopy(
       },
     });
   }
-  return {} as DocumentInfo;
+  const doc = await addLayer('Layer via Copy');
+  await writeLayerPixels(x, y, width, height, data, doc.active_layer_id!);
+  return { ...mockDoc };
 }
 
 export async function moveSelectionContent(
@@ -295,14 +261,16 @@ export async function moveSelectionContent(
       },
     });
   }
-  return '';
+  return queueBackendOperation(async () =>
+    moveBrowserSelectionContent(layerId, dx, dy, x, y, width, height, data)
+  );
 }
 
 export async function moveLayerContent(layerId: string, dx: number, dy: number): Promise<string> {
   if (isTauriEnvironment()) {
     return await invoke<string>('move_layer_content', { payload: { layer_id: layerId, dx, dy } });
   }
-  return 'Layer moved';
+  return queueBackendOperation(async () => moveBrowserLayerContent(layerId, dx, dy));
 }
 
 export async function getLayerHistogram(layerId?: string): Promise<number[]> {

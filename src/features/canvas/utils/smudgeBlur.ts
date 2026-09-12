@@ -125,7 +125,7 @@ export const applyLocalBlur = (
     }
   }
 
-  ctx.putImageData(imgData, minX, minY);
+  putClippedPixels(ctx, imgData, minX, minY);
 };
 
 export const applyLocalSmudge = (
@@ -237,5 +237,15 @@ export const applyLocalSmudge = (
     }
   }
 
-  ctx.putImageData(imgData, minX, minY);
+  putClippedPixels(ctx, imgData, minX, minY);
 };
+
+let pixelScratch: HTMLCanvasElement | null = null;
+function putClippedPixels(ctx: CanvasRenderingContext2D, data: ImageData, x: number, y: number) {
+  pixelScratch ??= document.createElement('canvas');
+  if (pixelScratch.width !== data.width) pixelScratch.width = data.width;
+  if (pixelScratch.height !== data.height) pixelScratch.height = data.height;
+  pixelScratch.getContext('2d')!.putImageData(data, 0, 0);
+  ctx.clearRect(x, y, data.width, data.height);
+  ctx.drawImage(pixelScratch, x, y);
+}

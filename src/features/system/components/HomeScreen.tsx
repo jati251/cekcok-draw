@@ -145,7 +145,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
                   Open Project or Image...
                 </div>
                 <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
-                  Supports .png, .jpg, and .cdraw files
+                  Supports PSD, PNG, JPEG and .cdraw projects
                 </div>
               </div>
             </div>
@@ -238,7 +238,7 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
         <div className="flex items-center space-x-3 sm:space-x-4 flex-nowrap min-w-0">
           <span className="flex items-center space-x-1.5 flex-shrink-0">
             <Zap size={12} className="text-emerald-400" />
-            <span>GPU Pipeline: Active</span>
+            <span>Canvas & Layer Engine</span>
           </span>
           <span className="hidden md:flex items-center space-x-1.5 border-l border-zinc-800 pl-4 flex-shrink-0">
             <Layers size={12} className="text-blue-400" />

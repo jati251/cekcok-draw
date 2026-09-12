@@ -11,13 +11,17 @@ pub fn create_document(
     height: u32,
     dpi: Option<f32>,
     state: State<'_, SharedEngineState>,
-) -> DocumentInfo {
+) -> Result<DocumentInfo, String> {
+    validate_dimensions(width, height)?;
+    if dpi.is_some_and(|dpi| !dpi.is_finite() || dpi <= 0.0) {
+        return Err("Invalid resolution".into());
+    }
     let mut guard = state.lock();
     let new_doc = Document::with_dpi(title, width, height, dpi.unwrap_or(72.0));
     guard.document = new_doc.clone();
     guard.history = HistoryEngine::new(50);
     guard.history.push_state("Initialize Document", &new_doc);
-    guard.document.get_info()
+    Ok(guard.document.get_info())
 }
 
 #[tauri::command]
@@ -25,6 +29,9 @@ pub fn set_document_dpi(
     dpi: f32,
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
+    if !dpi.is_finite() || dpi <= 0.0 {
+        return Err("Invalid resolution".into());
+    }
     let mut guard = state.lock();
     guard.push_history(format!("Set Resolution to {} DPI", dpi));
     guard.document.set_dpi(dpi);
@@ -41,10 +48,37 @@ pub fn get_document_info(state: State<'_, SharedEngineState>) -> DocumentInfo {
 pub fn resize_document(
     width: u32,
     height: u32,
+    anchor_x: Option<f32>,
+    anchor_y: Option<f32>,
+    background: Option<[u8; 4]>,
     state: State<'_, SharedEngineState>,
 ) -> Result<DocumentInfo, String> {
+    if width == 0 || height == 0 || width > 32768 || height > 32768 {
+        return Err("Invalid canvas dimensions".into());
+    }
+    validate_dimensions(width, height)?;
     let mut guard = state.lock();
+    let old_w = guard.document.width as i32;
+    let old_h = guard.document.height as i32;
+    let dx =
+        ((width as i32 - old_w) as f32 * anchor_x.unwrap_or(0.0).clamp(0.0, 1.0)).round() as i32;
+    let dy =
+        ((height as i32 - old_h) as f32 * anchor_y.unwrap_or(0.0).clamp(0.0, 1.0)).round() as i32;
     guard.push_history(format!("Canvas Size ({}×{})", width, height));
+    for layer in &mut guard.document.layers {
+        layer.grid.translate(dx, dy, width as i32, height as i32);
+        if let Some(color) = background {
+            if layer.layer_type == crate::core::layer::LayerType::Background {
+                for y in 0..height as i32 {
+                    for x in 0..width as i32 {
+                        if x < dx || y < dy || x >= dx + old_w || y >= dy + old_h {
+                            layer.grid.set_pixel_cow(x, y, color);
+                        }
+                    }
+                }
+            }
+        }
+    }
     guard.document.resize(width, height);
     Ok(guard.document.get_info())
 }
@@ -84,6 +118,7 @@ pub fn crop_document(
     if payload.width == 0 || payload.height == 0 {
         return Err("Crop dimensions must be positive".into());
     }
+    validate_dimensions(payload.width, payload.height)?;
     let mut guard = state.lock();
     guard.push_history(format!(
         "Crop Canvas ({}×{})",
@@ -162,6 +197,7 @@ pub fn load_project(
         .map_err(|e| format!("Failed to parse project JSON: {}", e))?;
 
     let doc_input = project.document;
+    validate_dimensions(doc_input.width, doc_input.height)?;
     if doc_input.width == 0
         || doc_input.height == 0
         || doc_input.width > 32768
@@ -389,4 +425,30 @@ pub fn open_image_file(
         &guard.document,
         &guard.history,
     ))
+}
+
+pub(crate) fn validate_dimensions(width: u32, height: u32) -> Result<(), String> {
+    if width == 0
+        || height == 0
+        || width > 32768
+        || height > 32768
+        || width as u64 * height as u64 > 64 * 1024 * 1024
+    {
+        return Err(
+            "Canvas must be positive, at most 32768 pixels per side and 64 megapixels total".into(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::validate_dimensions;
+    #[test]
+    fn rejects_invalid_or_excessive_dimensions() {
+        assert!(validate_dimensions(0, 100).is_err());
+        assert!(validate_dimensions(u32::MAX, u32::MAX).is_err());
+        assert!(validate_dimensions(32768, 32768).is_err());
+        assert!(validate_dimensions(8192, 8192).is_ok());
+    }
 }

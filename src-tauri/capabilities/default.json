@@ -31,6 +31,8 @@
     {
       "identifier": "fs:scope",
       "allow": ["**"]
-    }
+    },
+    "fs:allow-rename",
+    "fs:allow-remove"
   ]
 }

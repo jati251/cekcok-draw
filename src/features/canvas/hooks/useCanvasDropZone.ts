@@ -35,8 +35,15 @@ export const useCanvasDropZone = () => {
     isHandlingDropLock = true;
 
     try {
-      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      const files = Array.from(e.dataTransfer.files).filter(
+        (f) => f.type.startsWith('image/') || /\.(psd|cdraw|cekcok)$/i.test(f.name)
+      );
       if (files.length > 0) {
+        if (files[0].name.toLowerCase().endsWith('.psd')) {
+          const { openPsd } = await import('@/features/document/utils/psdImport');
+          await openPsd(await files[0].arrayBuffer(), files[0].name);
+          return;
+        }
         const store = useDocumentStore.getState();
         if (store.doc) {
           await store.importImageAsLayer(files[0]);
@@ -44,6 +51,9 @@ export const useCanvasDropZone = () => {
           await store.openImageAsDocument(files[0]);
         }
       }
+    } catch (error) {
+      const { toast } = await import('@/stores/toastStore');
+      toast.error('Import failed', String(error));
     } finally {
       setTimeout(() => {
         isHandlingDropLock = false;
@@ -79,6 +89,12 @@ export const useCanvasDropZone = () => {
                 const paths = payload.paths;
                 if (paths && paths.length > 0) {
                   for (const filePath of paths) {
+                    if (/\.(psd|cdraw|cekcok)$/i.test(filePath)) {
+                      const { openProjectFromPath } =
+                        await import('@/features/document/utils/project');
+                      await openProjectFromPath(filePath);
+                      break;
+                    }
                     const store = useDocumentStore.getState();
                     if (store.doc) {
                       await store.importImagePathAsLayer(filePath);

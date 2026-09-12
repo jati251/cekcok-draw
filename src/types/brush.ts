@@ -19,6 +19,7 @@ export interface BrushSettings {
   opacity: number;
   flow: number;
   spacing: number;
+  symmetry?: 'none' | 'vertical' | 'horizontal' | 'quadrant';
   color: [number, number, number, number];
   angle?: number;
   grain?: number;

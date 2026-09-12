@@ -1,3 +1,34 @@
+# CekcokDraw v0.4.2 - The "PSD Import, Brush Symmetry & Atomic Persistence" Update
+
+This release brings native Photoshop PSD import and drag-and-drop, real-time brush symmetry painting (vertical, horizontal, quadrant), atomic file saving for crash resilience, and a comprehensive headless browser engine test suite.
+
+## 📂 Native PSD Import & Drag-and-Drop
+
+- **Photoshop PSD File Import (`.psd`)**: Drag-and-drop or open Adobe Photoshop documents directly. Automatically extracts multi-layer hierarchies, individual opacities, blend modes, visibility, and clipping masks.
+- **Smart Composite Fallback**: Automatically detects unsupported Photoshop layer effects or adjustment layers and falls back gracefully to the embedded merged composite preview.
+- **Unsaved Changes Guard**: Confirms discard of modified documents before opening or dropping new files, with native dialog integration.
+
+## 🪞 Real-Time Brush Symmetry Modes
+
+- **Multi-Axis Symmetry**: Introducing real-time symmetry painting with three axis configurations:
+  - **Vertical Symmetry**: Mirrored strokes across the central vertical axis.
+  - **Horizontal Symmetry**: Mirrored strokes across the horizontal axis.
+  - **Quadrant Symmetry**: 4-way mandala symmetry across both axes simultaneously.
+- **Sub-Pixel Stamp Blitting**: Mirrored stamps are rendered with inverse transformations and automatically expand the stroke dirty bounding box for full tile persistence.
+
+## 🛡️ Atomic Persistence & Hardened Safety
+
+- **Atomic File Saving (`atomicSave.ts`)**: Saves `.cdraw` project files using a temporary-write-and-atomic-rename strategy to prevent partial writes and corrupted documents during sudden crashes or power loss.
+- **Strict Canvas Limits (`documentLimits.ts`)**: Enforces positive dimensions up to 32,768 px per side and 64 megapixels total canvas size with user-friendly error feedback.
+
+## 🧪 Browser Runtime Simulation & Expanded Test Suite
+
+- **Headless Browser Mock Engine (`src/services/browser/`)**: Full in-memory implementations of canvas composition, history DAG snapshots, layer management, and vector shapes.
+- **Expanded Integration Tests**: Added 12 new browser-environment test suites in `tests/browser.test.mjs` verifying history undo/redo pixel fidelity, layer duplication, and polygon selection masks, bringing total test count to 23.
+- **Architectural Cleanup**: Reduced `createCanvasSlice.ts` to 63 lines and modularized layer APIs under strict 400-line modularity limits.
+
+---
+
 # CekcokDraw v0.4.1 - The "Interchange Formats, Binary Pixel IPC & Hardening" Update
 
 This release introduces native layered Photoshop PSD export, production-grade PDF & baseline TIFF publishing encoders, direct zero-copy binary pixel IPC blitting over Tauri, hardened project serialization, and comprehensive automated test coverage.

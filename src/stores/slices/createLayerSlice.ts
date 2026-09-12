@@ -50,6 +50,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc: currentDoc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
         selectedLayerIds: currentDoc?.active_layer_id ? [currentDoc.active_layer_id] : [],
       });
@@ -73,6 +74,11 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
       .filter((item) => item.idx !== -1)
       .sort((a, b) => b.idx - a.idx);
 
+    if (layerIndices.some((item, i) => i > 0 && layerIndices[i - 1].idx - item.idx !== 1)) {
+      toast.warning('Select adjacent layers to merge', 'Move the selected layers together first.');
+      return;
+    }
+
     try {
       let lastDoc: DocumentInfo | null = null;
       for (let i = 0; i < layerIndices.length - 1; i++) {
@@ -84,6 +90,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc: currentDoc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
         selectedLayerIds: currentDoc?.active_layer_id ? [currentDoc.active_layer_id] : [],
       });
@@ -105,6 +112,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
         selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
@@ -121,6 +129,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
       });
       toast.success('Layer Rasterized', 'Converted to normal raster paint layer.');
@@ -142,6 +151,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
         selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
@@ -164,6 +174,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
         selectedLayerIds: doc.active_layer_id ? [doc.active_layer_id] : [],
       });
@@ -189,7 +200,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
   changeLayerOpacity: async (id, opacity) => {
     try {
       const doc = await bridge.setLayerOpacity(id, opacity);
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1, isDirty: true });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -201,7 +212,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
     if (!target) return;
     try {
       const doc = await bridge.setLayerVisibility(id, !target.visible);
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1, isDirty: true });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -213,7 +224,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
     if (!target) return;
     try {
       const doc = await bridge.setLayerLock(id, !target.locked);
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1, isDirty: true });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -222,7 +233,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
     if (!name.trim()) return;
     try {
       const doc = await bridge.renameLayer(id, name.trim());
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1, isDirty: true });
     } catch (err) {
       set({ error: String(err) });
     }
@@ -230,7 +241,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
   changeLayerBlendMode: async (id, blendMode) => {
     try {
       const doc = await bridge.setLayerBlendMode(id, blendMode);
-      set({ doc, canvasRevision: get().canvasRevision + 1 });
+      set({ doc, canvasRevision: get().canvasRevision + 1, isDirty: true });
       get().pushCanvasSnapshot(`Blend Mode: ${blendMode}`);
     } catch (err) {
       set({ error: String(err) });
@@ -240,7 +251,13 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
     try {
       const doc = await bridge.toggleLayerClipping(id);
       const history = await bridge.getHistory();
-      set({ doc, history, historyIndex: history.length - 1 });
+      set({
+        doc,
+        history,
+        historyIndex: history.length - 1,
+        canvasRevision: get().canvasRevision + 1,
+        isDirty: true,
+      });
     } catch (err) {
       set({ error: String(err) });
       toast.error('Could not toggle layer clipping mask', String(err));
@@ -261,6 +278,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
       });
       get().syncLayersFromRust();
@@ -285,6 +303,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
       });
     } catch (err) {
@@ -311,6 +330,7 @@ export const createLayerSlice: StoreSlice<LayerSlice> = (set, get) => ({
         doc,
         history,
         historyIndex: history.length - 1,
+        isDirty: true,
         canvasRevision: get().canvasRevision + 1,
       });
     } catch (err) {

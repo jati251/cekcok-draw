@@ -94,6 +94,7 @@ export const useCanvasInteractions = (props: UseCanvasInteractionsProps) => {
   } = props;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (useDocumentStore.getState().isLoading) return;
     if (!doc) return;
     setContextMenuPos(null);
 
@@ -463,6 +464,22 @@ export const useCanvasInteractions = (props: UseCanvasInteractionsProps) => {
       if (svgEl) svgEl.style.display = 'none';
 
       const finalSel = selectionDragRef.current;
+      if (finalSel.path?.length) {
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity;
+        for (const point of finalSel.path) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+        finalSel.x = minX;
+        finalSel.y = minY;
+        finalSel.width = maxX - minX;
+        finalSel.height = maxY - minY;
+      }
       if (finalSel.path && finalSel.path.length > 5) {
         useEditorStore.getState().setSelection(finalSel);
       }

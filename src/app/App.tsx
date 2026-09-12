@@ -40,12 +40,17 @@ export const App: React.FC = () => {
           filters: [
             {
               name: 'Images',
-              extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'ico', 'gif'],
+              extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'ico', 'gif', 'psd'],
             },
           ],
           multiple: false,
         });
         if (selected && typeof selected === 'string') {
+          if (selected.toLowerCase().endsWith('.psd')) {
+            const { openProjectFromPath } = await import('@/features/document/utils/project');
+            await openProjectFromPath(selected);
+            return;
+          }
           const store = useDocumentStore.getState();
           if (store.doc) {
             await store.importImagePathAsLayer(selected);
@@ -69,6 +74,16 @@ export const App: React.FC = () => {
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.name.toLowerCase().endsWith('.psd')) {
+      const { openPsd } = await import('@/features/document/utils/psdImport');
+      try {
+        await openPsd(await file.arrayBuffer(), file.name);
+      } catch (error) {
+        const { toast } = await import('@/stores/toastStore');
+        toast.error('PSD import failed', String(error));
+      }
+      return;
+    }
     const store = useDocumentStore.getState();
     if (store.doc) {
       await store.importImageAsLayer(file);
@@ -90,6 +105,17 @@ export const App: React.FC = () => {
     onOpenUpdateModal: () => setIsUpdateOpen(true),
     onOpenHelpModal: () => setIsHelpOpen(true),
   });
+
+  useEffect(() => {
+    const protect = (event: BeforeUnloadEvent) => {
+      if (useDocumentStore.getState().isDirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, []);
 
   // Automatic silent check for app update on startup
   useEffect(() => {
@@ -253,7 +279,7 @@ export const App: React.FC = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.psd"
         onChange={handleFileInputChange}
         className="hidden"
       />

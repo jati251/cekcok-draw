@@ -1,3 +1,5 @@
+import { persistCanvas } from '@/features/canvas/utils/persistCanvas';
+import { clipSelection } from '@/utils/selection';
 import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -106,24 +108,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
 
       bumpCanvasRevision();
 
-      // Fire-and-forget background sync to Rust backend for SparseGrid & CoW History
-      const selBounds: [number, number, number, number] | undefined =
-        selection && selection.active
-          ? [
-              Math.floor(selection.x),
-              Math.floor(selection.y),
-              Math.ceil(selection.x + selection.width),
-              Math.ceil(selection.y + selection.height),
-            ]
-          : undefined;
-      const activeLayerId = doc.active_layer_id;
-
-      bridge
-        .applyFloodFill(pos.x, pos.y, fillColor, tolerance, selBounds, activeLayerId)
-        .then(() => {
-          useDocumentStore.getState().refreshHistory();
-        })
-        .catch(() => {});
+      void persistCanvas(canvas, doc, doc.active_layer_id, 'Paint Bucket Fill');
     },
     [
       brushSettings.opacity,
@@ -147,6 +132,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
 
       useDocumentStore.getState().pushCanvasSnapshot('Gradient Tool');
       ctx.save();
+      clipSelection(ctx, selection);
       const grad = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
       grad.addColorStop(0, primaryColor);
       grad.addColorStop(1, secondaryColor);
@@ -160,27 +146,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
       }
       ctx.restore();
       bumpCanvasRevision();
-      const bounds: [number, number, number, number] | undefined =
-        selection && selection.active && selection.width > 0
-          ? [
-              Math.round(selection.x),
-              Math.round(selection.y),
-              Math.round(selection.width),
-              Math.round(selection.height),
-            ]
-          : undefined;
-      bridge
-        .applyGradient(
-          start,
-          end,
-          hexToRgba(primaryColor, 255),
-          hexToRgba(secondaryColor, 255),
-          brushSettings.opacity,
-          bounds,
-          doc.active_layer_id
-        )
-        .then(() => useDocumentStore.getState().refreshHistory())
-        .catch(() => {});
+      void persistCanvas(canvas, doc, doc.active_layer_id, 'Gradient Tool');
     },
     [
       brushSettings.opacity,
@@ -309,95 +275,35 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
   );
 
   const endMove = useCallback(() => {
-    if (moveStartRef.current && doc?.active_layer_id && moveDrag) {
-      const dx = Math.round(moveDrag.current.x - moveDrag.start.x);
-      const dy = Math.round(moveDrag.current.y - moveDrag.start.y);
-
-      if (dx === 0 && dy === 0) {
-        moveStartRef.current = null;
-        setMoveDrag(null);
-
-        const canvas = doc.active_layer_id
-          ? layerCanvasesRef.current?.get(doc.active_layer_id) ||
-            (document.getElementById(
-              `layer-canvas-${doc.active_layer_id}`
-            ) as HTMLCanvasElement | null)
-          : null;
-
-        if (canvas && originalBaseBufferRef.current) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(originalBaseBufferRef.current, 0, 0);
-          }
-        }
-        return;
-      }
-
-      moveStartRef.current = null;
-      setMoveDrag(null);
-      bumpCanvasRevision();
-
-      if (selection && selection.active) {
-        let boundX = 0;
-        let boundY = 0;
-        let boundW = doc.width;
-        let boundH = doc.height;
-        if (!selection.path && selection.width > 0 && selection.height > 0) {
-          boundX = Math.round(selection.x);
-          boundY = Math.round(selection.y);
-          boundW = Math.round(selection.width);
-          boundH = Math.round(selection.height);
-        }
-
-        // Send cut data to Rust
-        if (moveBufferRef.current) {
-          const tCtx = moveBufferRef.current.getContext('2d');
-          if (tCtx) {
-            const imgData = tCtx.getImageData(boundX, boundY, boundW, boundH);
-            bridge
-              .moveSelectionContent(
-                doc.active_layer_id,
-                dx,
-                dy,
-                boundX,
-                boundY,
-                boundW,
-                boundH,
-                new Uint8Array(imgData.data.buffer)
-              )
-              .then(() => useDocumentStore.getState().refreshHistory())
-              .catch(() => {});
-          }
-        }
-
-        // Reset transform and update selection bounds so marching ants follow the dropped pixels
-        const marchingAnts = document.getElementById('react-marching-ants');
-        if (marchingAnts) {
-          marchingAnts.style.transform = '';
-        }
-
+    if (!moveStartRef.current || !doc?.active_layer_id) return;
+    const dx = moveDrag ? Math.round(moveDrag.current.x - moveDrag.start.x) : 0;
+    const dy = moveDrag ? Math.round(moveDrag.current.y - moveDrag.start.y) : 0;
+    moveStartRef.current = null;
+    setMoveDrag(null);
+    const canvas = layerCanvasesRef.current.get(doc.active_layer_id);
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx || !originalBaseBufferRef.current || !moveBufferRef.current) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(originalBaseBufferRef.current, 0, 0);
+    ctx.drawImage(moveBufferRef.current, dx, dy);
+    const ants = document.getElementById('react-marching-ants');
+    if (ants) ants.style.transform = '';
+    if (dx === 0 && dy === 0) return;
+    bumpCanvasRevision();
+    void persistCanvas(canvas, doc, doc.active_layer_id, 'Move Content');
+    if (selection?.active) {
+      useEditorStore.getState().setSelection({
+        ...selection,
+        x: selection.x + dx,
+        y: selection.y + dy,
+        path: selection.path?.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+      });
+    } else {
+      const text = useEditorStore.getState().textLayersData[doc.active_layer_id];
+      if (text)
         useEditorStore
           .getState()
-          .setSelection(
-            selection.path
-              ? { ...selection, path: selection.path.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
-              : { ...selection, x: selection.x + dx, y: selection.y + dy }
-          );
-      } else {
-        const textData = useEditorStore.getState().textLayersData[doc.active_layer_id];
-        if (textData) {
-          useEditorStore.getState().setTextLayerData(doc.active_layer_id, {
-            ...textData,
-            x: textData.x + dx,
-            y: textData.y + dy,
-          });
-        }
-        bridge
-          .moveLayerContent(doc.active_layer_id, dx, dy)
-          .then(() => useDocumentStore.getState().refreshHistory())
-          .catch(() => {});
-      }
+          .setTextLayerData(doc.active_layer_id, { ...text, x: text.x + dx, y: text.y + dy });
     }
   }, [bumpCanvasRevision, doc, moveDrag, selection, layerCanvasesRef]);
 
@@ -425,21 +331,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
     ctx.restore();
 
     bumpCanvasRevision();
-    if (!selection.path && selection.width > 0 && selection.height > 0) {
-      bridge
-        .clearLayerRegion(
-          doc.active_layer_id,
-          Math.round(selection.x),
-          Math.round(selection.y),
-          Math.round(selection.width),
-          Math.round(selection.height)
-        )
-        .then(() => useDocumentStore.getState().refreshHistory())
-        .catch(() => {});
-    } else {
-      // Lasso paths still need a polygon-aware native command.
-      bridge.commitStrokeHistory('Clear Selection (Delete)');
-    }
+    void persistCanvas(canvas, doc, doc.active_layer_id, 'Clear Selection');
   }, [bumpCanvasRevision, doc, layerCanvasesRef, selection]);
 
   const bakeShapeToCanvas = useCallback(
@@ -486,7 +378,7 @@ export const useVectorInteractions = ({ doc, layerCanvasesRef }: UseVectorIntera
         )
         .then(() => {
           useDocumentStore.getState().refreshHistory();
-          useDocumentStore.getState().bumpCanvasRevision();
+          useDocumentStore.getState().syncLayersFromRust();
         });
     },
     [doc, primaryColor, secondaryColor, shapeSettings]

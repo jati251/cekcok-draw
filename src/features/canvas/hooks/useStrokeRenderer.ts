@@ -1,3 +1,4 @@
+import { drawBrushStamp } from '../utils/symmetry';
 import { useCallback } from 'react';
 import { BrushPoint, BrushSettings, ToolType, DocumentInfo } from '@/types';
 import { getOrCreateStamp } from '@/features/canvas/utils/stamp';
@@ -47,7 +48,7 @@ export const useStrokeRenderer = ({
 
         ctx.save();
         applySelectionClip(ctx);
-        const strength = useEditorStore.getState().smudgeStrength || 0.6;
+        const strength = useEditorStore.getState().smudgeStrength ?? 0.6;
         const interpVelocity =
           (pPrev.velocity || 0) + ((pCurr.velocity || 0) - (pPrev.velocity || 0)) * 1.0;
         const effRadius = computeEffectiveRadius(
@@ -102,7 +103,7 @@ export const useStrokeRenderer = ({
             interpVelocity
           );
           const stepAlpha = computeEffectiveAlpha(
-            (brushSettings.opacity || 0.8) * 0.75,
+            (brushSettings.opacity ?? 0.8) * 0.75,
             interpPressure,
             brushSettings
           );
@@ -178,7 +179,16 @@ export const useStrokeRenderer = ({
             x = Math.round(x);
             y = Math.round(y);
           }
-          ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
+          drawBrushStamp(
+            ctx,
+            stamp,
+            x,
+            y,
+            doc.width,
+            doc.height,
+            brushSettings.symmetry,
+            expandBoundingBox
+          );
         }
         ctx.restore();
         return;
@@ -244,7 +254,16 @@ export const useStrokeRenderer = ({
           y = Math.round(y);
         }
 
-        ctx.drawImage(stamp, x - stepRadius, y - stepRadius);
+        drawBrushStamp(
+          ctx,
+          stamp,
+          x,
+          y,
+          doc.width,
+          doc.height,
+          brushSettings.symmetry,
+          expandBoundingBox
+        );
         expandBoundingBox(x, y, stepRadius);
       }
 
@@ -265,6 +284,7 @@ export const useStrokeRenderer = ({
 
   const drawInitialDot = useCallback(
     (p: BrushPoint) => {
+      if (!doc) return;
       const baseRadius = Math.max(0.5, brushSettings.size * 0.5);
       const effRadius = computeEffectiveRadius(
         baseRadius,
@@ -331,7 +351,16 @@ export const useStrokeRenderer = ({
           x = Math.round(x);
           y = Math.round(y);
         }
-        ctx.drawImage(stamp, x - effRadius, y - effRadius);
+        drawBrushStamp(
+          ctx,
+          stamp,
+          x,
+          y,
+          doc.width,
+          doc.height,
+          brushSettings.symmetry,
+          expandBoundingBox
+        );
         ctx.restore();
         return;
       }
@@ -361,7 +390,16 @@ export const useStrokeRenderer = ({
         y = Math.round(y);
       }
 
-      ctx.drawImage(stamp, x - effRadius, y - effRadius);
+      drawBrushStamp(
+        ctx,
+        stamp,
+        x,
+        y,
+        doc.width,
+        doc.height,
+        brushSettings.symmetry,
+        expandBoundingBox
+      );
       expandBoundingBox(x, y, effRadius);
       ctx.restore();
     },

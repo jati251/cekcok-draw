@@ -1,3 +1,4 @@
+import { invoke as nativeInvoke, type InvokeArgs, type InvokeOptions } from '@tauri-apps/api/core';
 import { DocumentInfo, HistoryAction } from '@/types';
 
 export const isTauriEnvironment = (): boolean => {
@@ -49,4 +50,12 @@ export function queueBackendOperation<T>(op: () => Promise<T>): Promise<T> {
     () => {}
   );
   return next;
+}
+
+export function invokeOrdered<T>(
+  command: string,
+  args?: InvokeArgs,
+  options?: InvokeOptions
+): Promise<T> {
+  return queueBackendOperation(() => nativeInvoke<T>(command, args, options));
 }

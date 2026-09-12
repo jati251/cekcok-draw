@@ -1,6 +1,10 @@
-import { invoke } from '@tauri-apps/api/core';
+import { validateDimensions } from '@/utils/documentLimits';
+import { hexToRgba } from '@/utils/color';
+import { browserDocument, resetBrowserHistory, checkpointBrowser } from '../browser/history';
+import { transformBrowserDocument } from '../browser/canvas';
+import { invokeOrdered as invoke } from './coreApi';
 import { DocumentInfo } from '@/types';
-import { isTauriEnvironment, mockDoc, mockHistory } from './coreApi';
+import { isTauriEnvironment, mockDoc, mockHistory, queueBackendOperation } from './coreApi';
 import { parseProject, decodeProjectPixels } from '@/features/document/utils/projectCodec';
 
 export async function createDocument(
@@ -9,65 +13,99 @@ export async function createDocument(
   height: number,
   dpi: number = 72
 ): Promise<DocumentInfo> {
+  validateDimensions(width, height, dpi);
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('create_document', { title, width, height, dpi });
   }
-  mockDoc.id = crypto.randomUUID();
-  mockDoc.layers = [
-    {
+  return queueBackendOperation(async () => {
+    mockDoc.id = crypto.randomUUID();
+    mockDoc.layers = [
+      {
+        id: crypto.randomUUID(),
+        name: 'Background',
+        blend_mode: 'normal',
+        opacity: 1,
+        visible: true,
+        locked: false,
+        layer_type: 'background',
+      },
+      {
+        id: crypto.randomUUID(),
+        name: 'Layer 1',
+        blend_mode: 'normal',
+        opacity: 1,
+        visible: true,
+        locked: false,
+        layer_type: 'raster',
+      },
+    ];
+    mockDoc.active_layer_id = mockDoc.layers[1].id;
+    mockHistory.splice(0, mockHistory.length, {
       id: crypto.randomUUID(),
-      name: 'Background',
-      blend_mode: 'normal',
-      opacity: 1,
-      visible: true,
-      locked: false,
-      layer_type: 'background',
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Layer 1',
-      blend_mode: 'normal',
-      opacity: 1,
-      visible: true,
-      locked: false,
-      layer_type: 'raster',
-    },
-  ];
-  mockDoc.active_layer_id = mockDoc.layers[1].id;
-  mockHistory.splice(0, mockHistory.length, {
-    id: crypto.randomUUID(),
-    description: 'Initialize Document',
-    timestamp: Date.now(),
+      description: 'Initialize Document',
+      timestamp: Date.now(),
+    });
+    mockDoc.title = title;
+    mockDoc.width = width;
+    mockDoc.height = height;
+    mockDoc.dpi = dpi;
+    const background = new Uint8ClampedArray(width * height * 4).fill(255);
+    resetBrowserHistory(new Map([[mockDoc.layers[0].id, background]]));
+    return browserDocument();
   });
-  mockDoc.title = title;
-  mockDoc.width = width;
-  mockDoc.height = height;
-  mockDoc.dpi = dpi;
-  return { ...mockDoc };
 }
 
 export async function setDocumentDpi(dpi: number): Promise<DocumentInfo> {
+  if (!Number.isFinite(dpi) || dpi <= 0) throw new Error('Invalid resolution');
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('set_document_dpi', { dpi });
   }
-  mockDoc.dpi = dpi;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    checkpointBrowser('Document Resolution');
+    mockDoc.dpi = dpi;
+    return browserDocument();
+  });
 }
 
 export async function getDocumentInfo(): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('get_document_info');
   }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    return browserDocument();
+  });
 }
 
-export async function resizeDocument(width: number, height: number): Promise<DocumentInfo> {
+export async function resizeDocument(
+  width: number,
+  height: number,
+  anchorX = 0,
+  anchorY = 0,
+  backgroundFill = 'transparent'
+): Promise<DocumentInfo> {
+  validateDimensions(width, height);
   if (isTauriEnvironment()) {
-    return await invoke<DocumentInfo>('resize_document', { width, height });
+    return await invoke<DocumentInfo>('resize_document', {
+      width,
+      height,
+      anchorX,
+      anchorY,
+      background: backgroundFill === 'transparent' ? null : hexToRgba(backgroundFill, 255),
+    });
   }
-  mockDoc.width = width;
-  mockDoc.height = height;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    const dx = Math.round((width - mockDoc.width) * anchorX);
+    const dy = Math.round((height - mockDoc.height) * anchorY);
+    transformBrowserDocument(width, height, 'Canvas Size', (ctx, source, background) => {
+      if (background && backgroundFill !== 'transparent') {
+        ctx.fillStyle = backgroundFill;
+        ctx.fillRect(0, 0, width, height);
+        ctx.clearRect(dx, dy, mockDoc.width, mockDoc.height);
+      }
+      ctx.drawImage(source, dx, dy);
+    });
+    return browserDocument();
+  });
 }
 
 export async function cropDocument(
@@ -76,33 +114,51 @@ export async function cropDocument(
   width: number,
   height: number
 ): Promise<DocumentInfo> {
+  validateDimensions(width, height);
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('crop_document', {
       payload: { x, y, width, height },
     });
   }
-  mockDoc.width = width;
-  mockDoc.height = height;
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    transformBrowserDocument(width, height, 'Crop Canvas', (ctx, source) =>
+      ctx.drawImage(source, -x, -y)
+    );
+    return browserDocument();
+  });
 }
 
 export async function rotateDocument(degrees: number): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('rotate_document', { degrees });
   }
-  if (degrees === 90 || degrees === 270) {
-    const oldW = mockDoc.width;
-    mockDoc.width = mockDoc.height;
-    mockDoc.height = oldW;
-  }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    const width = degrees === 180 ? mockDoc.width : mockDoc.height;
+    const height = degrees === 180 ? mockDoc.height : mockDoc.width;
+    transformBrowserDocument(width, height, 'Rotate Canvas', (ctx, source) => {
+      ctx.translate(degrees === 270 ? 0 : width, degrees === 90 ? 0 : height);
+      ctx.rotate((degrees * Math.PI) / 180);
+      ctx.drawImage(source, 0, 0);
+    });
+    return browserDocument();
+  });
 }
 
 export async function flipDocument(direction: string): Promise<DocumentInfo> {
   if (isTauriEnvironment()) {
     return await invoke<DocumentInfo>('flip_document', { direction });
   }
-  return { ...mockDoc };
+  return queueBackendOperation(async () => {
+    transformBrowserDocument(mockDoc.width, mockDoc.height, 'Flip Canvas', (ctx, source) => {
+      ctx.translate(
+        direction === 'horizontal' ? mockDoc.width : 0,
+        direction === 'vertical' ? mockDoc.height : 0
+      );
+      ctx.scale(direction === 'horizontal' ? -1 : 1, direction === 'vertical' ? -1 : 1);
+      ctx.drawImage(source, 0, 0);
+    });
+    return browserDocument();
+  });
 }
 
 export async function exportDocumentImage(
@@ -170,12 +226,13 @@ export async function loadProject(
     }),
   };
   Object.assign(mockDoc, doc);
+  resetBrowserHistory(layerPixels, 'Open Project');
   mockHistory.splice(0, mockHistory.length, {
     id: crypto.randomUUID(),
     description: 'Open Project',
     timestamp: Date.now(),
   });
-  return { doc, history: [...mockHistory], layerPixels };
+  return { doc: browserDocument(), history: [...mockHistory], layerPixels };
 }
 
 export async function importImageFile(

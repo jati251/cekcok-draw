@@ -1,5 +1,7 @@
+import { atomicSave } from './atomicSave';
+import { confirmReplaceDocument } from './unsavedChanges';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeFile } from '@tauri-apps/plugin-fs';
+import { readTextFile, readFile } from '@tauri-apps/plugin-fs';
 import { exportCekcokProject } from '@/features/document/utils/export';
 import { useDocumentStore } from '@/stores/documentStore';
 import * as bridge from '@/services/tauriBridge';
@@ -11,6 +13,10 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
   const store = useDocumentStore.getState();
   const doc = store.doc;
   if (!doc) return;
+  if (store.isLoading || store.pendingLayerPixels) {
+    toast.info('Wait for the canvas to finish loading before saving.');
+    return;
+  }
 
   if (isTauriEnvironment()) {
     let filePath = store.currentFilePath;
@@ -39,7 +45,7 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       const savedRevision = useDocumentStore.getState().canvasRevision;
       const blob = exportCekcokProject(doc);
       const buffer = await blob.arrayBuffer();
-      await writeFile(filePath, new Uint8Array(buffer));
+      await atomicSave(filePath, new Uint8Array(buffer));
 
       if (useDocumentStore.getState().doc?.id === doc.id) store.setCurrentFilePath(filePath);
       const current = useDocumentStore.getState();
@@ -86,7 +92,7 @@ export const openProjectFile = async (): Promise<void> => {
   if (isTauriEnvironment()) {
     try {
       const filePath = await open({
-        filters: [{ name: 'Cekcok Project', extensions: ['cdraw', 'cekcok'] }],
+        filters: [{ name: 'Cekcok Project', extensions: ['cdraw', 'cekcok', 'psd'] }],
         multiple: false,
       });
       if (filePath && typeof filePath === 'string') {
@@ -98,12 +104,22 @@ export const openProjectFile = async (): Promise<void> => {
   } else {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.cdraw,.cekcok,application/json';
+    input.accept = '.cdraw,.cekcok,.psd,application/json';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         const toastId = toast.loading('Opening project...');
         try {
+          if (file.name.toLowerCase().endsWith('.psd')) {
+            const { openPsd } = await import('./psdImport');
+            await openPsd(await file.arrayBuffer(), file.name);
+            toast.dismiss(toastId);
+            return;
+          }
+          if (!(await confirmReplaceDocument())) {
+            toast.dismiss(toastId);
+            return;
+          }
           const text = await file.text();
           const result = await bridge.loadProject(text);
           useDocumentStore.setState({
@@ -133,6 +149,19 @@ export const openProjectFromPath = async (filePath: string): Promise<void> => {
   if (!isTauriEnvironment()) return;
   const toastId = toast.loading('Opening project...');
   try {
+    if (filePath.toLowerCase().endsWith('.psd')) {
+      const { openPsd } = await import('./psdImport');
+      await openPsd(
+        await readFile(filePath),
+        filePath.split(/[/\\]/).pop() || 'Photoshop Document'
+      );
+      toast.dismiss(toastId);
+      return;
+    }
+    if (!(await confirmReplaceDocument())) {
+      toast.dismiss(toastId);
+      return;
+    }
     const content = await readTextFile(filePath);
     const result = await bridge.loadProject(content);
     useDocumentStore.setState({

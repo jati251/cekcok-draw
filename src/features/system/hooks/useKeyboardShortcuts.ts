@@ -127,7 +127,7 @@ export const useKeyboardShortcuts = ({
           actionsRef.current.onOpenOpenFile?.();
         } else if (e.key.toLowerCase() === 's') {
           e.preventDefault();
-          saveProjectFile();
+          saveProjectFile(e.shiftKey);
         } else if (e.key.toLowerCase() === 't') {
           e.preventDefault();
           initiateFreeTransform();
@@ -164,7 +164,7 @@ export const useKeyboardShortcuts = ({
           if (doc) setSelection({ x: 0, y: 0, width: doc.width, height: doc.height, active: true });
         } else if (e.key.toLowerCase() === 'j') {
           e.preventDefault();
-          addNewLayer('Layer Copy');
+          useDocumentStore.getState().duplicateLayer();
         } else if (e.key.toLowerCase() === 'i') {
           e.preventDefault();
           actionsRef.current.handleInvert();

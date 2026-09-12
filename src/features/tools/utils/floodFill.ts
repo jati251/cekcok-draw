@@ -1,3 +1,4 @@
+import { polygonMask } from '@/utils/selection';
 import { SelectionArea } from '@/types';
 
 /**
@@ -34,6 +35,13 @@ export const floodFill = (
 
   if (x0 < minX || x0 >= maxX || y0 < minY || y0 >= maxY) return false;
 
+  const maskWidth = maxX - minX;
+  const mask =
+    selection?.active && selection.path && selection.path.length > 2
+      ? polygonMask(selection.path, minX, minY, maskWidth, maxY - minY)
+      : null;
+  const selected = (x: number, y: number) => !mask || !!mask[(y - minY) * maskWidth + x - minX];
+  if (!selected(x0, y0) || fillColor[3] === 0) return false;
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
   const data32 = new Uint32Array(data.buffer);
@@ -48,7 +56,7 @@ export const floodFill = (
 
   // Check if click position already equals fill color
   const diffInitial = Math.abs(tR - fR) + Math.abs(tG - fG) + Math.abs(tB - fB) + Math.abs(tA - fA);
-  if (diffInitial === 0) return false;
+  if (diffInitial === 0 && tolerance === 0 && fillColor[3] === 255) return false;
 
   const tol4 = tolerance * 4;
   const alpha = fA / 255;
@@ -70,7 +78,7 @@ export const floodFill = (
           Math.abs(data[i + 1] - tG) +
           Math.abs(data[i + 2] - tB) +
           Math.abs(data[i + 3] - tA);
-        if (diff <= tol4) {
+        if (selected(x, y) && diff <= tol4) {
           if (isOpaque) {
             data32[px] = fill32;
           } else {
@@ -114,7 +122,7 @@ export const floodFill = (
   const matches = (x: number, y: number): boolean => {
     if (x < minX || x >= maxX || y < minY || y >= maxY) return false;
     const px = y * width + x;
-    if (visited[px]) return false;
+    if (visited[px] || !selected(x, y)) return false;
 
     const i = px * 4;
     return (

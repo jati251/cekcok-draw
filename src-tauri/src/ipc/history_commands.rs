@@ -36,7 +36,7 @@ pub fn get_history(state: State<'_, SharedEngineState>) -> Vec<HistoryAction> {
 #[tauri::command]
 pub fn commit_stroke_history(description: String, state: State<'_, SharedEngineState>) {
     let mut guard = state.lock();
-    guard.push_history(description);
+    guard.history.rename_last(description);
 }
 
 #[tauri::command]
