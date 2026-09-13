@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   FolderOpen,
@@ -11,6 +11,7 @@ import {
   HelpCircle,
   FileBox,
   Clock,
+  RotateCcw,
 } from 'lucide-react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DOCUMENT_PRESETS } from '@/config/presets';
@@ -36,6 +37,35 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
   // Lazy initialization for state to avoid useEffect sync setState warning
   const [recentProjects] = useState<RecentProject[]>(() => getRecentProjects());
   const [now] = useState(() => Date.now());
+  const [recoverySnapshot, setRecoverySnapshot] = useState<
+    import('@/features/document/utils/recovery').RecoverySnapshot | null
+  >(null);
+
+  useEffect(() => {
+    let mounted = true;
+    import('@/features/document/utils/recovery')
+      .then(({ getAutosaveSnapshot }) => getAutosaveSnapshot())
+      .then((snapshot) => {
+        if (mounted && snapshot) setRecoverySnapshot(snapshot);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleRestoreRecovery = async () => {
+    if (!recoverySnapshot) return;
+    const { restoreAutosaveSnapshot } = await import('@/features/document/utils/recovery');
+    await restoreAutosaveSnapshot(recoverySnapshot.projectJson);
+    setRecoverySnapshot(null);
+  };
+
+  const handleDiscardRecovery = async () => {
+    const { clearAutosaveSnapshot } = await import('@/features/document/utils/recovery');
+    await clearAutosaveSnapshot();
+    setRecoverySnapshot(null);
+  };
 
   const isMac =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
@@ -93,6 +123,44 @@ export const HomeScreen: React.FC<Props> = ({ onNewDoc, onOpenDoc, onOpenHelp })
 
       {/* Main Central Workstation Dashboard */}
       <main className="flex-1 flex flex-col justify-center max-w-4xl w-full mx-auto px-6 sm:px-8 py-6 sm:py-8 my-auto z-10">
+        {/* Unsaved Session Recovery Alert */}
+        {recoverySnapshot && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+                <RotateCcw className="w-4 h-4 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-xs font-semibold text-amber-200">
+                  Unsaved Session Detected: {recoverySnapshot.title}
+                </h2>
+                <p className="text-[11px] text-amber-300/75">
+                  Autosaved at{' '}
+                  {new Date(recoverySnapshot.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  . Would you like to restore your artwork?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 self-end sm:self-center">
+              <button
+                onClick={handleRestoreRecovery}
+                className="px-3.5 py-1.5 text-xs font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400 rounded-xl shadow transition active:scale-95"
+              >
+                Restore Session
+              </button>
+              <button
+                onClick={handleDiscardRecovery}
+                className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white transition"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Workspace Intro Hero */}
         <div className="mb-6 flex items-center space-x-4">
           <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 p-1.5 shadow-xl hidden sm:flex items-center justify-center">

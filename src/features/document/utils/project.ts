@@ -8,6 +8,7 @@ import * as bridge from '@/services/tauriBridge';
 import { isTauriEnvironment } from '@/services/tauriBridge';
 import { toast } from '@/stores/toastStore';
 import { addRecentProject } from './recentProjects';
+import { clearAutosaveSnapshot } from './recovery';
 
 export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
   const store = useDocumentStore.getState();
@@ -51,6 +52,7 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       const current = useDocumentStore.getState();
       if (current.doc === doc && current.canvasRevision === savedRevision) {
         useDocumentStore.setState({ isDirty: false });
+        void clearAutosaveSnapshot();
       }
       addRecentProject(filePath, doc.title || 'Untitled Project');
 
@@ -78,6 +80,7 @@ export const saveProjectFile = async (forceSaveAs = false): Promise<void> => {
       const current = useDocumentStore.getState();
       if (current.doc === doc && current.canvasRevision === savedRevision) {
         useDocumentStore.setState({ isDirty: false });
+        void clearAutosaveSnapshot();
       }
       toast.dismiss(toastId);
       toast.success('Project Saved', 'Downloaded .cdraw file');

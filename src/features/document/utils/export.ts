@@ -113,7 +113,10 @@ export const canvasToSvgString = (canvas: HTMLCanvasElement, docTitle: string): 
 /**
  * Export full multi-layer project package (.cdraw) with layer metadata & pixel data URLs
  */
-export const exportCekcokProject = (doc: DocumentInfo): Blob => {
+export const exportCekcokProject = (
+  doc: DocumentInfo,
+  canvasFor?: (id: string) => HTMLCanvasElement | null
+): Blob => {
   const layerData: {
     id: string;
     name: string;
@@ -127,7 +130,9 @@ export const exportCekcokProject = (doc: DocumentInfo): Blob => {
   }[] = [];
 
   for (const layer of doc.layers) {
-    const canvas = document.getElementById(`layer-canvas-${layer.id}`) as HTMLCanvasElement | null;
+    const canvas = canvasFor
+      ? canvasFor(layer.id)
+      : (document.getElementById(`layer-canvas-${layer.id}`) as HTMLCanvasElement | null);
     if (!canvas) throw new Error(`Layer ${layer.name} is not ready to save`);
     const dataUrl = canvas.toDataURL('image/png');
     layerData.push({

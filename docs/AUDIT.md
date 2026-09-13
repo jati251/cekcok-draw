@@ -13,6 +13,13 @@ This is a continuing engineering audit, not certification that all defects are f
 - Pointer cancellation finalizes existing marks without adding a synthetic endpoint. Mouse release retains pressure; Shift constraints apply to the final segment. Stylus telemetry now notices an isolated `isStylus` change.
 - Switching off the last clipping mask clears the CSS mask. Thumbnails refresh after asynchronous layer hydration completes.
 - The layer toolbar now duplicates pixels instead of adding an empty layer. Tooltip controls expose accessible names, selected tools expose their pressed state, and repeat focus/hover cancels stale tooltip timers.
+- Sparse tile grid memory cleaning: `Tile::is_empty()` and `write_image_fast` tile clearing eliminates ghost remnant tiles during repeated undo/redo of move actions.
+- Zero-payload layer translation: Whole-layer move operations invoke native Rust `bridge.moveLayerContent(layer_id, dx, dy)`, eliminating multi-megabyte canvas readbacks and IPC transfers.
+- Dirty-union bounding box extraction: Selection moves compute the union bounding box between source and target, transmitting only affected pixels to the backend.
+- Copy-on-Write (CoW) delta packing: Rust undo/redo (`pack_doc_with_layers_delta`) uses `Arc::ptr_eq` pointer comparison to omit unmodified layers from transmission and frontend rehydration.
+- Selection marquee history synchronization: Marquee coordinates are tracked per history node ID, restoring the exact selection bounding box across undo/redo steps.
+- Autosave & crash recovery snapshots: IndexedDB background storage with memory fallback, non-intrusive periodic snapshot timer hook (`useAutosave`), automatic cleanup upon manual save, and HomeScreen recovery banner offering one-click session restore or discard.
+- Viewport CSS blend mode support: mapped `linear_dodge` to CSS `plus-lighter` (additive blending) across the viewport layer stack.
 
 ## Earlier work retained in v0.4.1 and v0.4.2
 
@@ -21,19 +28,19 @@ Binary pixel IPC with payload validation; exact stroke persistence; bounded stam
 ## Verification
 
 - TypeScript and ESLint pass.
-- 27 frontend tests pass, covering project/PSD codecs, binary payloads, pixel history, selections, transforms, browser layer operations, brush library validation, and special-mode alpha composition.
-- 14 Rust tests pass, including blend transparency, merge opacity, hidden layers, clipping, lock transactionality, duplication, history, and payload validation.
+- 36 frontend tests pass, covering autosave/crash recovery, project/PSD codecs, binary payloads, pixel history, selections, transforms, browser layer operations, brush library validation, and special-mode alpha composition.
+- 15 Rust tests pass, including blend transparency, merge opacity, hidden layers, clipping, lock transactionality, duplication, history, payload validation, and move remnant tile clearing.
 - `pnpm tauri build --debug --no-bundle` succeeds and produces the native macOS debug executable. Native interactive behavior was not exercised in this pass.
-- Production frontend build passes. Main application bundle remains approximately 705 kB minified / 201 kB gzip; PSD processing is loaded separately at approximately 295 kB / 89 kB gzip. Vite still reports mixed static/dynamic imports and its main-bundle size warning.
+- Production frontend build passes. Main application bundle remains approximately 712 kB minified / 203 kB gzip; PSD processing is loaded separately at approximately 295 kB / 89 kB gzip. Vite still reports mixed static/dynamic imports and its main-bundle size warning.
 - Browser UI smoke check: created a canvas, saved a preset, switched brushes, restored type/flow from the preset, painted, duplicated using the toolbar, and hid the original to verify copied pixels remained visible.
 - Earlier browser UI check covered drawing undo/redo, symmetry, and the PSD export workflow. Physical tablet pressure/eraser testing and opening files in installed Photoshop/Procreate are not verified here.
 
 ## Remaining priorities
 
-1. **Viewport blend parity:** CSS cannot represent Vivid Light or the exact Linear Dodge implementation used by export. These two live preview modes still fall back to Normal. Replace the CSS-only stack with a tested compositor before claiming all-mode preview parity.
-2. **Large documents:** each frontend layer is a full-size Canvas, hydration copies full RGBA buffers, CSS clipping encodes a full PNG mask, and save serializes PNG layers into JSON. Implement dirty tiles/regions, reusable buffers, worker encoding, and a streamed project container. Measure pen-to-pixel latency, frame percentiles, and resident memory on 4K/8K documents with many layers before assigning performance targets.
+1. **Viewport blend parity:** CSS cannot represent Vivid Light natively (Linear Dodge now uses `plus-lighter`). Replace the CSS-only stack with a tested compositor for full live parity across all 18 modes.
+2. **Large documents:** zero-payload move and CoW layer delta-hydration are now implemented. Remaining work: full-size canvas DOM virtualization, streaming project containers, worker encoding, and resident memory benchmarking on 4K/8K documents with many layers.
 3. **Stroke sampling:** the new Catmull-Rom path extrapolates its outgoing guide without actual lookahead. It does not guarantee tangent continuity at every join or constant arc-length stamp spacing. Add deterministic tablet traces and pressure/turning tests before changing the sampling pipeline further.
-4. **Persistence and recovery:** atomic replacement protects against partial writes but is not a crash-recovery system or an fsync durability guarantee. Add autosave/recovery snapshots, native close protection, and fault-injection tests. Audit command failures for unwanted history entries and all edits for lock/selection enforcement.
+4. **Persistence and recovery:** atomic replacement, native close protection (intercept in App.tsx), and autosave/crash recovery snapshots with IndexedDB storage are now implemented. Remaining: fault-injection tests and auditing command failures for unwanted history entries.
 5. **Professional interchange:** flat raster PSD layers work; complex groups/masks/effects use an embedded merged preview. Editable PSD text, smart objects, arbitrary masks, adjustment layers, CMYK/ICC color management, high bit depth, and native Procreate/ABR brushes remain unsupported. Preset JSON is a Cekcok format.
 6. **Feature depth:** layer groups, non-destructive adjustment layers/masks, richer selections, brush texture assets, robust text persistence, and recovery should precede further visual polish. Smudge/blur symmetry is not implemented.
 7. **Platform coverage:** add native WebKit/Windows WebView integration checks, actual tablet traces, corrupted-file fixtures, and memory stress cases. Review broad filesystem capability scopes with a user-selected-file grant design.

@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { DocumentInfo, HistoryAction, BlendMode, LayerType } from '@/types';
+import { DocumentInfo, HistoryAction, BlendMode, LayerType, SelectionArea } from '@/types';
 
 export interface SharedState {
   doc: DocumentInfo | null;
@@ -65,6 +65,7 @@ export interface CanvasSlice {
 }
 
 export interface HistorySlice {
+  recordHistorySelection: (historyId: string, selection: SelectionArea | null) => void;
   pushCanvasSnapshot: (description: string) => void;
   triggerUndo: () => Promise<void>;
   triggerRedo: () => Promise<void>;

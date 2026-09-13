@@ -140,12 +140,43 @@ impl SparseTileGrid {
                     }
                 }
 
+                let coord = TileCoord::new(tx, ty, 0);
+
                 if !has_content {
+                    if self.tiles.contains_key(&coord) {
+                        let is_full_tile = inter_min_x == tile_gx
+                            && inter_max_x == tile_gx + tile_size
+                            && inter_min_y == tile_gy
+                            && inter_max_y == tile_gy + tile_size;
+
+                        if is_full_tile {
+                            self.tiles.remove(&coord);
+                            if self.dirty_coords.last() != Some(&coord) {
+                                self.dirty_coords.push(coord);
+                            }
+                        } else {
+                            let tile = self.get_or_create_mut(coord);
+                            for gy in inter_min_y..inter_max_y {
+                                let py = (gy - tile_gy) as usize;
+                                let px = (inter_min_x - tile_gx) as usize;
+                                let count = (inter_max_x - inter_min_x) as usize;
+                                let dst_start = (py * TILE_SIZE as usize + px) * 4;
+                                let dst_end = dst_start + count * 4;
+                                if dst_end <= tile.data.len() {
+                                    tile.data[dst_start..dst_end].fill(0);
+                                }
+                            }
+                            tile.is_dirty = true;
+                            if tile.is_empty() {
+                                self.tiles.remove(&coord);
+                            }
+                        }
+                    }
                     continue;
                 }
 
-                let coord = TileCoord::new(tx, ty, 0);
                 let tile = self.get_or_create_mut(coord);
+                tile.is_dirty = true;
 
                 for gy in inter_min_y..inter_max_y {
                     let py = (gy - tile_gy) as usize;
@@ -187,26 +218,37 @@ impl SparseTileGrid {
         let old_tiles = std::mem::take(&mut self.tiles);
         self.dirty_coords.clear();
 
-        for (coord, tile) in old_tiles {
-            let src_x = coord.x * TILE_SIZE as i32 + dx;
-            let src_y = coord.y * TILE_SIZE as i32 + dy;
+        let ts = TILE_SIZE as i32;
+        if dx % ts == 0 && dy % ts == 0 {
+            let (sx, sy) = (dx / ts, dy / ts);
+            for (coord, tile) in old_tiles {
+                let (nx, ny) = (coord.x + sx, coord.y + sy);
+                let (px, py) = (nx * ts, ny * ts);
+                if px + ts > 0 && py + ts > 0 && px < width && py < height {
+                    let mut t = (*tile).clone();
+                    t.coord = TileCoord::new(nx, ny, coord.lod);
+                    t.is_dirty = true;
+                    self.insert_tile(t.coord, t);
+                }
+            }
+            return;
+        }
 
-            if src_x + TILE_SIZE as i32 <= 0
-                || src_y + TILE_SIZE as i32 <= 0
-                || src_x >= width
-                || src_y >= height
-            {
+        for (coord, tile) in old_tiles {
+            let src_x = coord.x * ts + dx;
+            let src_y = coord.y * ts + dy;
+            if src_x + ts <= 0 || src_y + ts <= 0 || src_x >= width || src_y >= height {
                 continue;
             }
 
-            for row in 0..TILE_SIZE as i32 {
+            for row in 0..ts {
                 let target_y = src_y + row;
                 if target_y < 0 || target_y >= height {
                     continue;
                 }
 
                 let mut col = 0;
-                while col < TILE_SIZE as i32 {
+                while col < ts {
                     let target_x = src_x + col;
                     if target_x < 0 {
                         col += -target_x;
@@ -216,32 +258,21 @@ impl SparseTileGrid {
                         break;
                     }
 
-                    let dest_tile_x = target_x / TILE_SIZE as i32;
-                    let local_dest_x = target_x % TILE_SIZE as i32;
-                    let dest_tile_y = target_y / TILE_SIZE as i32;
-                    let local_dest_y = target_y % TILE_SIZE as i32;
+                    let dest_tile_x = target_x / ts;
+                    let local_dest_x = target_x % ts;
+                    let dest_tile_y = target_y / ts;
+                    let local_dest_y = target_y % ts;
 
-                    let span = ((TILE_SIZE as i32 - col)
-                        .min(TILE_SIZE as i32 - local_dest_x)
-                        .min(width - target_x)) as usize;
-
+                    let span = ((ts - col).min(ts - local_dest_x).min(width - target_x)) as usize;
                     let src_idx = (row as usize * TILE_SIZE as usize + col as usize) * 4;
                     let dst_idx =
                         (local_dest_y as usize * TILE_SIZE as usize + local_dest_x as usize) * 4;
 
                     let src_slice = &tile.data[src_idx..src_idx + span * 4];
-
-                    let mut has_content = false;
-                    for i in 0..span {
-                        if src_slice[i * 4 + 3] > 0 {
-                            has_content = true;
-                            break;
-                        }
-                    }
-
-                    if has_content {
-                        let dest_coord = TileCoord::new(dest_tile_x, dest_tile_y, 0);
-                        let dest_tile = self.get_or_create_mut(dest_coord);
+                    if src_slice.chunks_exact(4).any(|c| c[3] > 0) {
+                        let dest_tile =
+                            self.get_or_create_mut(TileCoord::new(dest_tile_x, dest_tile_y, 0));
+                        dest_tile.is_dirty = true;
                         for i in 0..span {
                             let s_off = i * 4;
                             let d_off = dst_idx + s_off;
@@ -251,7 +282,6 @@ impl SparseTileGrid {
                             }
                         }
                     }
-
                     col += span as i32;
                 }
             }

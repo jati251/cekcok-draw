@@ -43,6 +43,10 @@ export const LayerStack: React.FC<Props> = ({
       const pending = useDocumentStore.getState().pendingLayerPixels;
       for (const layer of d.layers) {
         if (cancelled) return;
+        if (pending && !pending.has(layer.id)) {
+          // Delta optimization: layer was not mutated in this history step
+          continue;
+        }
         const raw =
           pending?.get(layer.id) ?? (await renderLayerViewport(layer.id, 0, 0, d.width, d.height));
         if (cancelled) return;

@@ -149,6 +149,11 @@ impl Tile {
 
         half_data
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        !self.data.chunks_exact(4).any(|chunk| chunk[3] > 0)
+    }
 }
 
 pub type SharedTile = Arc<Tile>;

@@ -16,7 +16,9 @@ import { HelpDialog } from '@/features/system/components/HelpDialog';
 import { PreferencesModal } from '@/features/system/components/PreferencesModal';
 import { useAppShortcuts } from '@/features/system/hooks/useAppShortcuts';
 import { checkForAppUpdate } from '@/services/updaterService';
+import { useAutosave } from '@/features/document/hooks/useAutosave';
 export const App: React.FC = () => {
+  useAutosave();
   const [isNewDocOpen, setIsNewDocOpen] = useState(false);
   const [isCanvasSizeOpen, setIsCanvasSizeOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -192,6 +194,9 @@ export const App: React.FC = () => {
                   await terminateApp();
                 }
               } else if (choice === "Don't Save" || choice === 'no' || choice === 'No') {
+                const { clearAutosaveSnapshot } =
+                  await import('@/features/document/utils/recovery');
+                await clearAutosaveSnapshot();
                 useDocumentStore.setState({ isDirty: false });
                 await terminateApp();
               }

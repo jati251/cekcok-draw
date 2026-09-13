@@ -107,4 +107,41 @@ mod tests {
         }
         assert_eq!(history.len(), 2);
     }
+    #[test]
+    fn undo_multiple_moves_clears_remnants() {
+        let mut doc = Document::new("Test", 1024, 512);
+        let mut history = HistoryEngine::new(50);
+        history.push_state("Initialize", &doc);
+
+        doc.layers[1].grid.set_pixel_cow(100, 100, [255, 0, 0, 255]);
+        history.push_state("Paint", &doc);
+
+        let mut img1 = vec![0u8; 1024 * 512 * 4];
+        let idx1 = (100 * 1024 + 600) * 4;
+        img1[idx1] = 255;
+        img1[idx1 + 3] = 255;
+        history.push_state("Move 1", &doc);
+        doc.layers[1].grid.write_region(0, 0, 1024, 512, &img1);
+
+        let mut img2 = vec![0u8; 1024 * 512 * 4];
+        let idx2 = (100 * 1024 + 700) * 4;
+        img2[idx2] = 255;
+        img2[idx2 + 3] = 255;
+        history.push_state("Move 2", &doc);
+        doc.layers[1].grid.write_region(0, 0, 1024, 512, &img2);
+
+        assert_eq!(doc.layers[1].grid.get_pixel(700, 100), [255, 0, 0, 255]);
+        assert_eq!(doc.layers[1].grid.get_pixel(600, 100), [0, 0, 0, 0]);
+        assert_eq!(doc.layers[1].grid.get_pixel(100, 100), [0, 0, 0, 0]);
+
+        history.undo(&mut doc);
+        assert_eq!(doc.layers[1].grid.get_pixel(600, 100), [255, 0, 0, 255]);
+        assert_eq!(doc.layers[1].grid.get_pixel(700, 100), [0, 0, 0, 0]);
+        assert_eq!(doc.layers[1].grid.get_pixel(100, 100), [0, 0, 0, 0]);
+
+        history.undo(&mut doc);
+        assert_eq!(doc.layers[1].grid.get_pixel(100, 100), [255, 0, 0, 255]);
+        assert_eq!(doc.layers[1].grid.get_pixel(600, 100), [0, 0, 0, 0]);
+        assert_eq!(doc.layers[1].grid.get_pixel(700, 100), [0, 0, 0, 0]);
+    }
 }

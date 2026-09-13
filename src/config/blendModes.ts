@@ -59,6 +59,8 @@ export const getCssBlendMode = (mode: BlendMode): React.CSSProperties['mixBlendM
       return 'color';
     case 'luminosity':
       return 'luminosity';
+    case 'linear_dodge':
+      return 'plus-lighter';
     default:
       return 'normal';
   }

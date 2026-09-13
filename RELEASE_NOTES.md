@@ -1,3 +1,34 @@
+# CekcokDraw v0.4.4 - The "CoW Layer Deltas, Native Layer Move & Crash Recovery" Update
+
+This release brings sparse tile grid memory cleaning to eliminate move undo/redo ghost remnants, native zero-payload layer translation in Rust, Copy-on-Write (CoW) delta packing for instant undo/redo, history-synchronized selection marquee tracking, an IndexedDB-backed autosave and crash recovery system, and viewport blend mode improvements.
+
+## 🧹 Sparse Tile Grid Ghost Remnant Elimination
+
+- **Transparent Tile Cleanup**: Fixed a bug where repeatedly undoing and redoing layer moves left behind partial ghost tile remnants. `write_image_fast` now actively prunes and removes empty tiles (`Tile::is_empty()`) when layer pixels are translated away.
+- **Regression Tested**: Added dedicated Rust test `undo_multiple_moves_clears_remnants` verifying memory cleaning across history DAG branches.
+
+## ⚡ Native Zero-Payload Layer Move & Dirty Bounding Box
+
+- **Zero-Payload Layer Translation**: Moving a layer now invokes native Rust tile translation (`bridge.moveLayerContent`), eliminating 33 MB of uncompressed canvas readbacks and IPC transfers on 4K canvases.
+- **Bounded Selection Moves**: Moving selection contents extracts only the dirty union bounding box between source and target coordinates instead of serializing the whole document.
+
+## 📦 Copy-on-Write (CoW) Undo/Redo Layer Delta Packing
+
+- **Pointer-Based Delta Extraction**: Rust undo/redo (`pack_doc_with_layers_delta`) evaluates `Arc::ptr_eq` tile pointers across snapshots. Unmodified layers are completely omitted from IPC transfer and frontend canvas rehydration.
+- **Selection Marquee History Synchronization**: Selection marquee coordinates are tracked per history node ID, restoring the exact marching ants bounding box across undo and redo operations.
+
+## 🛡️ Background Autosave & Crash Recovery System
+
+- **IndexedDB Recovery Storage**: Active working sessions are saved asynchronously in IndexedDB without the 5MB limits of localStorage.
+- **Automatic Recovery Banner**: Upon app launch after an abnormal shutdown or crash, an interactive recovery banner on the Home Screen prompts the user to restore or discard their unsaved artwork with one click.
+- **Non-Intrusive Periodic Autosave**: Background timer snapshots dirty documents every 45 seconds only when document content has actually changed, cleaning up automatically upon manual save.
+
+## 🎨 Viewport Blend Mode Parity
+
+- **Linear Dodge (Add) CSS Support**: Mapped `linear_dodge` to modern CSS `plus-lighter` additive blending across the viewport layer stack.
+
+---
+
 # CekcokDraw v0.4.3 - The "Catmull-Rom Spline, Zero-Lag GPU Stamps & Procreate Precision" Update
 
 This release brings sub-pixel Catmull-Rom cubic spline stroke interpolation, zero-lag GPU-accelerated stamp generation for all brush radii, scale-invariant tablet stabilization, dirty-rect canvas bounding box baking, custom brush presets, and refined Procreate-inspired dual-row tool controls.
