@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import {
   Grid,
   Compass,
@@ -14,64 +15,51 @@ import {
   Type,
   Sun,
   Moon,
-  Sparkles,
+  Blend,
   PaintBucket,
   Pipette,
   Hand,
   ZoomIn,
   Crop,
   Save,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { saveProjectFile } from '@/features/document/utils/project';
 import { TOOLS } from '@/config/tools';
 import { BrushOptions, BrushSecondaryOptions } from '@/features/tools/components/BrushOptions';
+import {
+  EraserOptions,
+  SmudgeOptions,
+  BucketOptions,
+} from '@/features/tools/components/MiscToolOptions';
 import { ShapeOptions } from '@/features/tools/components/ShapeOptions';
 import { TextOptions } from '@/features/tools/components/TextOptions';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriEnvironment } from '@/services/tauriBridge';
 
-const getToolIcon = (iconName: string) => {
-  switch (iconName) {
-    case 'Move':
-      return <Move size={13} />;
-    case 'Scan':
-      return <Scan size={13} />;
-    case 'Lasso':
-      return <Lasso size={13} />;
-    case 'Crop':
-      return <Crop size={13} />;
-    case 'Paintbrush':
-      return <Paintbrush size={13} />;
-    case 'Eraser':
-      return <Eraser size={13} />;
-    case 'Flame':
-      return <Flame size={13} />;
-    case 'Droplet':
-      return <Droplet size={13} />;
-    case 'Square':
-      return <Square size={13} />;
-    case 'Type':
-      return <Type size={13} />;
-    case 'Sun':
-      return <Sun size={13} />;
-    case 'Moon':
-      return <Moon size={13} />;
-    case 'Sparkles':
-      return <Sparkles size={13} />;
-    case 'PaintBucket':
-      return <PaintBucket size={13} />;
-    case 'Pipette':
-      return <Pipette size={13} />;
-    case 'Hand':
-      return <Hand size={13} />;
-    case 'ZoomIn':
-      return <ZoomIn size={13} />;
-    default:
-      return <Paintbrush size={13} />;
-  }
+const TOOL_ICON_MAP: Record<string, React.ReactNode> = {
+  Move: <Move size={13} />,
+  Scan: <Scan size={13} />,
+  Lasso: <Lasso size={13} />,
+  Crop: <Crop size={13} />,
+  Paintbrush: <Paintbrush size={13} />,
+  Eraser: <Eraser size={13} />,
+  Flame: <Flame size={13} />,
+  Droplet: <Droplet size={13} />,
+  Square: <Square size={13} />,
+  Type: <Type size={13} />,
+  Sun: <Sun size={13} />,
+  Moon: <Moon size={13} />,
+  Blend: <Blend size={13} />,
+  PaintBucket: <PaintBucket size={13} />,
+  Pipette: <Pipette size={13} />,
+  Hand: <Hand size={13} />,
+  ZoomIn: <ZoomIn size={13} />,
 };
+
+const getToolIcon = (iconName: string) => TOOL_ICON_MAP[iconName] || <Paintbrush size={13} />;
 
 interface Props {
   onOpenHelp?: () => void;
@@ -97,7 +85,28 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
     setBucketTolerance,
     bucketContiguous,
     setBucketContiguous,
-  } = useEditorStore();
+  } = useEditorStore(
+    useShallow((s) => ({
+      activeTool: s.activeTool,
+      setActiveTool: s.setActiveTool,
+      brushSettings: s.brushSettings,
+      setBrushSettings: s.setBrushSettings,
+      shapeSettings: s.shapeSettings,
+      setShapeSettings: s.setShapeSettings,
+      textSettings: s.textSettings,
+      setTextSettings: s.setTextSettings,
+      smudgeStrength: s.smudgeStrength,
+      setSmudgeStrength: s.setSmudgeStrength,
+      showGrid: s.showGrid,
+      setShowGrid: s.setShowGrid,
+      showRulers: s.showRulers,
+      setShowRulers: s.setShowRulers,
+      bucketTolerance: s.bucketTolerance,
+      setBucketTolerance: s.setBucketTolerance,
+      bucketContiguous: s.bucketContiguous,
+      setBucketContiguous: s.setBucketContiguous,
+    }))
+  );
   const isDirty = useDocumentStore((s) => s.isDirty);
 
   const isMac =
@@ -107,19 +116,13 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
   const toolDef = TOOLS.find((t) => t.type === activeTool);
 
   const handleMouseDown = async (e: React.MouseEvent) => {
-    // Only primary left-click
     if (e.button !== 0) return;
-
-    // Do not initiate window drag if clicking on interactive elements
     const target = e.target as HTMLElement;
-    if (target.closest('button, input, select, textarea, [data-no-drag]')) {
-      return;
-    }
+    if (target.closest('button, input, select, textarea, [data-no-drag]')) return;
 
     if (isTauriEnvironment()) {
       try {
         if (e.detail === 2) {
-          // Double click title bar toggles maximize
           await getCurrentWindow().toggleMaximize();
         } else {
           await getCurrentWindow().startDragging();
@@ -134,34 +137,34 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
     <div
       data-tauri-drag-region
       onMouseDown={handleMouseDown}
-      className={`bg-ps-surface/95 backdrop-blur-md border-b border-ps-border text-xs text-zinc-300 select-none z-40 relative shadow-sm ${
+      className={`bg-[#0d0d10] border-b border-white/10 text-xs text-zinc-300 select-none z-40 relative shadow-md ${
         isMac ? 'pl-[88px]' : 'pl-3'
       }`}
     >
-      {/* Row 1: Primary Studio Toolbar (36px single line) */}
-      <div className="h-9 flex items-center pr-3 gap-2">
-        {/* Active Tool Badge (Photoshop Studio Style) — pinned left */}
+      {/* Primary Toolbar (40px sleek height) */}
+      <div className="h-10 flex items-center pr-3 gap-2.5">
+        {/* Active Tool Badge (Procreate Capsule Style) */}
         <div
           data-tauri-drag-region
-          className="h-full flex items-center space-x-2 border-r border-ps-border/70 pr-2.5 flex-shrink-0 cursor-default"
+          className="h-full w-36 flex items-center justify-between border-r border-white/10 pr-3 flex-shrink-0 cursor-default"
         >
-          <div className="w-5.5 h-5.5 rounded bg-zinc-800/90 border border-zinc-700/60 flex items-center justify-center text-zinc-300">
-            {getToolIcon(toolDef?.iconName || 'Paintbrush')}
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="capitalize font-semibold text-[11px] text-zinc-200 tracking-tight">
+          <div className="flex items-center space-x-2 min-w-0">
+            <div className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-sm flex-shrink-0">
+              {getToolIcon(toolDef?.iconName || 'Paintbrush')}
+            </div>
+            <span className="capitalize font-semibold text-[11px] text-zinc-100 tracking-tight truncate">
               {toolDef?.label.replace(' Tool', '') || activeTool.replace('_', ' ')}
             </span>
-            {toolDef?.shortcut && (
-              <kbd className="px-1 py-0.5 rounded bg-zinc-800/90 text-zinc-400 border border-zinc-700/60 text-[9px] font-mono leading-none">
-                {toolDef.shortcut.split(' ')[0]}
-              </kbd>
-            )}
           </div>
+          {toolDef?.shortcut && (
+            <kbd className="px-1.5 py-0.5 rounded-full bg-white/10 text-zinc-300 border border-white/10 text-[9px] font-mono leading-none flex-shrink-0">
+              {toolDef.shortcut.split(' ')[0]}
+            </kbd>
+          )}
         </div>
 
-        {/* Scrollable tool options area — dropdowns use position:fixed to escape overflow */}
-        <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar flex items-center gap-2 h-full">
+        {/* Non-Scrollable Fixed Tool Options Area */}
+        <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-2 h-full">
           {/* 1. Brush Options */}
           {activeTool === 'brush' && (
             <BrushOptions
@@ -173,82 +176,17 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
 
           {/* 2. Eraser Options */}
           {activeTool === 'eraser' && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Size
-                </span>
-                <input
-                  type="range"
-                  min="1"
-                  max="200"
-                  value={brushSettings.size}
-                  onChange={(e) => setBrushSettings({ size: Number(e.target.value) })}
-                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="font-mono text-[11px] w-8 text-zinc-200 text-right font-medium">
-                  {brushSettings.size}px
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Hard
-                </span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={brushSettings.hardness}
-                  onChange={(e) => setBrushSettings({ hardness: Number(e.target.value) })}
-                  className="w-14 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="font-mono text-[11px] w-7 text-zinc-200 text-right font-medium">
-                  {Math.round(brushSettings.hardness * 100)}%
-                </span>
-              </div>
-            </div>
+            <EraserOptions brushSettings={brushSettings} setBrushSettings={setBrushSettings} />
           )}
 
           {/* 3. Smudge Options */}
           {activeTool === 'smudge' && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Size
-                </span>
-                <input
-                  type="range"
-                  min="2"
-                  max="150"
-                  value={brushSettings.size}
-                  onChange={(e) => setBrushSettings({ size: Number(e.target.value) })}
-                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="font-mono text-[11px] w-8 text-zinc-200 text-right font-medium">
-                  {brushSettings.size}px
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Strength
-                </span>
-                <input
-                  type="range"
-                  min="0.05"
-                  max="1"
-                  step="0.05"
-                  value={smudgeStrength}
-                  onChange={(e) => setSmudgeStrength(Number(e.target.value))}
-                  className="w-14 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="font-mono text-[11px] w-7 text-zinc-200 text-right font-medium">
-                  {Math.round(smudgeStrength * 100)}%
-                </span>
-              </div>
-            </div>
+            <SmudgeOptions
+              brushSettings={brushSettings}
+              setBrushSettings={setBrushSettings}
+              smudgeStrength={smudgeStrength}
+              setSmudgeStrength={setSmudgeStrength}
+            />
           )}
 
           {/* 4. Vector Shape Options */}
@@ -263,67 +201,24 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
 
           {/* 6. Paint Bucket Options */}
           {activeTool === 'paint_bucket' && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Tolerance */}
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Tolerance
-                </span>
-                <input
-                  type="range"
-                  min="0"
-                  max="255"
-                  value={bucketTolerance}
-                  onChange={(e) => setBucketTolerance(Number(e.target.value))}
-                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="text-zinc-200 text-[11px] font-mono w-7 text-right">
-                  {bucketTolerance}
-                </span>
-              </div>
-
-              {/* Opacity */}
-              <div className="flex items-center space-x-1.5 bg-zinc-800/60 border border-zinc-700/60 rounded px-2 h-6.5">
-                <span className="text-zinc-400 text-[10px] uppercase font-semibold tracking-wider">
-                  Opacity
-                </span>
-                <input
-                  type="range"
-                  min="1"
-                  max="100"
-                  value={Math.round(brushSettings.opacity * 100)}
-                  onChange={(e) => setBrushSettings({ opacity: Number(e.target.value) / 100 })}
-                  className="w-16 accent-blue-500 cursor-pointer h-1 bg-zinc-700 rounded-lg appearance-none"
-                />
-                <span className="text-zinc-200 text-[11px] font-mono w-8 text-right">
-                  {Math.round(brushSettings.opacity * 100)}%
-                </span>
-              </div>
-
-              {/* Contiguous Toggle */}
-              <label className="flex items-center space-x-1.5 px-2 h-6.5 rounded bg-zinc-800/60 border border-zinc-700/60 cursor-pointer hover:bg-zinc-800 text-[11px] text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={bucketContiguous}
-                  onChange={(e) => setBucketContiguous(e.target.checked)}
-                  className="rounded border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0 bg-zinc-700 cursor-pointer"
-                />
-                <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-400">
-                  Contiguous
-                </span>
-              </label>
-            </div>
+            <BucketOptions
+              bucketTolerance={bucketTolerance}
+              setBucketTolerance={setBucketTolerance}
+              bucketContiguous={bucketContiguous}
+              setBucketContiguous={setBucketContiguous}
+              brushSettings={brushSettings}
+              setBrushSettings={setBrushSettings}
+            />
           )}
 
-          {/* Draggable Flexible Space */}
           <div
             data-tauri-drag-region
             className="flex-1 h-full min-w-4 self-stretch cursor-default"
           />
         </div>
 
-        {/* Viewport Overlay Controls — pinned right, never clipped */}
-        <div className="flex items-center space-x-1 pl-2 border-l border-ps-border/70 flex-shrink-0">
+        {/* Viewport Overlay Controls & Actions */}
+        <div className="flex items-center space-x-1.5 pl-2 border-l border-white/10 flex-shrink-0">
           <Tooltip
             content={showGrid ? 'Hide Pixel Grid' : 'Show Pixel Grid'}
             shortcut={`${modKey}'`}
@@ -331,10 +226,10 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
             <button
               type="button"
               onClick={() => setShowGrid(!showGrid)}
-              className={`h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 ${
+              className={`h-7 px-2.5 rounded-xl text-[11px] font-medium transition-all flex items-center space-x-1.5 active:scale-95 ${
                 showGrid
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'
+                  ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                  : 'bg-white/[0.05] hover:bg-white/[0.08] text-zinc-300 border border-white/10'
               }`}
             >
               <Grid size={12} />
@@ -349,10 +244,10 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
             <button
               type="button"
               onClick={() => setShowRulers(!showRulers)}
-              className={`h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 ${
+              className={`h-7 px-2.5 rounded-xl text-[11px] font-medium transition-all flex items-center space-x-1.5 active:scale-95 ${
                 showRulers
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-xs'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'
+                  ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                  : 'bg-white/[0.05] hover:bg-white/[0.08] text-zinc-300 border border-white/10'
               }`}
             >
               <Compass size={12} />
@@ -364,10 +259,10 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
             <button
               type="button"
               onClick={() => saveProjectFile(false)}
-              className={`h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 border ${
+              className={`h-7 px-2.5 rounded-xl text-[11px] font-medium transition-all flex items-center space-x-1.5 active:scale-95 ${
                 isDirty
-                  ? 'bg-blue-600 text-white border-blue-500 shadow-xs hover:bg-blue-500'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border-transparent'
+                  ? 'bg-blue-600 text-white shadow-[0_0_14px_rgba(37,99,235,0.5)] border border-blue-400/50'
+                  : 'bg-white/[0.05] hover:bg-white/[0.08] text-zinc-300 border border-white/10'
               }`}
             >
               <Save size={12} />
@@ -380,7 +275,7 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
               <button
                 type="button"
                 onClick={onOpenHelp}
-                className="h-6.5 px-2 rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 active:scale-95 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent"
+                className="h-7 px-2.5 rounded-xl text-[11px] font-medium transition-all flex items-center space-x-1.5 active:scale-95 bg-white/[0.05] hover:bg-white/[0.08] text-zinc-300 border border-white/10"
               >
                 <span className="text-[10px]">Help</span>
               </button>
@@ -389,20 +284,34 @@ export const ToolOptionsBar: React.FC<Props> = ({ onOpenHelp }) => {
         </div>
       </div>
 
-      {/* Row 2: Secondary Options Drawer (Active for Brush on screens < 1280px / xl) */}
+      {/* Row 2: Secondary Options Drawer (Dedicated for Brush Tool) */}
       {activeTool === 'brush' && (
         <div
           data-tauri-drag-region
-          className="h-8 flex xl:hidden items-center pr-3 gap-2 border-t border-ps-border/40 text-[11px]"
+          className="h-8.5 flex items-center pr-3 gap-2.5 border-t border-white/[0.07] text-[11px] overflow-hidden"
         >
-          <BrushSecondaryOptions
-            brushSettings={brushSettings}
-            setBrushSettings={setBrushSettings}
-          />
           <div
             data-tauri-drag-region
-            className="flex-1 h-full min-w-4 self-stretch cursor-default"
-          />
+            className="h-full w-36 flex items-center space-x-2 border-r border-white/10 pr-3 flex-shrink-0 cursor-default text-zinc-400"
+          >
+            <div className="w-6 h-6 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-zinc-400 shadow-sm flex-shrink-0">
+              <SlidersHorizontal size={12} />
+            </div>
+            <span className="font-semibold text-[10px] uppercase tracking-wider text-zinc-400">
+              Stroke
+            </span>
+          </div>
+
+          <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-2 h-full">
+            <BrushSecondaryOptions
+              brushSettings={brushSettings}
+              setBrushSettings={setBrushSettings}
+            />
+            <div
+              data-tauri-drag-region
+              className="flex-1 h-full min-w-4 self-stretch cursor-default"
+            />
+          </div>
         </div>
       )}
     </div>

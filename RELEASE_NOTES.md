@@ -1,3 +1,27 @@
+# CekcokDraw v0.4.3 - The "Catmull-Rom Spline, Zero-Lag GPU Stamps & Procreate Precision" Update
+
+This release brings sub-pixel Catmull-Rom cubic spline stroke interpolation, zero-lag GPU-accelerated stamp generation for all brush radii, scale-invariant tablet stabilization, dirty-rect canvas bounding box baking, custom brush presets, and refined Procreate-inspired dual-row tool controls.
+
+## 🖋️ Sub-Pixel Catmull-Rom Spline Interpolation
+
+- **Continuous $C^1$ Tangents**: Replaced naive linear segment interpolation with high-performance 2D Catmull-Rom cubic splines. Eliminates polygonal kinks ("patah-patah") on fast strokes and large canvases, producing silky-smooth organic curves.
+- **Scale-Invariant Tablet Stabilizer**: Distance calculation in `StrokeStabilizer` is now normalized to screen space via viewport zoom, guaranteeing consistent, tremor-free pen follow across all document dimensions (from 1080p to 32K).
+- **Smooth End-of-Stroke Taper**: Stylus and mouse release points automatically close with exact sub-pixel trajectory tracking.
+
+## ⚡ Zero-Lag GPU Stamp Acceleration
+
+- **Hardware Radial Gradients for All Radii**: Removed artificial radius thresholds in stamp generation. Brushes of any size (from 1px to 500px) now render with native 2D Canvas GPU methods (`createRadialGradient`, `arc`, `fill`) in microseconds, completely eliminating initial stroke lag ("agak nunggu").
+- **Adaptive Radius Quantization**: Quantizes stamp radii dynamically to prevent stamp cache memory churn while preserving sub-pixel visual fidelity.
+- **Dirty-Rect Canvas Clearing**: Temporary live stroke overlay clears only the active stroke bounding box instead of 67MB 4K textures, eliminating end-of-stroke hitches.
+
+## 🎨 Dual-Row Tool Options & Studio Refinements
+
+- **Two-Row Procreate Tool Bar**: Reworked top options bar into two clean rows with dedicated tool mode tabs, full unabbreviated labels (`Hardness`, `Smoothing`, `Pressure Size/Flow`), and streamlined slider controls.
+- **Saved Brush Presets**: Save, name, and load custom brush presets directly from the brush options panel.
+- **Zero Dead Code & Strict Modularity**: Removed legacy unused routines and modularized canvas interactions under strict 400-line limits.
+
+---
+
 # CekcokDraw v0.4.2 - The "PSD Import, Brush Symmetry & Atomic Persistence" Update
 
 This release brings native Photoshop PSD import and drag-and-drop, real-time brush symmetry painting (vertical, horizontal, quadrant), atomic file saving for crash resilience, and a comprehensive headless browser engine test suite.

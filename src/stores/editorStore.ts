@@ -237,8 +237,16 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       pan: typeof pan === 'function' ? pan(state.pan) : pan,
     })),
-  setCursorPos: (cursorPos) => set({ cursorPos }),
-  setMouseClientPos: (mouseClientPos) => set({ mouseClientPos }),
+  setCursorPos: (cursorPos) =>
+    set((state) =>
+      state.cursorPos.x === cursorPos.x && state.cursorPos.y === cursorPos.y ? state : { cursorPos }
+    ),
+  setMouseClientPos: (mouseClientPos) =>
+    set((state) =>
+      state.mouseClientPos.x === mouseClientPos.x && state.mouseClientPos.y === mouseClientPos.y
+        ? state
+        : { mouseClientPos }
+    ),
   setIsPointerOverCanvas: (isPointerOverCanvas) => set({ isPointerOverCanvas }),
   setIsDrawing: (isDrawing) => set({ isDrawing }),
   setShowGrid: (showGrid) => set({ showGrid }),
@@ -266,9 +274,23 @@ export const useEditorStore = create<EditorState>((set) => ({
       return { textLayersData: next };
     }),
   setTabletTelemetry: (telemetry) =>
-    set((state) => ({
-      tabletTelemetry: { ...state.tabletTelemetry, ...telemetry },
-    })),
+    set((state) => {
+      const curr = state.tabletTelemetry;
+      if (
+        (telemetry.pointerType === undefined || telemetry.pointerType === curr.pointerType) &&
+        (telemetry.pressure === undefined ||
+          Math.abs(telemetry.pressure - curr.pressure) < 0.005) &&
+        (telemetry.tiltX === undefined || telemetry.tiltX === curr.tiltX) &&
+        (telemetry.tiltY === undefined || telemetry.tiltY === curr.tiltY) &&
+        (telemetry.isStylus === undefined || telemetry.isStylus === curr.isStylus) &&
+        (telemetry.isEraser === undefined || telemetry.isEraser === curr.isEraser)
+      ) {
+        return state;
+      }
+      return {
+        tabletTelemetry: { ...curr, ...telemetry },
+      };
+    }),
   setTransformState: (transformState) => set({ transformState }),
   setCropBounds: (cropBounds) => set({ cropBounds }),
   resetView: () => set({ zoom: 1.0, pan: { x: 0, y: 0 } }),

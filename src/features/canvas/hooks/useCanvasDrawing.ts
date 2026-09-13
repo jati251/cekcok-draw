@@ -1,3 +1,4 @@
+import { invalidateCanvasPreview } from '@/features/canvas/utils/previewInvalidation';
 import { useCallback, useRef } from 'react';
 import { BrushPoint, ToolType, BrushSettings, DocumentInfo } from '@/types';
 import { StrokeStabilizer } from '@/features/canvas/utils/tablet';
@@ -108,7 +109,6 @@ export const useCanvasDrawing = ({
     doc,
     activeTool,
     brushSettings,
-    zoom,
     liveStrokeCanvasRef,
     layerCanvasesRef,
     expandBoundingBox,
@@ -119,9 +119,9 @@ export const useCanvasDrawing = ({
   const processSmoothPoint = useCallback(
     (rawPoint: BrushPoint): BrushPoint => {
       const smoothing = brushSettings.smoothing ?? 0.15;
-      return stabilizerRef.current.processPoint(rawPoint, smoothing);
+      return stabilizerRef.current.processPoint(rawPoint, smoothing, zoom);
     },
-    [brushSettings.smoothing]
+    [brushSettings.smoothing, zoom]
   );
 
   // useStrokeBaker usage ended
@@ -132,6 +132,7 @@ export const useCanvasDrawing = ({
       isDrawingRef.current = true;
       strokePointsRef.current = [rawPoint];
       drawInitialDot(rawPoint);
+      invalidateCanvasPreview();
     },
     [drawInitialDot]
   );
@@ -140,6 +141,7 @@ export const useCanvasDrawing = ({
     isDrawingRef.current = false;
     stabilizerRef.current.reset();
     bakeStrokeToLayer();
+    invalidateCanvasPreview();
   }, [bakeStrokeToLayer]);
 
   return {
@@ -148,7 +150,10 @@ export const useCanvasDrawing = ({
     startStroke,
     endStroke,
     drawInitialDot,
-    drawStrokeSegment,
+    drawStrokeSegment: (...args: Parameters<typeof drawStrokeSegment>) => {
+      drawStrokeSegment(...args);
+      invalidateCanvasPreview();
+    },
     processSmoothPoint,
     bakeStrokeToLayer,
   };

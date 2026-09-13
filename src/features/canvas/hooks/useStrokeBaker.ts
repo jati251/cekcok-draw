@@ -78,7 +78,12 @@ export const useStrokeBaker = ({
       ctx.drawImage(strokeCanvas, x, y, w, h, x, y, w, h);
       ctx.restore();
     }
-    strokeCanvas.getContext('2d')?.clearRect(0, 0, doc.width, doc.height);
+    const clearPad = Math.max(8, brushSettings.size * 2);
+    const clearX = Math.max(0, x - clearPad);
+    const clearY = Math.max(0, y - clearPad);
+    const clearW = Math.min(doc.width, x + w + clearPad) - clearX;
+    const clearH = Math.min(doc.height, y + h + clearPad) - clearY;
+    strokeCanvas.getContext('2d')?.clearRect(clearX, clearY, clearW, clearH);
     const description =
       activeTool === 'brush'
         ? `${brushSettings.type.replaceAll('_', ' ')} Stroke`

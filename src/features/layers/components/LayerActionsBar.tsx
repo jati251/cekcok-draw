@@ -5,14 +5,13 @@ import { Tooltip } from '@/components/ui/Tooltip';
 
 /**
  * Layer action toolbar (Duplicate / Merge / Move / New / Delete).
- * Rendered pinned to the bottom of the sidebar, OUTSIDE the scrollable panels
- * container, so the tools stay visible even when every panel is expanded and
- * the panel stack scrolls.
+ * Styled with Procreate obsidian glass and squircle controls.
  */
 export const LayerActionsBar: React.FC = () => {
   const {
     doc,
     addNewLayer,
+    duplicateLayer,
     deleteLayer,
     mergeDown,
     reorderLayer,
@@ -30,16 +29,16 @@ export const LayerActionsBar: React.FC = () => {
   const activeLayer = doc.layers.find((l) => l.id === doc.active_layer_id);
 
   return (
-    <div className="h-9 px-3 bg-ps-header/90 border-t border-ps-border flex items-center justify-between flex-shrink-0">
+    <div className="h-10 px-3 bg-[#0d0d10] border-t border-white/10 flex items-center justify-between flex-shrink-0">
       <div className="flex items-center space-x-1">
         <Tooltip content="Duplicate Layer" shortcut={`${modKey}J`} position="top">
           <button
             onClick={() => {
-              if (activeLayer) addNewLayer(`${activeLayer.name} Copy`);
+              if (activeLayer) void duplicateLayer(activeLayer.id);
             }}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-all active:scale-90"
           >
-            <Copy size={13} />
+            <Copy size={14} />
           </button>
         </Tooltip>
 
@@ -65,13 +64,13 @@ export const LayerActionsBar: React.FC = () => {
                 ? false
                 : !activeLayer || doc.layers[0]?.id === activeLayer.id
             }
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
-            <ArrowDown size={13} />
+            <ArrowDown size={14} />
           </button>
         </Tooltip>
 
-        <div className="w-px h-4 bg-ps-border/60 mx-1" />
+        <div className="w-px h-4 bg-white/10 mx-1" />
 
         <Tooltip content="Move Up" position="top">
           <button
@@ -82,9 +81,9 @@ export const LayerActionsBar: React.FC = () => {
               }
             }}
             disabled={!activeLayer || doc.layers[doc.layers.length - 1]?.id === activeLayer.id}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
-            <ChevronUp size={14} />
+            <ChevronUp size={15} />
           </button>
         </Tooltip>
 
@@ -97,9 +96,9 @@ export const LayerActionsBar: React.FC = () => {
               }
             }}
             disabled={!activeLayer || doc.layers[0]?.id === activeLayer.id}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
-            <ChevronDown size={14} />
+            <ChevronDown size={15} />
           </button>
         </Tooltip>
       </div>
@@ -108,9 +107,9 @@ export const LayerActionsBar: React.FC = () => {
         <Tooltip content="New Layer" shortcut={`${modKey}⇧N`} position="top">
           <button
             onClick={() => addNewLayer()}
-            className="p-1.5 text-zinc-300 hover:text-white hover:bg-ps-hover rounded-md transition-all active:scale-90 text-blue-400 hover:text-blue-300"
+            className="p-1.5 text-blue-400 hover:text-white hover:bg-blue-600 rounded-xl transition-all active:scale-90 shadow-sm"
           >
-            <Plus size={15} />
+            <Plus size={16} />
           </button>
         </Tooltip>
 
@@ -132,9 +131,9 @@ export const LayerActionsBar: React.FC = () => {
               }
             }}
             disabled={doc.layers.length <= 1}
-            className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-ps-hover rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
           >
-            <Trash2 size={14} />
+            <Trash2 size={15} />
           </button>
         </Tooltip>
       </div>

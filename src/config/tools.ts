@@ -74,7 +74,7 @@ export const TOOLS: ToolDefinition[] = [
     type: 'gradient',
     label: 'Gradient Tool',
     shortcut: 'G',
-    iconName: 'Sparkles',
+    iconName: 'Blend',
     category: 'Tone',
   },
   {

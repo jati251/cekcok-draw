@@ -1,3 +1,4 @@
+pub mod blend;
 pub mod document;
 pub mod history;
 pub mod layer;

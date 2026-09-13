@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as filters from '@/features/adjustments/utils/filters';
-import { Sparkles } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useDocumentStore } from '@/stores/documentStore';
 
 interface HistogramProps {
@@ -108,7 +108,7 @@ export const Histogram: React.FC<HistogramProps> = ({
           onClick={onAutoLevels}
           className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 font-semibold cursor-pointer bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 transition-colors"
         >
-          <Sparkles size={10} />
+          <SlidersHorizontal size={10} />
           <span>Auto Tone</span>
         </button>
       </div>

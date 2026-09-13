@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { screenToCanvasCoord } from '@/utils/coordinates';
 import { DocumentInfo } from '@/types';
 
@@ -9,7 +10,15 @@ interface UseCanvasViewportProps {
 }
 
 export const useCanvasViewport = ({ doc, viewportBoxRef }: UseCanvasViewportProps) => {
-  const { zoom, setZoom, setPan, setCursorPos, activeTool } = useEditorStore();
+  const { zoom, setZoom, setPan, setCursorPos, activeTool } = useEditorStore(
+    useShallow((s) => ({
+      zoom: s.zoom,
+      setZoom: s.setZoom,
+      setPan: s.setPan,
+      setCursorPos: s.setCursorPos,
+      activeTool: s.activeTool,
+    }))
+  );
 
   const [isPanning, setIsPanning] = useState(false);
   const [mouseClientPos, setMouseClientPos] = useState<{ clientX: number; clientY: number } | null>(

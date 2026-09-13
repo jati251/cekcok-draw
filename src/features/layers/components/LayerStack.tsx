@@ -1,3 +1,5 @@
+import { CompositePreview } from './CompositePreview';
+import { needsCompositePreview } from '@/utils/layerCompositor';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { DocumentInfo } from '@/types';
 import { getCssBlendMode } from '@/config/blendModes';
@@ -9,37 +11,19 @@ import { toast } from '@/stores/toastStore';
 interface Props {
   doc: DocumentInfo;
   layerCanvasesRef: React.RefObject<Map<string, HTMLCanvasElement>>;
-  viewport?: { x: number; y: number; width: number; height: number };
+  liveStrokeCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+  viewport: { x: number; y: number; width: number; height: number };
 }
 
-function updateMasks(doc: DocumentInfo, canvases: Map<string, HTMLCanvasElement>) {
-  let base: HTMLCanvasElement | undefined;
-  let baseVisible = false;
-  let mask: string | undefined;
-  for (const layer of doc.layers) {
-    const canvas = canvases.get(layer.id);
-    if (!canvas) continue;
-    if (!layer.is_clipped) {
-      base = canvas;
-      baseVisible = layer.visible;
-      mask = undefined;
-      canvas.style.maskImage = '';
-      canvas.style.webkitMaskImage = '';
-    } else {
-      mask ??=
-        base && baseVisible
-          ? `url(${base.toDataURL()})`
-          : 'linear-gradient(transparent, transparent)';
-      canvas.style.maskImage = mask;
-      canvas.style.webkitMaskImage = mask;
-    }
-  }
-}
-
-export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
+export const LayerStack: React.FC<Props> = ({
+  doc,
+  layerCanvasesRef,
+  liveStrokeCanvasRef,
+  viewport,
+}) => {
   const initialized = useRef(new Set<string>());
   const transformState = useEditorStore((state) => state.transformState);
-  const canvasRevision = useDocumentStore((state) => state.canvasRevision);
+  const composite = needsCompositePreview(doc);
   const rustSyncRevision = useDocumentStore((state) => state.rustSyncRevision);
   const pixelSignature = useMemo(
     () =>
@@ -80,8 +64,6 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
       if (pending && useDocumentStore.getState().pendingLayerPixels === pending) {
         useDocumentStore.setState({ pendingLayerPixels: null });
       }
-      const latest = useDocumentStore.getState().doc;
-      if (latest?.id === d.id) updateMasks(latest, layerCanvasesRef.current);
       useDocumentStore.setState({ isLoading: false });
     };
     void hydrate().catch((error) => {
@@ -95,13 +77,8 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
     };
   }, [pixelSignature, layerCanvasesRef]);
 
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => updateMasks(doc, layerCanvasesRef.current));
-    return () => cancelAnimationFrame(frame);
-  }, [doc, canvasRevision, layerCanvasesRef]);
-
   return (
-    <>
+    <div className="absolute inset-0 isolate pointer-events-none">
       {doc.layers.map((layer) => {
         const transforming = transformState?.layerId === layer.id && !transformState?.isSelection;
         return (
@@ -120,12 +97,20 @@ export const LayerStack: React.FC<Props> = ({ doc, layerCanvasesRef }) => {
               height: `${doc.height}px`,
               opacity: layer.visible && !transforming ? layer.opacity : 0,
               mixBlendMode: getCssBlendMode(layer.blend_mode),
-              display: layer.visible ? 'block' : 'none',
+              display: layer.visible && !composite ? 'block' : 'none',
             }}
             className="absolute inset-0 block"
           />
         );
       })}
-    </>
+      {composite && (
+        <CompositePreview
+          doc={doc}
+          canvases={layerCanvasesRef}
+          liveCanvas={liveStrokeCanvasRef}
+          viewport={viewport}
+        />
+      )}
+    </div>
   );
 };

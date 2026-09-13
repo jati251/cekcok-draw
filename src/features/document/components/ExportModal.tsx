@@ -7,7 +7,7 @@ import {
 } from '@/features/document/utils/export';
 import { useModalDismiss } from '@/hooks';
 import { toast } from '@/stores/toastStore';
-import { X, Download, FileImage, Layers, Sparkles } from 'lucide-react';
+import { X, Download, FileImage, Layers } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -285,7 +285,7 @@ export const ExportModal: React.FC<Props> = ({ isOpen, onClose }) => {
               disabled={exporting}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20 flex items-center justify-center space-x-1.5 transition-colors"
             >
-              <Sparkles size={13} />
+              <Download size={13} />
               <span>
                 {exporting ? 'Exporting...' : `Export ${selectedFormatObj.label.split(' ')[0]}`}
               </span>

@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useDocumentStore } from '@/stores/documentStore';
 
 const getRulerStep = (zoom: number): number => {
@@ -13,15 +14,22 @@ const getRulerStep = (zoom: number): number => {
   return 1000;
 };
 
-export const RulersOverlay: React.FC = () => {
+const ActiveRulersOverlay: React.FC = () => {
   const topRulerRef = useRef<HTMLCanvasElement>(null);
   const leftRulerRef = useRef<HTMLCanvasElement>(null);
 
-  const { doc } = useDocumentStore();
-  const { zoom, pan, cursorPos, showRulers, isSidebarCollapsed } = useEditorStore();
+  const doc = useDocumentStore((s) => s.doc);
+  const { zoom, pan, cursorPos, isSidebarCollapsed } = useEditorStore(
+    useShallow((s) => ({
+      zoom: s.zoom,
+      pan: s.pan,
+      cursorPos: s.cursorPos,
+      isSidebarCollapsed: s.isSidebarCollapsed,
+    }))
+  );
 
   const drawRulers = useCallback(() => {
-    if (!showRulers || !doc) return;
+    if (!doc) return;
 
     const topCanvas = topRulerRef.current;
     const leftCanvas = leftRulerRef.current;
@@ -236,7 +244,7 @@ export const RulersOverlay: React.FC = () => {
         leftCtx.stroke();
       }
     }
-  }, [showRulers, doc, zoom, pan, cursorPos]);
+  }, [doc, zoom, pan, cursorPos]);
 
   // Redraw on state changes
   const theme = useEditorStore((s) => s.theme);
@@ -246,7 +254,6 @@ export const RulersOverlay: React.FC = () => {
 
   // ResizeObserver on container ensures smooth sync when sidebar toggles or window resizes
   useEffect(() => {
-    if (!showRulers) return;
     const topCanvas = topRulerRef.current;
     const container = topCanvas?.closest('main');
     if (!container) return;
@@ -257,9 +264,7 @@ export const RulersOverlay: React.FC = () => {
 
     ro.observe(container);
     return () => ro.disconnect();
-  }, [showRulers, drawRulers]);
-
-  if (!showRulers) return null;
+  }, [drawRulers]);
 
   return (
     <>
@@ -279,4 +284,10 @@ export const RulersOverlay: React.FC = () => {
       </div>
     </>
   );
+};
+
+export const RulersOverlay: React.FC = () => {
+  const showRulers = useEditorStore((s) => s.showRulers);
+  if (!showRulers) return null;
+  return <ActiveRulersOverlay />;
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   RefreshCw,
-  Sparkles,
+  ArrowUpCircle,
   DownloadCloud,
   CheckCircle2,
   ShieldCheck,
@@ -129,7 +129,7 @@ export const UpdateModal: React.FC<Props> = ({ isOpen, onClose }) => {
         {/* Modal Header */}
         <div className="h-11 px-4 bg-ps-header border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sparkles size={16} className="text-blue-400" />
+            <ArrowUpCircle size={16} className="text-blue-400" />
             <span className="font-semibold text-sm text-zinc-100">Software Update</span>
           </div>
           <button

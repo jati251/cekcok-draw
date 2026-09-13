@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { DOCUMENT_PRESETS } from '@/config/presets';
 import { useModalDismiss } from '@/hooks';
-import { X, Sparkles, Monitor, Smartphone, Printer, Image } from 'lucide-react';
+import { X, FilePlus, Monitor, Smartphone, Printer, Image } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -61,7 +61,7 @@ export const NewDocumentModal: React.FC<Props> = ({ isOpen, onClose }) => {
         {/* Modal Header */}
         <div className="h-11 px-5 bg-ps-header/90 border-b border-ps-border flex items-center justify-between">
           <div className="flex items-center space-x-2 text-xs font-semibold text-zinc-100">
-            <Sparkles size={15} className="text-blue-400" />
+            <FilePlus size={15} className="text-blue-400" />
             <span>Create New Canvas</span>
           </div>
           <button

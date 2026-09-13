@@ -17,18 +17,24 @@ import {
   Minimize2,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useDocumentStore } from '@/stores/documentStore';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const StudioSidebar: React.FC = () => {
   const { activePanel, setActivePanel, isSidebarCollapsed, setIsSidebarCollapsed, primaryColor } =
-    useEditorStore();
-  // Selector subscription: avoid re-rendering the whole sidebar on every
-  // canvasRevision bump while drawing.
+    useEditorStore(
+      useShallow((s) => ({
+        activePanel: s.activePanel,
+        setActivePanel: s.setActivePanel,
+        isSidebarCollapsed: s.isSidebarCollapsed,
+        setIsSidebarCollapsed: s.setIsSidebarCollapsed,
+        primaryColor: s.primaryColor,
+      }))
+    );
   const doc = useDocumentStore((s) => s.doc);
 
-  // Vertical panels accordion state (Photoshop style stacked panels)
   const [expandColor, setExpandColor] = useState(true);
   const [expandAdjustments, setExpandAdjustments] = useState(false);
   const [expandHistory, setExpandHistory] = useState(false);
@@ -40,30 +46,30 @@ export const StudioSidebar: React.FC = () => {
     setExpandColor(expand);
     setExpandAdjustments(expand);
     setExpandHistory(expand);
-    setExpandLayers(true); // Layers always stays open
+    setExpandLayers(true);
   };
 
-  // 1. Collapsed Dock Rail (Compact 40px icon rail)
+  // 1. Collapsed Dock Rail (Procreate Squircle Rail)
   if (isSidebarCollapsed) {
     return (
       <motion.aside
-        initial={{ width: 288, opacity: 0 }}
-        animate={{ width: 40, opacity: 1 }}
-        exit={{ width: 288, opacity: 0 }}
+        initial={{ width: 300, opacity: 0 }}
+        animate={{ width: 48, opacity: 1 }}
+        exit={{ width: 300, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="bg-ps-panel border-l border-ps-border flex flex-col items-center py-2 space-y-1.5 z-20 select-none shadow-studio-subtle"
+        className="bg-[#0d0d10] border-l border-white/10 flex flex-col items-center py-3 space-y-2 z-20 select-none shadow-xl"
       >
         <Tooltip content="Expand Panels" position="left">
           <button
             type="button"
             onClick={() => setIsSidebarCollapsed(false)}
-            className="p-1.5 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors active:scale-95"
+            className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors active:scale-95"
           >
-            <PanelRightOpen size={15} />
+            <PanelRightOpen size={16} />
           </button>
         </Tooltip>
 
-        <div className="w-5 h-[1px] bg-ps-border/70 my-1" />
+        <div className="w-6 h-[1px] bg-white/10 my-1" />
 
         <Tooltip content="Color Palette" position="left">
           <button
@@ -73,13 +79,13 @@ export const StudioSidebar: React.FC = () => {
               setExpandColor(true);
               setActivePanel('all');
             }}
-            className={`p-1.5 rounded transition-all active:scale-95 ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all active:scale-95 ${
               expandColor && !isSidebarCollapsed
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
+                ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Palette size={15} />
+            <Palette size={16} />
           </button>
         </Tooltip>
 
@@ -91,13 +97,13 @@ export const StudioSidebar: React.FC = () => {
               setExpandAdjustments(true);
               setActivePanel('all');
             }}
-            className={`p-1.5 rounded transition-all active:scale-95 ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all active:scale-95 ${
               expandAdjustments && !isSidebarCollapsed
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
+                ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Sliders size={15} />
+            <Sliders size={16} />
           </button>
         </Tooltip>
 
@@ -109,17 +115,17 @@ export const StudioSidebar: React.FC = () => {
               setExpandHistory(true);
               setActivePanel('all');
             }}
-            className={`p-1.5 rounded transition-all active:scale-95 ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all active:scale-95 ${
               expandHistory && !isSidebarCollapsed
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
+                ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <History size={15} />
+            <History size={16} />
           </button>
         </Tooltip>
 
-        <div className="w-5 h-[1px] bg-ps-border/70 my-1" />
+        <div className="w-6 h-[1px] bg-white/10 my-1" />
 
         <Tooltip content="Layers" position="left">
           <button
@@ -129,92 +135,91 @@ export const StudioSidebar: React.FC = () => {
               setExpandLayers(true);
               setActivePanel('all');
             }}
-            className={`p-1.5 rounded transition-all active:scale-95 ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all active:scale-95 ${
               expandLayers && !isSidebarCollapsed
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover border border-transparent'
+                ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Layers size={15} />
+            <Layers size={16} />
           </button>
         </Tooltip>
       </motion.aside>
     );
   }
 
-  // 2. Expanded Vertical Dock (Authentic Photoshop Stacked Panels)
+  // 2. Expanded Vertical Studio Sidebar
   return (
     <motion.aside
-      initial={{ width: 40, opacity: 0 }}
-      animate={{ width: 288, opacity: 1 }}
-      exit={{ width: 40, opacity: 0 }}
+      initial={{ width: 48, opacity: 0 }}
+      animate={{ width: 296, opacity: 1 }}
+      exit={{ width: 48, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      className="bg-ps-panel border-l border-ps-border flex flex-col z-20 select-none relative h-full"
+      className="bg-[#0d0d10] border-l border-white/10 flex flex-col z-20 select-none relative h-full shadow-xl"
     >
-      {/* Dock Top Bar (Clean Photoshop Style - 32px) */}
-      <div className="h-8 px-2.5 bg-ps-surface/90 border-b border-ps-border flex items-center justify-between text-xs text-zinc-300">
-        <span className="font-semibold text-zinc-300 text-[11px] tracking-tight">Panels</span>
+      {/* Dock Top Bar (36px Procreate Style) */}
+      <div className="h-9 px-3 bg-[#0d0d10] border-b border-white/10 flex items-center justify-between text-xs text-zinc-300">
+        <span className="font-semibold text-zinc-200 text-[11px] uppercase tracking-wider">
+          Studio
+        </span>
 
         <div className="flex items-center space-x-1">
-          <Tooltip content="Collapse All Sections" position="left">
+          <Tooltip content="Collapse All" position="left">
             <button
               type="button"
               onClick={() => handleToggleAll(false)}
-              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
+              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
             >
-              <Minimize2 size={12} />
+              <Minimize2 size={13} />
             </button>
           </Tooltip>
 
-          <Tooltip content="Expand All Sections" position="left">
+          <Tooltip content="Expand All" position="left">
             <button
               type="button"
               onClick={() => handleToggleAll(true)}
-              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
+              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
             >
-              <Maximize2 size={12} />
+              <Maximize2 size={13} />
             </button>
           </Tooltip>
 
-          <div className="w-[1px] h-3 bg-ps-border mx-0.5" />
+          <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
 
           <Tooltip content="Collapse Sidebar" position="left">
             <button
               type="button"
               onClick={() => setIsSidebarCollapsed(true)}
-              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors active:scale-95"
+              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors active:scale-95"
             >
-              <PanelRightClose size={13} />
+              <PanelRightClose size={14} />
             </button>
           </Tooltip>
         </div>
       </div>
 
-      {/* Vertical Stacked Panels Container - Scrollable entire sidebar */}
-      {/* min-h-0 is required so the container can shrink below its content and
-          actually scroll; otherwise min-height:auto forces it to overflow the
-          window and clips the bottom Layers panel out of reach. */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto divide-y divide-ps-border/70 no-scrollbar">
+      {/* Vertical Stacked Panels Container */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto divide-y divide-white/[0.06] no-scrollbar">
         {/* Panel 1: Color Palette */}
         {(activePanel === 'all' || activePanel === 'color') && (
           <div className="flex flex-col flex-shrink-0">
             <button
               type="button"
               onClick={() => setExpandColor(!expandColor)}
-              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40 flex-shrink-0"
+              className="h-8 px-3 bg-white/[0.02] hover:bg-white/[0.05] flex items-center justify-between text-[11px] font-medium text-zinc-200 transition-colors border-b border-white/[0.04] flex-shrink-0"
             >
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2">
                 {expandColor ? (
-                  <ChevronDown size={12} className="text-zinc-400" />
+                  <ChevronDown size={13} className="text-zinc-400" />
                 ) : (
-                  <ChevronRight size={12} className="text-zinc-400" />
+                  <ChevronRight size={13} className="text-zinc-400" />
                 )}
-                <Palette size={12} className="text-zinc-400" />
-                <span>Color</span>
+                <Palette size={13} className="text-blue-400" />
+                <span className="font-semibold tracking-tight">Color</span>
               </div>
               <div className="flex items-center space-x-1.5 font-mono text-[10px] text-zinc-400">
                 <span
-                  className="w-2.5 h-2.5 rounded-xs border border-zinc-600/80 inline-block shadow-xs"
+                  className="w-3 h-3 rounded-full border border-white/30 inline-block shadow-sm"
                   style={{ backgroundColor: primaryColor }}
                 />
                 <span>{primaryColor.toUpperCase()}</span>
@@ -226,9 +231,9 @@ export const StudioSidebar: React.FC = () => {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden bg-ps-panel"
+                  className="overflow-hidden bg-transparent"
                 >
-                  <div className="p-2">
+                  <div className="p-2.5">
                     <ColorPicker />
                   </div>
                 </motion.div>
@@ -243,16 +248,16 @@ export const StudioSidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => setExpandAdjustments(!expandAdjustments)}
-              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40"
+              className="h-8 px-3 bg-white/[0.02] hover:bg-white/[0.05] flex items-center justify-between text-[11px] font-medium text-zinc-200 transition-colors border-b border-white/[0.04]"
             >
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2">
                 {expandAdjustments ? (
-                  <ChevronDown size={12} className="text-zinc-400" />
+                  <ChevronDown size={13} className="text-zinc-400" />
                 ) : (
-                  <ChevronRight size={12} className="text-zinc-400" />
+                  <ChevronRight size={13} className="text-zinc-400" />
                 )}
-                <Sliders size={12} className="text-zinc-400" />
-                <span>Adjustments</span>
+                <Sliders size={13} className="text-blue-400" />
+                <span className="font-semibold tracking-tight">Adjustments</span>
               </div>
             </button>
             <AnimatePresence>
@@ -261,7 +266,7 @@ export const StudioSidebar: React.FC = () => {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden bg-ps-panel"
+                  className="overflow-hidden bg-transparent"
                 >
                   <AdjustmentsPanel />
                 </motion.div>
@@ -276,16 +281,16 @@ export const StudioSidebar: React.FC = () => {
             <button
               type="button"
               onClick={() => setExpandHistory(!expandHistory)}
-              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40"
+              className="h-8 px-3 bg-white/[0.02] hover:bg-white/[0.05] flex items-center justify-between text-[11px] font-medium text-zinc-200 transition-colors border-b border-white/[0.04]"
             >
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2">
                 {expandHistory ? (
-                  <ChevronDown size={12} className="text-zinc-400" />
+                  <ChevronDown size={13} className="text-zinc-400" />
                 ) : (
-                  <ChevronRight size={12} className="text-zinc-400" />
+                  <ChevronRight size={13} className="text-zinc-400" />
                 )}
-                <History size={12} className="text-zinc-400" />
-                <span>History</span>
+                <History size={13} className="text-blue-400" />
+                <span className="font-semibold tracking-tight">History</span>
               </div>
             </button>
             <AnimatePresence>
@@ -294,7 +299,7 @@ export const StudioSidebar: React.FC = () => {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden bg-ps-panel"
+                  className="overflow-hidden bg-transparent"
                 >
                   <HistoryPanel />
                 </motion.div>
@@ -303,24 +308,24 @@ export const StudioSidebar: React.FC = () => {
           </div>
         )}
 
-        {/* Panel 4: Layers (Flexible Bottom Section - Photoshop King) */}
+        {/* Panel 4: Layers (Procreate Layers Stack) */}
         {(activePanel === 'all' || activePanel === 'layers') && (
-          <div className="flex-1 flex flex-col min-h-[360px] overflow-hidden bg-ps-panel">
+          <div className="flex-1 flex flex-col min-h-[360px] overflow-hidden bg-transparent">
             <button
               type="button"
               onClick={() => setExpandLayers(!expandLayers)}
-              className="h-7 px-2 bg-ps-header/90 hover:bg-ps-surface/80 flex items-center justify-between text-[11px] font-medium text-zinc-300 transition-colors border-b border-ps-border/40 flex-shrink-0"
+              className="h-8 px-3 bg-white/[0.02] hover:bg-white/[0.05] flex items-center justify-between text-[11px] font-medium text-zinc-200 transition-colors border-b border-white/[0.04] flex-shrink-0"
             >
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2">
                 {expandLayers ? (
-                  <ChevronDown size={12} className="text-zinc-400" />
+                  <ChevronDown size={13} className="text-zinc-400" />
                 ) : (
-                  <ChevronRight size={12} className="text-zinc-400" />
+                  <ChevronRight size={13} className="text-zinc-400" />
                 )}
-                <Layers size={12} className="text-zinc-400" />
-                <span>Layers</span>
+                <Layers size={13} className="text-blue-400" />
+                <span className="font-semibold tracking-tight">Layers</span>
               </div>
-              <span className="font-mono text-[10px] text-zinc-400 font-medium">
+              <span className="font-mono text-[10px] text-zinc-300 px-2 py-0.5 rounded-full bg-white/10 font-medium">
                 {layerCount} {layerCount === 1 ? 'layer' : 'layers'}
               </span>
             </button>
@@ -340,8 +345,7 @@ export const StudioSidebar: React.FC = () => {
         )}
       </div>
 
-      {/* Sticky Layer Actions Bar - pinned outside the scroll container so the
-          add/duplicate/delete/merge tools never scroll out of view */}
+      {/* Sticky Layer Actions Bar */}
       {(activePanel === 'all' || activePanel === 'layers') && <LayerActionsBar />}
     </motion.aside>
   );

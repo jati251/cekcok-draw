@@ -1,7 +1,8 @@
+import { needsCompositePreview } from '@/utils/layerCompositor';
 import React, { useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useDocumentStore } from '@/stores/documentStore';
-
 import { ToolType, SelectionArea } from '@/types';
 import { LayerStack } from '@/features/layers/components/LayerStack';
 import { PixelGrid } from '@/features/canvas/components/PixelGrid';
@@ -53,7 +54,20 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
     showGrid,
     theme,
     setTabletTelemetry,
-  } = useEditorStore();
+  } = useEditorStore(
+    useShallow((s) => ({
+      activeTool: s.activeTool,
+      setActiveTool: s.setActiveTool,
+      brushSettings: s.brushSettings,
+      shapeSettings: s.shapeSettings,
+      primaryColor: s.primaryColor,
+      secondaryColor: s.secondaryColor,
+      pan: s.pan,
+      showGrid: s.showGrid,
+      theme: s.theme,
+      setTabletTelemetry: s.setTabletTelemetry,
+    }))
+  );
 
   const {
     isPanning,
@@ -307,13 +321,21 @@ export const CanvasViewport: React.FC<Props> = ({ onOpenNewDoc, onOpenOpenFile }
             backgroundPosition: `0 0, 0 ${8 / zoom}px, ${8 / zoom}px -${8 / zoom}px, -${8 / zoom}px 0px`,
           }}
         />
-        <LayerStack doc={doc} layerCanvasesRef={layerCanvasesRef} viewport={nativeViewport} />
+        <LayerStack
+          doc={doc}
+          layerCanvasesRef={layerCanvasesRef}
+          viewport={nativeViewport}
+          liveStrokeCanvasRef={liveStrokeCanvasRef}
+        />
 
         <canvas
           ref={liveStrokeCanvasRef}
           width={doc.width}
           height={doc.height}
-          style={{ opacity: brushSettings.opacity }}
+          style={{
+            opacity: brushSettings.opacity,
+            visibility: needsCompositePreview(doc) ? 'hidden' : 'visible',
+          }}
           className="absolute inset-0 pointer-events-none z-10"
         />
 

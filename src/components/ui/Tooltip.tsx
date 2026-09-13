@@ -49,6 +49,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   };
 
   const show = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     calculatePosition();
     timerRef.current = setTimeout(() => {
       calculatePosition();
@@ -83,11 +84,16 @@ export const Tooltip: React.FC<TooltipProps> = ({
       onFocus={show}
       onBlur={hide}
     >
-      {children}
+      {React.isValidElement<React.HTMLAttributes<HTMLElement>>(children) &&
+      typeof children.type === 'string' &&
+      ['button', 'input', 'a'].includes(children.type)
+        ? React.cloneElement(children, { 'aria-label': children.props['aria-label'] ?? content })
+        : children}
       {visible &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
+            role="tooltip"
             style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
             className={`fixed z-[9999] pointer-events-none whitespace-nowrap bg-zinc-950/95 border border-zinc-700/80 text-white text-[11px] font-medium px-2 py-1 rounded shadow-2xl backdrop-blur-md flex items-center space-x-1.5 animate-in fade-in zoom-in-95 duration-100 ${translateClasses}`}
           >

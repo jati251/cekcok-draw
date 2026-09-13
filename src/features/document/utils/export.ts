@@ -1,5 +1,5 @@
 import { DocumentInfo } from '@/types';
-import { getCssBlendMode } from '@/config/blendModes';
+import { LayerCompositor } from '@/utils/layerCompositor';
 import * as bridge from '@/services/tauriBridge';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
@@ -28,51 +28,17 @@ export const compositeVisibleLayersToCanvas = (
   const scale = maxDimension ? Math.min(1, maxDimension / Math.max(doc.width, doc.height)) : 1;
   exportCanvas.width = Math.max(1, Math.round(doc.width * scale));
   exportCanvas.height = Math.max(1, Math.round(doc.height * scale));
-  const ctx = exportCanvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas is unavailable');
-  ctx.scale(scale, scale);
-
-  // Draw solid white background if not transparent
-  if (!transparentBg) {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, doc.width, doc.height);
-  }
-
-  let base: HTMLCanvasElement | null = null;
-  let baseVisible = false;
-  let scratch: HTMLCanvasElement | null = null;
-  for (const layer of doc.layers) {
-    const layerCanvas = document.getElementById(
-      `layer-canvas-${layer.id}`
-    ) as HTMLCanvasElement | null;
-    if (!layer.is_clipped) {
-      base = layerCanvas;
-      baseVisible = layer.visible;
-    }
-    if (!layer.visible || layer.opacity <= 0) continue;
-    if (!layerCanvas) throw new Error(`Layer ${layer.name} is not ready to export`);
-    let source = layerCanvas;
-    if (layer.is_clipped) {
-      if (!base || !baseVisible) continue;
-      scratch ??= document.createElement('canvas');
-      scratch.width = doc.width;
-      scratch.height = doc.height;
-      const maskCtx = scratch.getContext('2d')!;
-      maskCtx.drawImage(layerCanvas, 0, 0);
-      maskCtx.globalCompositeOperation = 'destination-in';
-      maskCtx.drawImage(base, 0, 0);
-      maskCtx.globalCompositeOperation = 'source-over';
-      source = scratch;
-    }
-    ctx.save();
-    ctx.globalAlpha = layer.opacity;
-    const blendMode =
-      layer.blend_mode === 'linear_dodge' ? 'lighter' : getCssBlendMode(layer.blend_mode);
-    if (blendMode !== 'normal') {
-      ctx.globalCompositeOperation = blendMode as GlobalCompositeOperation;
-    }
-    ctx.drawImage(source, 0, 0);
-    ctx.restore();
+  const compositor = new LayerCompositor();
+  try {
+    compositor.render(
+      exportCanvas,
+      doc,
+      (id) => document.getElementById(`layer-canvas-${id}`) as HTMLCanvasElement | null,
+      undefined,
+      { whiteBackground: !transparentBg }
+    );
+  } finally {
+    compositor.dispose();
   }
 
   return exportCanvas;

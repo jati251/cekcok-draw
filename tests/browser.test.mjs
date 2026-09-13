@@ -168,3 +168,14 @@ it('history remains bounded by count', async () => {
   for (let i = 0; i < 70; i++) await setLayerOpacity(doc.active_layer_id, i / 100);
   expect((await getHistory()).length).toBeLessThanOrEqual(51);
 });
+
+it('merge bakes lower opacity once and keeps a visible upper over a hidden lower', async () => {
+  await setLayerVisibility(doc.layers[0].id, false);
+  await writeLayerPixels(0, 0, 1, 1, red, doc.active_layer_id);
+  const merged = await mergeDown(doc.active_layer_id);
+  expect(merged.layers[0].visible).toBe(true);
+  expect(merged.layers[0].opacity).toBe(1);
+  expect(Array.from(await renderLayerViewport(merged.active_layer_id, 0, 0, 1, 1))).toEqual([
+    ...red,
+  ]);
+});

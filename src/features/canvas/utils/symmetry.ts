@@ -27,12 +27,22 @@ export function drawBrushStamp(
   mode: SymmetryMode | undefined,
   expand: (x: number, y: number, radius: number) => void
 ) {
+  const halfW = stamp.width / 2;
+  const halfH = stamp.height / 2;
+  const maxR = Math.max(halfW, halfH);
+
+  if (!mode || mode === 'none') {
+    ctx.drawImage(stamp, x - halfW, y - halfH);
+    expand(x, y, maxR);
+    return;
+  }
+
   for (const point of symmetryPoints(x, y, width, height, mode)) {
     ctx.save();
     ctx.translate(point.x, point.y);
     ctx.scale(point.flipX ? -1 : 1, point.flipY ? -1 : 1);
-    ctx.drawImage(stamp, -stamp.width / 2, -stamp.height / 2);
+    ctx.drawImage(stamp, -halfW, -halfH);
     ctx.restore();
-    expand(point.x, point.y, Math.max(stamp.width, stamp.height) / 2);
+    expand(point.x, point.y, maxR);
   }
 }

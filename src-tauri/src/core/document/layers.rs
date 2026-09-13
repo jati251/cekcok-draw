@@ -48,6 +48,7 @@ impl Document {
         cloned_layer.visible = original.visible;
         cloned_layer.locked = original.locked;
         cloned_layer.layer_type = original.layer_type;
+        cloned_layer.is_clipped = original.is_clipped;
         cloned_layer.grid = original.grid.clone();
 
         self.layers.insert(pos + 1, cloned_layer);
@@ -66,86 +67,76 @@ impl Document {
         }
         let lower_idx = upper_idx - 1;
 
+        let upper = &self.layers[upper_idx];
+        let lower = &self.layers[lower_idx];
+        if upper.locked || lower.locked {
+            return Err("Unlock both layers before merging".into());
+        }
+        // These combinations depend on layers outside the pair; flattening them
+        // independently would change the document's appearance.
+        if lower.blend_mode != BlendMode::Normal || lower.is_clipped {
+            return Err("Merge requires an unclipped lower layer in Normal blend mode".into());
+        }
+        if self.layers.get(upper_idx + 1).is_some_and(|l| l.is_clipped) {
+            return Err("Merge the clipping layers above this layer first".into());
+        }
         let upper_layer = self.layers.remove(upper_idx);
         let lower_layer = &mut self.layers[lower_idx];
-
-        let upper_opacity = upper_layer.opacity;
-        let upper_blend = upper_layer.blend_mode;
-
-        for coord in upper_layer.grid.get_allocated_coords() {
-            if let Some(upper_tile) = upper_layer.grid.get_tile(&coord) {
-                let start_x = coord.x * TILE_SIZE as i32;
-                let start_y = coord.y * TILE_SIZE as i32;
+        let base_grid = lower_layer.grid.clone();
+        if !lower_layer.visible {
+            lower_layer.grid.clear();
+        } else if lower_layer.opacity != 1.0 {
+            for coord in base_grid.get_allocated_coords() {
+                let tile = base_grid.get_tile(&coord).unwrap();
                 for py in 0..TILE_SIZE {
                     for px in 0..TILE_SIZE {
-                        let top_pixel = upper_tile.get_pixel(px, py);
-                        let top_a = top_pixel[3] as f32 / 255.0 * upper_opacity;
-                        if top_a <= 0.0 {
-                            continue;
-                        }
-                        let doc_x = start_x + px as i32;
-                        let doc_y = start_y + py as i32;
-                        let bot_pixel = lower_layer.grid.get_pixel(doc_x, doc_y);
-
-                        let bot_a = bot_pixel[3] as f32 / 255.0;
-                        let bot_r = bot_pixel[0] as f32 / 255.0;
-                        let bot_g = bot_pixel[1] as f32 / 255.0;
-                        let bot_b = bot_pixel[2] as f32 / 255.0;
-
-                        let top_r = top_pixel[0] as f32 / 255.0;
-                        let top_g = top_pixel[1] as f32 / 255.0;
-                        let top_b = top_pixel[2] as f32 / 255.0;
-
-                        let (b_r, b_g, b_b) = match upper_blend {
-                            BlendMode::Normal => (top_r, top_g, top_b),
-                            BlendMode::Multiply => (bot_r * top_r, bot_g * top_g, bot_b * top_b),
-                            BlendMode::Screen => (
-                                1.0 - (1.0 - bot_r) * (1.0 - top_r),
-                                1.0 - (1.0 - bot_g) * (1.0 - top_g),
-                                1.0 - (1.0 - bot_b) * (1.0 - top_b),
-                            ),
-                            BlendMode::Overlay => (
-                                if bot_r < 0.5 {
-                                    2.0 * bot_r * top_r
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_r) * (1.0 - top_r)
-                                },
-                                if bot_g < 0.5 {
-                                    2.0 * bot_g * top_g
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_g) * (1.0 - top_g)
-                                },
-                                if bot_b < 0.5 {
-                                    2.0 * bot_b * top_b
-                                } else {
-                                    1.0 - 2.0 * (1.0 - bot_b) * (1.0 - top_b)
-                                },
-                            ),
-                            _ => (top_r, top_g, top_b),
-                        };
-
-                        let out_a = top_a + bot_a * (1.0 - top_a);
-                        if out_a > 0.0 {
-                            let out_r = ((b_r * top_a + bot_r * bot_a * (1.0 - top_a)) / out_a
-                                * 255.0)
-                                .round() as u8;
-                            let out_g = ((b_g * top_a + bot_g * bot_a * (1.0 - top_a)) / out_a
-                                * 255.0)
-                                .round() as u8;
-                            let out_b = ((b_b * top_a + bot_b * bot_a * (1.0 - top_a)) / out_a
-                                * 255.0)
-                                .round() as u8;
-                            let out_a_u8 = (out_a * 255.0).round() as u8;
+                        let mut pixel = tile.get_pixel(px, py);
+                        pixel[3] = (pixel[3] as f32 * lower_layer.opacity).round() as u8;
+                        if pixel[3] > 0 || tile.get_pixel(px, py)[3] > 0 {
                             lower_layer.grid.set_pixel_cow(
-                                doc_x,
-                                doc_y,
-                                [out_r, out_g, out_b, out_a_u8],
+                                coord.x * TILE_SIZE as i32 + px as i32,
+                                coord.y * TILE_SIZE as i32 + py as i32,
+                                pixel,
                             );
                         }
                     }
                 }
             }
         }
+        if upper_layer.visible {
+            for coord in upper_layer.grid.get_allocated_coords() {
+                let tile = upper_layer.grid.get_tile(&coord).unwrap();
+                for py in 0..TILE_SIZE {
+                    for px in 0..TILE_SIZE {
+                        let pixel = tile.get_pixel(px, py);
+                        if pixel[3] == 0 {
+                            continue;
+                        }
+                        let x = coord.x * TILE_SIZE as i32 + px as i32;
+                        let y = coord.y * TILE_SIZE as i32 + py as i32;
+                        let mask = if upper_layer.is_clipped {
+                            if lower_layer.visible {
+                                base_grid.get_pixel(x, y)[3] as f32 / 255.0
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            1.0
+                        };
+                        let output = crate::core::blend::composite(
+                            lower_layer.grid.get_pixel(x, y),
+                            pixel,
+                            upper_layer.opacity * mask,
+                            upper_layer.blend_mode,
+                        );
+                        lower_layer.grid.set_pixel_cow(x, y, output);
+                    }
+                }
+            }
+        }
+        lower_layer.opacity = 1.0;
+        lower_layer.visible = true;
+        lower_layer.layer_type = LayerType::Raster;
 
         let lower_id = lower_layer.id.clone();
         self.active_layer_id = Some(lower_id.clone());
@@ -218,5 +209,62 @@ impl Document {
         let layer = self.layers.remove(from_idx);
         self.layers.insert(to_idx, layer);
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn pair() -> Document {
+        let mut doc = Document::new("test", 2, 2);
+        doc.layers[0].grid.clear();
+        doc.layers[1].grid.set_pixel_cow(0, 0, [255, 0, 0, 255]);
+        doc
+    }
+    #[test]
+    fn duplicate_keeps_clipping_metadata() {
+        let mut doc = pair();
+        doc.layers[1].is_clipped = true;
+        let id = doc.layers[1].id.clone();
+        doc.duplicate_layer(&id).unwrap();
+        assert!(doc.layers[2].is_clipped);
+    }
+    #[test]
+    fn merge_matches_composite_with_opacity_and_blending() {
+        let mut doc = pair();
+        doc.layers[0].grid.set_pixel_cow(0, 0, [0, 0, 255, 128]);
+        doc.layers[0].opacity = 0.5;
+        doc.layers[1].blend_mode = BlendMode::Multiply;
+        let before = doc.render_viewport_rgba(0, 0, 2, 2);
+        let id = doc.layers[1].id.clone();
+        doc.merge_down(&id).unwrap();
+        assert_eq!(doc.render_viewport_rgba(0, 0, 2, 2), before);
+        assert_eq!(doc.layers[0].opacity, 1.0);
+    }
+    #[test]
+    fn clipped_pixels_do_not_escape_base() {
+        let mut doc = pair();
+        doc.layers[1].is_clipped = true;
+        assert_eq!(doc.render_viewport_rgba(0, 0, 1, 1), vec![0; 4]);
+        let id = doc.layers[1].id.clone();
+        doc.merge_down(&id).unwrap();
+        assert_eq!(doc.layers[0].grid.get_pixel(0, 0), [0; 4]);
+    }
+    #[test]
+    fn merge_locked_layer_is_transactional() {
+        let mut doc = pair();
+        doc.layers[0].locked = true;
+        let id = doc.layers[1].id.clone();
+        assert!(doc.merge_down(&id).is_err());
+        assert_eq!(doc.layers.len(), 2);
+        assert_eq!(doc.layers[1].grid.get_pixel(0, 0), [255, 0, 0, 255]);
+    }
+    #[test]
+    fn hidden_lower_does_not_hide_merged_upper() {
+        let mut doc = pair();
+        doc.layers[0].visible = false;
+        let id = doc.layers[1].id.clone();
+        doc.merge_down(&id).unwrap();
+        assert_eq!(doc.render_viewport_rgba(0, 0, 1, 1), [255, 0, 0, 255]);
     }
 }

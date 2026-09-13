@@ -73,8 +73,11 @@ pub fn merge_down(
         .find(|l| l.id == layer_id)
         .map(|l| l.name.clone())
         .unwrap_or_else(|| "Layer".to_string());
-    guard.push_history(format!("Merge Down '{}'", layer_name));
+    let before = guard.document.clone();
     guard.document.merge_down(&layer_id)?;
+    guard
+        .history
+        .push_state(format!("Merge Down '{}'", layer_name), &before);
     Ok(guard.document.get_info())
 }
 

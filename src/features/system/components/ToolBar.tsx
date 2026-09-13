@@ -11,7 +11,7 @@ import {
   Type,
   Sun,
   Moon,
-  Sparkles,
+  Blend,
   PaintBucket,
   Pipette,
   Hand,
@@ -20,6 +20,7 @@ import {
   Crop,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TOOLS } from '@/config/tools';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -49,8 +50,8 @@ const getToolIcon = (iconName: string) => {
       return <Sun size={16} />;
     case 'Moon':
       return <Moon size={16} />;
-    case 'Sparkles':
-      return <Sparkles size={16} />;
+    case 'Blend':
+      return <Blend size={16} />;
     case 'PaintBucket':
       return <PaintBucket size={16} />;
     case 'Pipette':
@@ -73,21 +74,29 @@ export const ToolBar: React.FC = () => {
     setPrimaryColor,
     setSecondaryColor,
     swapColors,
-  } = useEditorStore();
+  } = useEditorStore(
+    useShallow((s) => ({
+      activeTool: s.activeTool,
+      setActiveTool: s.setActiveTool,
+      primaryColor: s.primaryColor,
+      secondaryColor: s.secondaryColor,
+      setPrimaryColor: s.setPrimaryColor,
+      setSecondaryColor: s.setSecondaryColor,
+      swapColors: s.swapColors,
+    }))
+  );
 
   const categories = ['Select', 'Paint', 'Vector', 'Tone', 'View'] as const;
 
   return (
-    <aside className="w-[4.5rem] bg-ps-panel/80 backdrop-blur-xl border-r border-ps-border flex flex-col items-center py-2.5 justify-between select-none z-30 shadow-[4px_0_24px_rgba(0,0,0,0.2)]">
+    <aside className="w-[4.5rem] bg-[#0d0d10] border-r border-white/10 flex flex-col items-center py-3 justify-between select-none z-30 shadow-xl">
       {/* Grouped Tool Buttons */}
-      <div className="grid grid-cols-2 gap-1.5 w-full px-1.5 overflow-y-auto content-start justify-items-center">
+      <div className="grid grid-cols-2 gap-1.5 w-full px-2 overflow-y-auto content-start justify-items-center no-scrollbar">
         {categories.map((cat, catIdx) => {
           const catTools = TOOLS.filter((t) => t.category === cat);
           return (
             <React.Fragment key={cat}>
-              {catIdx > 0 && (
-                <div className="col-span-2 w-10 mx-auto h-[1px] bg-gradient-to-r from-transparent via-zinc-500/20 to-transparent my-1" />
-              )}
+              {catIdx > 0 && <div className="col-span-2 w-8 mx-auto h-[1px] bg-white/10 my-1" />}
               {catTools.map((tool) => {
                 const isActive = activeTool === tool.type;
                 return (
@@ -98,17 +107,16 @@ export const ToolBar: React.FC = () => {
                     position="right"
                   >
                     <button
+                      type="button"
+                      aria-pressed={isActive}
                       onClick={() => setActiveTool(tool.type)}
-                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200 relative ${
+                      className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-150 relative ${
                         isActive
-                          ? 'bg-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)] ring-1 ring-blue-500/60'
-                          : 'text-zinc-400 hover:text-zinc-100 hover:bg-ps-hover hover:shadow-lg hover:-translate-y-0.5 active:scale-95'
+                          ? 'bg-blue-600 text-white shadow-[0_0_16px_rgba(37,99,235,0.45)] ring-1 ring-blue-400/50 scale-105'
+                          : 'text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95'
                       }`}
                     >
                       {getToolIcon(tool.iconName)}
-                      {isActive && (
-                        <div className="absolute inset-0 bg-blue-400/10 rounded-lg pointer-events-none" />
-                      )}
                     </button>
                   </Tooltip>
                 );
@@ -118,13 +126,13 @@ export const ToolBar: React.FC = () => {
         })}
       </div>
 
-      {/* Color Swatches & Quick Swapper */}
-      <div className="flex flex-col items-center pb-1 w-full px-1 border-t border-ps-border/70 pt-2.5 space-y-1.5">
-        <div className="relative w-8 h-8">
-          {/* Secondary color */}
+      {/* Procreate Circular Color Discs & Swapper */}
+      <div className="flex flex-col items-center pb-1 w-full px-2 border-t border-white/10 pt-3 space-y-2">
+        <div className="relative w-9 h-9">
+          {/* Secondary color disc */}
           <Tooltip content="Secondary Color (Click to change)" position="right">
             <div
-              className="absolute bottom-0 right-0 w-5 h-5 rounded-md border border-white/20 cursor-pointer shadow-md transition-transform hover:scale-110 active:scale-95"
+              className="absolute bottom-0 right-0 w-6 h-6 rounded-full border border-white/30 cursor-pointer shadow-md transition-transform hover:scale-110 active:scale-95"
               style={{ backgroundColor: secondaryColor }}
               onClick={() => {
                 const input = document.createElement('input');
@@ -135,10 +143,10 @@ export const ToolBar: React.FC = () => {
               }}
             />
           </Tooltip>
-          {/* Primary color */}
+          {/* Primary color disc */}
           <Tooltip content="Primary Color (Click to change)" position="right">
             <div
-              className="absolute top-0 left-0 w-5 h-5 rounded-md border-[1.5px] border-white/60 cursor-pointer shadow-lg z-10 transition-transform hover:scale-110 active:scale-95"
+              className="absolute top-0 left-0 w-6 h-6 rounded-full border-2 border-white/90 cursor-pointer shadow-xl z-10 transition-transform hover:scale-110 active:scale-95"
               style={{ backgroundColor: primaryColor }}
               onClick={() => {
                 const input = document.createElement('input');
@@ -151,17 +159,18 @@ export const ToolBar: React.FC = () => {
           </Tooltip>
         </div>
 
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1.5">
           {/* Reset to Default B/W */}
           <Tooltip content="Default Colors (D)" shortcut="D" position="right">
             <button
+              type="button"
               onClick={() => {
                 setPrimaryColor('#000000');
                 setSecondaryColor('#ffffff');
               }}
-              className="w-4 h-4 flex items-center justify-center text-[9px] text-zinc-400 hover:text-zinc-100 rounded hover:bg-ps-hover transition-colors"
+              className="w-5 h-5 flex items-center justify-center text-[9px] text-zinc-400 hover:text-white rounded-md hover:bg-white/10 transition-colors"
             >
-              <div className="w-2.5 h-2.5 border border-zinc-500 relative">
+              <div className="w-3 h-3 border border-zinc-500 rounded-xs relative overflow-hidden">
                 <div className="w-1.5 h-1.5 bg-black absolute top-0 left-0" />
                 <div className="w-1.5 h-1.5 bg-white absolute bottom-0 right-0" />
               </div>
@@ -171,10 +180,11 @@ export const ToolBar: React.FC = () => {
           {/* Swap Colors */}
           <Tooltip content="Swap Colors (X)" shortcut="X" position="right">
             <button
+              type="button"
               onClick={swapColors}
-              className="text-zinc-400 hover:text-zinc-100 p-1 hover:bg-ps-hover rounded transition-all duration-200 hover:rotate-180 active:scale-90"
+              className="text-zinc-400 hover:text-white p-1 hover:bg-white/10 rounded-md transition-all duration-200 hover:rotate-180 active:scale-90"
             >
-              <ArrowLeftRight size={11} />
+              <ArrowLeftRight size={12} />
             </button>
           </Tooltip>
         </div>

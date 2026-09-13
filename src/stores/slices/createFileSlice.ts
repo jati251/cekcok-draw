@@ -8,7 +8,6 @@ import {
 } from '@/features/document/utils/imageLoader';
 
 let isImportingGlobalLock = false;
-let lastImportGlobalTime = 0;
 
 export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
   const insertImageLayer = async (
@@ -124,10 +123,11 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
 
   return {
     importImageAsLayer: async (fileOrBlob, customName) => {
-      const now = Date.now();
-      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      if (isImportingGlobalLock) {
+        toast.info('Wait for the current image import to finish.');
+        return;
+      }
       isImportingGlobalLock = true;
-      lastImportGlobalTime = now;
 
       try {
         const imgRes = await loadImageFromFile(fileOrBlob, customName || 'Image Layer');
@@ -135,17 +135,16 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
       } catch (err) {
         toast.error('Import Failed', String(err));
       } finally {
-        setTimeout(() => {
-          isImportingGlobalLock = false;
-        }, 400);
+        isImportingGlobalLock = false;
       }
     },
 
     openImageAsDocument: async (fileOrBlob, customTitle) => {
-      const now = Date.now();
-      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      if (isImportingGlobalLock) {
+        toast.info('Wait for the current image import to finish.');
+        return;
+      }
       isImportingGlobalLock = true;
-      lastImportGlobalTime = now;
 
       try {
         const imgRes = await loadImageFromFile(fileOrBlob, customTitle || 'Imported Image');
@@ -153,17 +152,16 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
       } catch (err) {
         toast.error('Failed to open image', String(err));
       } finally {
-        setTimeout(() => {
-          isImportingGlobalLock = false;
-        }, 400);
+        isImportingGlobalLock = false;
       }
     },
 
     importImagePathAsLayer: async (filePath) => {
-      const now = Date.now();
-      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      if (isImportingGlobalLock) {
+        toast.info('Wait for the current image import to finish.');
+        return;
+      }
       isImportingGlobalLock = true;
-      lastImportGlobalTime = now;
 
       try {
         if (bridge.isTauriEnvironment()) {
@@ -191,17 +189,16 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
       } catch (err) {
         toast.error('Import Failed', String(err));
       } finally {
-        setTimeout(() => {
-          isImportingGlobalLock = false;
-        }, 400);
+        isImportingGlobalLock = false;
       }
     },
 
     openImagePathAsDocument: async (filePath) => {
-      const now = Date.now();
-      if (isImportingGlobalLock || now - lastImportGlobalTime < 600) return;
+      if (isImportingGlobalLock) {
+        toast.info('Wait for the current image import to finish.');
+        return;
+      }
       isImportingGlobalLock = true;
-      lastImportGlobalTime = now;
 
       try {
         if (bridge.isTauriEnvironment()) {
@@ -229,9 +226,7 @@ export const createFileSlice: StoreSlice<FileSlice> = (set, get) => {
       } catch (err) {
         toast.error('Failed to open image', String(err));
       } finally {
-        setTimeout(() => {
-          isImportingGlobalLock = false;
-        }, 400);
+        isImportingGlobalLock = false;
       }
     },
 

@@ -32,9 +32,9 @@ export const createStampCanvas = (
   const hardness = Math.min(0.999, Math.max(0, settings.hardness));
   const radSq = radius * radius;
 
-  // Fast Hardware GPU path for standard round brushes when radius >= 24
-  // Direct radial gradient / arc blit is 100x faster than looping millions of ImageData pixels
-  if (brushType === 'round_soft' && radius >= 24) {
+  // Fast Hardware GPU path for standard brushes for all radii.
+  // Direct radial gradient, arc, and fill blit is 100x faster than looping CPU ImageData pixels.
+  if (brushType === 'round_soft') {
     const colStr = `rgba(${color[0]}, ${color[1]}, ${color[2]},`;
     const grad = ctx.createRadialGradient(
       center,
@@ -54,7 +54,7 @@ export const createStampCanvas = (
     return stamp;
   }
 
-  if (brushType === 'round_hard' && radius >= 24) {
+  if (brushType === 'round_hard') {
     ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
     ctx.beginPath();
     ctx.arc(center, center, radius, 0, Math.PI * 2);
@@ -62,9 +62,39 @@ export const createStampCanvas = (
     return stamp;
   }
 
+  if (brushType === 'pixel') {
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+    ctx.fillRect(center - radius, center - radius, radius * 2, radius * 2);
+    return stamp;
+  }
+
+  const angleRad = ((settings.angle ?? 45) * Math.PI) / 180;
+
+  if (brushType === 'calligraphy') {
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate(angleRad);
+    ctx.scale(1, 0.25);
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return stamp;
+  }
+
+  if (brushType === 'marker') {
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate(angleRad);
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${(color[3] / 255) * 0.75})`;
+    ctx.fillRect(-radius, -radius * 0.35, radius * 2, radius * 0.7);
+    ctx.restore();
+    return stamp;
+  }
+
   const imgData = ctx.createImageData(size, size);
   const data = imgData.data;
-  const angleRad = ((settings.angle ?? 45) * Math.PI) / 180;
   const cosA = Math.cos(angleRad);
   const sinA = Math.sin(angleRad);
   const grainVal = settings.grain ?? 0.5;
@@ -81,41 +111,6 @@ export const createStampCanvas = (
       let alpha = 0;
 
       switch (brushType) {
-        case 'round_soft': {
-          if (distSq <= radSq) {
-            const innerRad = radius * hardness;
-            if (dist <= innerRad) {
-              alpha = 1.0;
-            } else {
-              const t = Math.min(1, Math.max(0, (dist - innerRad) / (radius - innerRad)));
-              alpha = 0.5 * (1 + Math.cos(Math.PI * t));
-            }
-          }
-          break;
-        }
-
-        case 'round_hard': {
-          if (distSq <= radSq) {
-            // 1px smooth sub-pixel boundary
-            const edgeDist = radius - dist;
-            alpha = Math.min(1.0, Math.max(0.0, edgeDist * 1.5));
-          }
-          break;
-        }
-
-        case 'calligraphy': {
-          // Rotated ellipse with 3.5:1 aspect ratio
-          const rotX = dx * cosA + dy * sinA;
-          const rotY = -dx * sinA + dy * cosA;
-          const elDistSq =
-            (rotX * rotX) / (radius * radius) + (rotY * rotY) / (radius * 0.25 * (radius * 0.25));
-          if (elDistSq <= 1.0) {
-            const edge = 1.0 - Math.sqrt(elDistSq);
-            alpha = Math.min(1.0, edge * 3.0);
-          }
-          break;
-        }
-
         case 'pencil': {
           if (distSq <= radSq) {
             const noise = pseudoNoise(x, y, 42);
@@ -174,29 +169,6 @@ export const createStampCanvas = (
           break;
         }
 
-        case 'marker': {
-          // Flat rectangular chisel nib
-          const rotX = Math.abs(dx * cosA + dy * sinA);
-          const rotY = Math.abs(-dx * sinA + dy * cosA);
-          const halfW = radius;
-          const halfH = radius * 0.35;
-          if (rotX <= halfW && rotY <= halfH) {
-            const edgeX = Math.min(1.0, (halfW - rotX) * 2.0);
-            const edgeY = Math.min(1.0, (halfH - rotY) * 2.0);
-            alpha = edgeX * edgeY * 0.75;
-          }
-          break;
-        }
-
-        case 'pixel': {
-          // Sharp square stamp without antialiasing
-          const halfSize = radius;
-          if (Math.abs(dx) <= halfSize && Math.abs(dy) <= halfSize) {
-            alpha = 1.0;
-          }
-          break;
-        }
-
         default: {
           if (distSq <= radSq) {
             alpha = 1.0;
@@ -222,7 +194,12 @@ export const getOrCreateStamp = (
   settings: BrushSettings,
   color: [number, number, number, number]
 ): HTMLCanvasElement => {
-  const roundedRadius = Math.max(1, Math.round(radius * 2) / 2);
+  const roundedRadius =
+    radius < 10
+      ? Math.max(0.5, Math.round(radius * 2) / 2)
+      : radius < 50
+        ? Math.round(radius)
+        : Math.round(radius / 2) * 2;
   const roundedHardness = Math.round(settings.hardness * 20) / 20;
   const brushType = settings.type || 'round_soft';
   const angle = Math.round((settings.angle ?? 45) / 5) * 5;
@@ -279,28 +256,5 @@ export const getOrCreateAlphaMask = (radius: number, hardness = 0.0): HTMLCanvas
       color: [255, 255, 255, 255],
     },
     [255, 255, 255, 255]
-  );
-};
-
-/**
- * Backwards compatibility helper
- */
-export const getOrCreateSoftStamp = (
-  radius: number,
-  hardness: number,
-  color: [number, number, number, number]
-): HTMLCanvasElement => {
-  return getOrCreateStamp(
-    radius,
-    {
-      type: 'round_soft',
-      size: radius * 2,
-      hardness,
-      opacity: 1,
-      flow: 1,
-      spacing: 0.15,
-      color,
-    },
-    color
   );
 };

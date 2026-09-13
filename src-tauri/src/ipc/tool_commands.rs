@@ -362,31 +362,10 @@ pub fn export_document_image(
     quality: Option<u8>,
     state: State<'_, SharedEngineState>,
 ) -> Result<Vec<u8>, String> {
-    let (doc, gpu_context, blend_pipeline) = {
-        let guard = state.lock();
-        (
-            guard.document.clone(),
-            guard.gpu_context.clone(),
-            guard.blend_pipeline.clone(),
-        )
-    };
-
-    let raw_rgba = if let (Some(ctx), Some(pipeline)) = (gpu_context, blend_pipeline) {
-        let mut layers_data = Vec::new();
-        for layer in &doc.layers {
-            if !layer.visible || layer.opacity <= 0.0 {
-                continue;
-            }
-            if let Some(layer_rgba) =
-                doc.render_layer_viewport_rgba(&layer.id, 0, 0, doc.width, doc.height)
-            {
-                layers_data.push((layer_rgba, layer.blend_mode, layer.opacity));
-            }
-        }
-        pipeline.composite_layers(&ctx.device, &ctx.queue, doc.width, doc.height, layers_data)
-    } else {
-        doc.render_viewport_rgba(0, 0, doc.width, doc.height)
-    };
+    let doc = state.lock().document.clone();
+    // The GPU prototype omits clipping and several blend modes. Use the same
+    // compositor as viewport rendering until GPU parity is covered by tests.
+    let raw_rgba = doc.render_viewport_rgba(0, 0, doc.width, doc.height);
 
     let img_buffer = image::RgbaImage::from_raw(doc.width, doc.height, raw_rgba)
         .ok_or_else(|| "Failed to construct RGBA image buffer".to_string())?;

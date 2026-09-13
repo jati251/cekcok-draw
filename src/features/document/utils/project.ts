@@ -116,25 +116,8 @@ export const openProjectFile = async (): Promise<void> => {
             toast.dismiss(toastId);
             return;
           }
-          if (!(await confirmReplaceDocument())) {
-            toast.dismiss(toastId);
-            return;
-          }
-          const text = await file.text();
-          const result = await bridge.loadProject(text);
-          useDocumentStore.setState({
-            doc: result.doc,
-            history: result.history,
-            historyIndex: result.history.length - 1,
-            selectedLayerIds: result.doc.active_layer_id ? [result.doc.active_layer_id] : [],
-            canvasRevision: useDocumentStore.getState().canvasRevision + 1,
-            rustSyncRevision: useDocumentStore.getState().rustSyncRevision + 1,
-            pendingLayerPixels: result.layerPixels,
-            currentFilePath: null,
-            isDirty: false,
-          });
+          await openProjectFromFile(file);
           toast.dismiss(toastId);
-          toast.success('Project Opened', `Loaded ${file.name}`);
         } catch (e) {
           toast.dismiss(toastId);
           toast.error('Failed to open project file', String(e));
@@ -184,4 +167,21 @@ export const openProjectFromPath = async (filePath: string): Promise<void> => {
     toast.dismiss(toastId);
     toast.error('Failed to parse project file', String(e));
   }
+};
+
+export const openProjectFromFile = async (file: File): Promise<void> => {
+  if (!(await confirmReplaceDocument())) return;
+  const result = await bridge.loadProject(await file.text());
+  useDocumentStore.setState((state) => ({
+    doc: result.doc,
+    history: result.history,
+    historyIndex: result.history.length - 1,
+    selectedLayerIds: result.doc.active_layer_id ? [result.doc.active_layer_id] : [],
+    canvasRevision: state.canvasRevision + 1,
+    rustSyncRevision: state.rustSyncRevision + 1,
+    pendingLayerPixels: result.layerPixels,
+    currentFilePath: null,
+    isDirty: false,
+  }));
+  toast.success('Project Opened', `Loaded ${file.name}`);
 };

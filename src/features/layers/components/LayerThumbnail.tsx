@@ -8,6 +8,7 @@ interface Props {
 export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activeLayerId = useDocumentStore((s) => s.doc?.active_layer_id);
+  const isLoading = useDocumentStore((s) => s.isLoading);
   const canvasRevision = useDocumentStore((s) => s.canvasRevision);
   const rustSyncRevision = useDocumentStore((s) => s.rustSyncRevision);
 
@@ -18,6 +19,7 @@ export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
   const revision = layerId === activeLayerId ? canvasRevision : rustSyncRevision;
 
   useEffect(() => {
+    if (isLoading) return;
     // Debounce thumbnail downsampling so drawing never stutters or lags
     const timer = setTimeout(() => {
       const thumbCanvas = canvasRef.current;
@@ -51,7 +53,7 @@ export const LayerThumbnail: React.FC<Props> = ({ layerId }) => {
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [layerId, revision]);
+  }, [layerId, revision, isLoading]);
 
   return (
     <div

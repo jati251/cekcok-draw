@@ -1,6 +1,6 @@
 import { mockDoc } from '@/services/api/coreApi';
 import { BlendMode, DocumentInfo, LayerType, WarpCorners } from '@/types';
-import { getCssBlendMode } from '@/config/blendModes';
+import { drawBlendedLayer } from '@/utils/canvasBlend';
 import { renderWarpPreview } from '@/features/canvas/utils/warpPreview';
 import {
   browserDocument,
@@ -127,22 +127,27 @@ export function mergeDownBrowser(layerId: string): DocumentInfo {
   const top = mockDoc.layers[idx];
   const base = mockDoc.layers[idx - 1];
   if (base.locked || top.locked) throw new Error('Layer is locked');
+  if (base.blend_mode !== 'normal' || base.is_clipped)
+    throw new Error('Merge requires an unclipped lower layer in Normal blend mode');
+  if (mockDoc.layers[idx + 1]?.is_clipped)
+    throw new Error('Merge the clipping layers above this layer first');
   const source = layerCanvas(top.id);
+  const backdrop = layerCanvas(base.id);
   if (top.is_clipped) {
     const ctx = source.getContext('2d')!;
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(layerCanvas(base.id), 0, 0);
+    if (base.visible) ctx.drawImage(backdrop, 0, 0);
+    else ctx.clearRect(0, 0, mockDoc.width, mockDoc.height);
   }
   editBrowserLayer(base.id, 'Merge Down', (ctx) => {
-    ctx.globalAlpha = top.visible ? top.opacity : 0;
-    ctx.globalCompositeOperation =
-      top.blend_mode === 'linear_dodge'
-        ? 'lighter'
-        : ((getCssBlendMode(top.blend_mode) === 'normal'
-            ? 'source-over'
-            : getCssBlendMode(top.blend_mode)) as GlobalCompositeOperation);
-    ctx.drawImage(source, 0, 0);
+    ctx.clearRect(0, 0, mockDoc.width, mockDoc.height);
+    ctx.globalAlpha = base.visible ? base.opacity : 0;
+    ctx.drawImage(backdrop, 0, 0);
+    drawBlendedLayer(ctx, source, top.blend_mode, top.visible ? top.opacity : 0);
   });
+  base.opacity = 1;
+  base.visible = true;
+  base.layer_type = 'raster';
   removeBrowserPixels(top.id);
   mockDoc.layers.splice(idx, 1);
   mockDoc.active_layer_id = mockDoc.layers[idx - 1].id;

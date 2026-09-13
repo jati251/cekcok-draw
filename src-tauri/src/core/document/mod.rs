@@ -111,18 +111,20 @@ impl Document {
     pub fn render_viewport_rgba(&self, vx: i32, vy: i32, vw: u32, vh: u32) -> Vec<u8> {
         let buffer_size = (vw * vh * 4) as usize;
         let mut buffer = vec![0u8; buffer_size];
-        let bg_r = 240;
-        let bg_g = 240;
-        let bg_b = 240;
+        let coords = self.get_visible_tile_coords(vx, vy, vw, vh, 0);
+        let mut clipping_base: Option<&Layer> = None;
 
         for layer in &self.layers {
+            if !layer.is_clipped {
+                clipping_base = Some(layer);
+            }
             if !layer.visible || layer.opacity <= 0.0 {
                 continue;
             }
             let layer_opacity = layer.opacity;
 
-            for coord in self.get_visible_tile_coords(vx, vy, vw, vh, 0) {
-                if let Some(tile) = layer.grid.get_tile(&coord) {
+            for coord in &coords {
+                if let Some(tile) = layer.grid.get_tile(coord) {
                     let tile_x = coord.x * TILE_SIZE as i32;
                     let tile_y = coord.y * TILE_SIZE as i32;
 
@@ -143,48 +145,23 @@ impl Document {
                                 let b_idx =
                                     (((doc_y - vy) * vw as i32 + (doc_x - vx)) * 4) as usize;
                                 let pixel = tile.get_pixel(px as u32, py as u32);
-                                let alpha = (pixel[3] as f32 / 255.0) * layer_opacity;
-
-                                if alpha > 0.0 {
-                                    let current_a = buffer[b_idx + 3] as f32 / 255.0;
-                                    let current_r = if current_a == 0.0 {
-                                        bg_r as f32 / 255.0
-                                    } else {
-                                        buffer[b_idx] as f32 / 255.0
-                                    };
-                                    let current_g = if current_a == 0.0 {
-                                        bg_g as f32 / 255.0
-                                    } else {
-                                        buffer[b_idx + 1] as f32 / 255.0
-                                    };
-                                    let current_b = if current_a == 0.0 {
-                                        bg_b as f32 / 255.0
-                                    } else {
-                                        buffer[b_idx + 2] as f32 / 255.0
-                                    };
-
-                                    let src_r = pixel[0] as f32 / 255.0;
-                                    let src_g = pixel[1] as f32 / 255.0;
-                                    let src_b = pixel[2] as f32 / 255.0;
-
-                                    let out_a = alpha + current_a * (1.0 - alpha);
-                                    if out_a > 0.0 {
-                                        let out_r = (src_r * alpha
-                                            + current_r * current_a * (1.0 - alpha))
-                                            / out_a;
-                                        let out_g = (src_g * alpha
-                                            + current_g * current_a * (1.0 - alpha))
-                                            / out_a;
-                                        let out_b = (src_b * alpha
-                                            + current_b * current_a * (1.0 - alpha))
-                                            / out_a;
-
-                                        buffer[b_idx] = (out_r * 255.0).round() as u8;
-                                        buffer[b_idx + 1] = (out_g * 255.0).round() as u8;
-                                        buffer[b_idx + 2] = (out_b * 255.0).round() as u8;
-                                        buffer[b_idx + 3] = (out_a * 255.0).round() as u8;
-                                    }
-                                }
+                                let mask = if layer.is_clipped {
+                                    clipping_base
+                                        .filter(|base| base.visible)
+                                        .map_or(0.0, |base| {
+                                            base.grid.get_pixel(doc_x, doc_y)[3] as f32 / 255.0
+                                        })
+                                } else {
+                                    1.0
+                                };
+                                let backdrop = buffer[b_idx..b_idx + 4].try_into().unwrap();
+                                let output = crate::core::blend::composite(
+                                    backdrop,
+                                    pixel,
+                                    layer_opacity * mask,
+                                    layer.blend_mode,
+                                );
+                                buffer[b_idx..b_idx + 4].copy_from_slice(&output);
                             }
                         }
                     }

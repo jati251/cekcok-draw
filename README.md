@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/app-logo.png" alt="CekcokDraw Logo" width="128" height="128" style="border-radius: 28px;" />
   <h1>CEKCOK DRAW</h1>
-  <p><strong>High-Performance GPU-Accelerated Digital Painting & Raster Graphics Studio</strong></p>
+  <p><strong>Digital Painting & Raster Graphics Studio for Tauri Desktop and Browser</strong></p>
 
   <p>
     <a href="https://github.com/jati251/cekcok-draw/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/Release-v0.1.0-blue?style=for-the-badge&logo=github" alt="Release v0.1.0" /></a>
@@ -51,7 +51,7 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 ### 📑 Multi-Layer Canvas Stack & 18 Blend Modes
 
 - **Persistent Multi-Canvas Stack**: Zero-loss layer isolation (`Map<string, HTMLCanvasElement>`). Adding, hiding, or reordering layers never destroys raster pixel data.
-- **Clipping Masks**: Create Clipping Masks (`⌥⌘G`) to clip the contents of a layer to the boundaries of the base layer below it, utilizing live `destination-in` composition rendering.
+- **Clipping Masks**: Create Clipping Masks (`⌥⌘G`) to clip the contents of a layer to the boundaries of the base layer below it, using non-destructive display masks while retaining the original layer pixels.
 - **Photoshop Blend Modes**: Normal, Darken, Multiply, Color Burn, Lighten, Screen, Color Dodge, Linear Dodge (Add), Overlay, Soft Light, Hard Light, Vivid Light, Difference, Exclusion, Hue, Saturation, Color, and Luminosity.
 - **Layer Controls**: Opacity slider, Visibility toggling, Layer Duplication (`⌘J`), and Delete.
 
@@ -59,19 +59,22 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 
 - **Adaptive Dynamic Grid**: 1-2-5 decade progression (`⌘'`) that automatically scales grid spacing across zoom levels (50px/10px at 100%, 200px/500px on zoom out, 1px sub-pixel grid on $\ge 400\%$ zoom in).
 - **Precision Rulers (`⌘R`)**: Dual-axis dynamic pixel rulers with live cursor tracking hair-lines.
-- **Export**: Exports lossless PNG, JPEG, SVG, WebP, PDF, and **native `.cdraw` project files** with layers intact.
+- **Interchange**: Layered raster PSD import/export, PNG, JPEG, WebP, BMP, TIFF, PDF, flattened SVG, and native `.cdraw` projects. Complex PSDs use their merged preview with a warning; editable groups, effects, and smart objects are not preserved.
+- **Saved brushes**: Open the brush library, name your current settings under **My brushes**, then reuse them or import/export a `.json` library. Presets preserve the current paint color. Photoshop `.abr` and Procreate `.brushset` files are not supported.
 - **Color Adjustment Studio (`⌘U`)**: Real-time HSL color grading dialog (Hue, Saturation, Lightness), Brightness/Contrast, Gaussian Blur, Invert (`⌘I`), Desaturate (`⌘⇧U`), and Canvas Flipping (Horizontal / Vertical).
 - **Advanced Color Wheel**: Professional HSV Color Picker with an outer Hue ring and inner Saturation/Value square, fully CSS-gradient hardware accelerated.
 
 ---
 
-## ⚡ Performance & Zero-Lag Architecture
+## ⚡ Rendering and performance
 
-- **Adaptive LoD Brush Stamping**: Dynamically calculates stroke step sizing based on physical screen pixel density, eliminating zoom-out lag.
-- **High-Speed GPU Stamp Caching**: Memoized radial brush stamps rendered at solid 60–120 FPS.
-- **Sparse Tile Grid ($512 \times 512$ px)**: Memory allocation scales only with painted pixels, supporting massive $32,768 \times 32,768$ px canvases.
-- **Copy-on-Write (CoW) History DAG**: Instant Undo/Redo where history states share unchanged tiles via `Arc<Tile>`.
-- **Direct I/O Scratch Disk**: Memory-mapped `.scratch` file via `memmap2` with 1MB chunk alignment and LRU eviction cache (`parking_lot::RwLock`).
+- Canvas 2D renders brush strokes immediately; binary RGBA patches persist the painted region to Rust.
+- Brush stamps use a cache bounded by 120 entries and 32 MiB. Stroke spacing is independent of zoom.
+- Rust stores pixels in 512 × 512 sparse tiles with copy-on-write history. The frontend still allocates full-size canvases for each layer; this is a remaining large-document bottleneck.
+- Documents are limited to 32,768 pixels per side and 64 million pixels total. This does **not** mean a 32,768 × 32,768 document is supported.
+- The GPU compute implementation is experimental. Native image export uses the tested CPU compositor for blend-mode and clipping correctness. No universal FPS or memory-use guarantee is established.
+
+See [the audit and compatibility notes](docs/AUDIT.md) for verified changes, current limits, and the next engineering priorities.
 
 ---
 
@@ -80,7 +83,8 @@ Pre-built native desktop binaries are available via our distributed MinIO releas
 | Action / Tool                | macOS                 | Windows / Linux                 |
 | :--------------------------- | :-------------------- | :------------------------------ |
 | **New Document**             | `⌘ N`                 | `Ctrl + N`                      |
-| **Export Image**             | `⌘ E`                 | `Ctrl + E`                      |
+| **Export Image**             | `⌘ ⇧ E`               | `Ctrl + Shift + E`              |
+| **Merge Down**               | `⌘ E`                 | `Ctrl + E`                      |
 | **Undo / Redo**              | `⌘ Z` / `⌘ ⇧ Z`       | `Ctrl + Z` / `Ctrl + Y`         |
 | **Hue / Saturation**         | `⌘ U`                 | `Ctrl + U`                      |
 | **Invert / Desaturate**      | `⌘ I` / `⌘ ⇧ U`       | `Ctrl + I` / `Ctrl + Shift + U` |

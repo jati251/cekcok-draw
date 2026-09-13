@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { isTauriEnvironment } from '@/services/tauriBridge';
 
-let globalLastDropTimestamp = 0;
 let isHandlingDropLock = false;
 
 export const useCanvasDropZone = () => {
@@ -29,35 +28,36 @@ export const useCanvasDropZone = () => {
     // In native Tauri desktop app mode, Tauri's onDragDropEvent already handles the file drop natively
     if (isTauriEnvironment()) return;
 
-    const now = Date.now();
-    if (isHandlingDropLock || now - globalLastDropTimestamp < 600) return;
-    globalLastDropTimestamp = now;
+    if (isHandlingDropLock) return;
     isHandlingDropLock = true;
 
     try {
       const files = Array.from(e.dataTransfer.files).filter(
         (f) => f.type.startsWith('image/') || /\.(psd|cdraw|cekcok)$/i.test(f.name)
       );
-      if (files.length > 0) {
-        if (files[0].name.toLowerCase().endsWith('.psd')) {
+      for (const file of files) {
+        if (file.name.toLowerCase().endsWith('.psd')) {
           const { openPsd } = await import('@/features/document/utils/psdImport');
-          await openPsd(await files[0].arrayBuffer(), files[0].name);
+          await openPsd(await file.arrayBuffer(), file.name);
+          return;
+        }
+        if (/\.(cdraw|cekcok)$/i.test(file.name)) {
+          const { openProjectFromFile } = await import('@/features/document/utils/project');
+          await openProjectFromFile(file);
           return;
         }
         const store = useDocumentStore.getState();
         if (store.doc) {
-          await store.importImageAsLayer(files[0]);
+          await store.importImageAsLayer(file);
         } else {
-          await store.openImageAsDocument(files[0]);
+          await store.openImageAsDocument(file);
         }
       }
     } catch (error) {
       const { toast } = await import('@/stores/toastStore');
       toast.error('Import failed', String(error));
     } finally {
-      setTimeout(() => {
-        isHandlingDropLock = false;
-      }, 400);
+      isHandlingDropLock = false;
     }
   };
 
@@ -79,10 +79,7 @@ export const useCanvasDropZone = () => {
             } else if (payload.type === 'drop') {
               setIsDraggingFile(false);
 
-              // Debounce rapid duplicate drop events using module-level lock
-              const now = Date.now();
-              if (isHandlingDropLock || now - globalLastDropTimestamp < 600) return;
-              globalLastDropTimestamp = now;
+              if (isHandlingDropLock) return;
               isHandlingDropLock = true;
 
               try {
@@ -101,13 +98,13 @@ export const useCanvasDropZone = () => {
                     } else {
                       await store.openImagePathAsDocument(filePath);
                     }
-                    break; // Process one file at a time to prevent accidental multi-layer flooding
                   }
                 }
+              } catch (error) {
+                const { toast } = await import('@/stores/toastStore');
+                toast.error('Import failed', String(error));
               } finally {
-                setTimeout(() => {
-                  isHandlingDropLock = false;
-                }, 400);
+                isHandlingDropLock = false;
               }
             }
           })

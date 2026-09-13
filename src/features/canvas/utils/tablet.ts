@@ -151,7 +151,7 @@ export class StrokeStabilizer {
     }
   }
 
-  public processPoint(rawPoint: BrushPoint, smoothing = 0.0): BrushPoint {
+  public processPoint(rawPoint: BrushPoint, smoothing = 0.0, zoom = 1.0): BrushPoint {
     const factor = Math.max(0.0, Math.min(0.95, smoothing));
     const currentTimestamp = rawPoint.timestamp ?? performance.now();
     let dt = currentTimestamp - this.lastTimestamp;
@@ -183,10 +183,17 @@ export class StrokeStabilizer {
     // Move smoothed point
     const dx = rawPoint.x - this.smoothedX;
     const dy = rawPoint.y - this.smoothedY;
-    const dist = Math.hypot(dx, dy);
+    const canvasDist = Math.hypot(dx, dy);
 
-    // Dynamic pull: the further behind it is, the harder it pulls to prevent hanging when mouse stops
-    const pullFactor = Math.min(1.0, stiffness + (dist / 150.0) * factor);
+    // Screen-space distance invariance:
+    // Scale distance by zoom so stabilizer behaves identically on 4K/Square Art canvases as on 1080p
+    const screenDist = canvasDist * Math.max(0.01, zoom);
+
+    // Dynamic pull: proportional to screen-space distance, preventing abrupt snap to 1.0 on large canvases
+    const pullFactor = Math.min(
+      1.0,
+      Math.max(0.05, stiffness + (screenDist / 400.0) * factor * 0.5)
+    );
 
     // We update velocity based on how much the smoothed point moved
     const moveX = dx * pullFactor;
@@ -213,37 +220,3 @@ export class StrokeStabilizer {
     };
   }
 }
-
-/**
- * Rapid stroke point decimation filter.
- * Eliminates redundant micro-points on continuous curves to minimize IPC size
- * and accelerate Catmull-Rom spline calculations in the Rust backend.
- */
-export const simplifyStrokePoints = (
-  points: BrushPoint[],
-  minDistance: number = 1.2
-): BrushPoint[] => {
-  if (points.length <= 2) return points;
-
-  const result: BrushPoint[] = [points[0]];
-  let lastAdded = points[0];
-  const minDistSq = minDistance * minDistance;
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const pt = points[i];
-    const dx = pt.x - lastAdded.x;
-    const dy = pt.y - lastAdded.y;
-    const distSq = dx * dx + dy * dy;
-    const pressureDelta = Math.abs(pt.pressure - lastAdded.pressure);
-
-    // Keep point if distance exceeds threshold or pressure changes noticeably
-    if (distSq >= minDistSq || pressureDelta > 0.12) {
-      result.push(pt);
-      lastAdded = pt;
-    }
-  }
-
-  // Always retain the final stroke end point
-  result.push(points[points.length - 1]);
-  return result;
-};
